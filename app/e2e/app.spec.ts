@@ -27,7 +27,13 @@ test('Mitglied sieht Termine, aber keinen Spieß-Bereich', async ({ page }) => {
   await page.getByText('Kompanieabend').click();
   await expect(page.getByText('Antreten in Uniform.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'In meinen Kalender' })).toBeVisible();
+  await page.waitForTimeout(300); // Einblend-Animation abwarten
   await shot(page, '1-termine');
+  if (SHOTS) {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await shot(page, '1-termine-dunkel');
+    await page.emulateMedia({ colorScheme: 'light' });
+  }
 
   // Direkter Aufruf des Spieß-Bereichs fällt auf Termine zurück.
   await page.goto('/app/#/spiess');

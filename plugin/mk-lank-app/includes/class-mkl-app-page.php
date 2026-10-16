@@ -70,7 +70,7 @@ class MKL_App_Page {
 				'scope'            => self::app_url(),
 				'display'          => 'standalone',
 				'orientation'      => 'portrait',
-				'background_color' => '#F0F5FA',
+				'background_color' => '#f4efe4',
 				'theme_color'      => '#1f4498',
 				'icons'            => array(
 					array( 'src' => $icons . 'icon-192.png', 'sizes' => '192x192', 'type' => 'image/png' ),
