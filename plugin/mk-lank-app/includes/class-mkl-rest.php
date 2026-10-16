@@ -3,7 +3,8 @@
  * REST-API unter /wp-json/mk-lank/v1/.
  *
  * Grundsätze:
- * - Öffentlich (auch Gäste ohne Anmeldung): /events (lesen), /news.
+ * - Öffentlich (auch Gäste ohne Anmeldung): /events (lesen), /news, /gallery
+ *   (Gäste nur öffentliche Bilder).
  * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
  *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
  * - Punkte/Strafen verwalten erfordert mkl_manage (Spieß), Termine pflegen
@@ -55,6 +56,9 @@ class MKL_REST {
 				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_event' ), 'permission_callback' => $events, 'args' => $id_arg ),
 			)
 		);
+
+		register_rest_route( self::NS, '/gallery', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_gallery' ), 'permission_callback' => $public ) );
+		register_rest_route( self::NS, '/gallery/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_gallery_album' ), 'permission_callback' => $public, 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/news', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_news' ), 'permission_callback' => $public ) );
 		register_rest_route( self::NS, '/news/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_news_item' ), 'permission_callback' => $public, 'args' => $id_arg ) );
@@ -262,6 +266,23 @@ class MKL_REST {
 			}
 		}
 		return $out;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Galerie                                                             */
+	/* ------------------------------------------------------------------ */
+
+	/** Gäste sehen nur öffentliche Bilder, Mitglieder zusätzlich die aus „intern“. */
+	public static function get_gallery() {
+		return rest_ensure_response( array( 'years' => MKL_Gallery::overview( MKL_Roles::is_member() ) ) );
+	}
+
+	public static function get_gallery_album( WP_REST_Request $req ) {
+		$album = MKL_Gallery::album( (int) $req['id'], MKL_Roles::is_member() );
+		if ( ! $album ) {
+			return self::error( 'Album nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( $album );
 	}
 
 	/* ------------------------------------------------------------------ */

@@ -12,6 +12,8 @@ class MKL_Settings {
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ) );
 		add_action( 'admin_init', array( __CLASS__, 'register' ) );
+		add_action( 'admin_post_mkl_gallery_save', array( __CLASS__, 'gallery_save' ) );
+		add_action( 'admin_post_mkl_gallery_sync', array( __CLASS__, 'gallery_sync' ) );
 		foreach ( array( 'mkl_calendar_ids', 'mkl_google_api_key', 'mkl_ics_url', 'mkl_calendar_cache_minutes' ) as $opt ) {
 			add_action( 'update_option_' . $opt, array( 'MKL_Calendar', 'clear_cache' ) );
 		}
@@ -109,7 +111,162 @@ class MKL_Settings {
 					</ul></div>
 				<?php endif; ?>
 			<?php endif; ?>
+
+			<?php self::render_gallery(); ?>
 		</div>
 		<?php
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Galerie                                                             */
+	/* ------------------------------------------------------------------ */
+
+	private static function page_url( array $args = array() ) {
+		return add_query_arg( $args, admin_url( 'options-general.php?page=' . self::PAGE ) );
+	}
+
+	private static function render_gallery() {
+		$email  = MKL_Drive::client_email();
+		$root   = get_option( MKL_Gallery::ROOT_OPTION, '' );
+		$status = (array) get_option( MKL_Gallery::STATUS_OPTION, array() );
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- nur Anzeige von Rückmeldungen
+		$notice    = isset( $_GET['mkl_gallery_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['mkl_gallery_msg'] ) ) : '';
+		$is_error  = ! empty( $_GET['mkl_gallery_error'] );
+		$continue  = ! empty( $_GET['mkl_continue'] ) && ! empty( $status['pending'] );
+		// phpcs:enable
+		?>
+		<hr />
+		<h2 id="galerie">Galerie (Google Drive)</h2>
+		<?php if ( $notice ) : ?>
+			<div class="notice <?php echo $is_error ? 'notice-error' : 'notice-success'; ?> inline"><p><?php echo esc_html( $notice ); ?></p></div>
+		<?php endif; ?>
+		<p>
+			Aufbau in Drive: <strong>Galerie-Ordner → Jahr → Album → Bilder</strong>. Bilder im Unterordner
+			<strong>„intern“</strong> eines Albums sehen nur angemeldete Mitglieder. Auf der Webseite zeigt der Shortcode
+			<code>[mkl_galerie]</code> die Galerie.
+		</p>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="mkl_gallery_save" />
+			<?php wp_nonce_field( 'mkl_gallery_save' ); ?>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><label for="mkl_drive_sa">Dienstkonto (JSON-Schlüssel)</label></th>
+					<td>
+						<?php if ( $email ) : ?>
+							<p>Hinterlegt: <code><?php echo esc_html( $email ); ?></code><br />
+							Gib den Galerie-Ordner in Google Drive für <strong>diese Adresse</strong> frei (Rolle „Betrachter“).</p>
+						<?php endif; ?>
+						<textarea id="mkl_drive_sa" name="mkl_drive_sa" rows="4" class="large-text code" placeholder="<?php echo esc_attr( $email ? 'Nur ausfüllen, um den Schlüssel zu ersetzen' : 'Inhalt der heruntergeladenen JSON-Datei hier einfügen' ); ?>"></textarea>
+						<p class="description">Der Schlüssel wird nur auf dem Server gespeichert und hier nicht wieder angezeigt.</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="mkl_gallery_root">Galerie-Ordner</label></th>
+					<td>
+						<input type="text" class="regular-text" id="mkl_gallery_root" name="mkl_gallery_root" value="<?php echo esc_attr( $root ); ?>" placeholder="Link zum Ordner oder Ordner-ID" />
+						<p class="description">Link aus Google Drive, z. B. <code>https://drive.google.com/drive/folders/…</code></p>
+					</td>
+				</tr>
+			</table>
+			<?php submit_button( 'Galerie-Einstellungen speichern', 'secondary' ); ?>
+		</form>
+
+		<h3>Status</h3>
+		<ul>
+			<li>Letzter Abgleich: <?php echo ! empty( $status['last_sync'] ) ? esc_html( wp_date( 'd.m.Y H:i', (int) $status['last_sync'] ) ) : '–'; ?></li>
+			<li>Alben: <?php echo esc_html( isset( $status['albums'] ) ? (string) $status['albums'] : '–' ); ?>,
+				Bilder: <?php echo esc_html( isset( $status['photos'] ) ? (string) $status['photos'] : '–' ); ?>,
+				noch aufzubereiten: <?php echo esc_html( isset( $status['pending'] ) ? (string) $status['pending'] : '–' ); ?></li>
+			<?php if ( ! empty( $status['error'] ) ) : ?>
+				<li><strong style="color:#b32d2e">Fehler: <?php echo esc_html( $status['error'] ); ?></strong></li>
+			<?php endif; ?>
+		</ul>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="mkl-gallery-sync">
+			<input type="hidden" name="action" value="mkl_gallery_sync" />
+			<?php if ( $continue ) : ?>
+				<input type="hidden" name="only_process" value="1" />
+			<?php endif; ?>
+			<?php wp_nonce_field( 'mkl_gallery_sync' ); ?>
+			<?php submit_button( 'Jetzt synchronisieren', 'primary', 'submit', false, $email && $root ? array() : array( 'disabled' => 'disabled' ) ); ?>
+			<p class="description">Neue Bilder werden danach automatisch stündlich übernommen. Beim ersten Mal kann das Aufbereiten etwas dauern; die Seite lädt dann selbstständig weiter.</p>
+		</form>
+		<?php if ( $continue ) : ?>
+			<p><em>Bereite weitere Bilder auf …</em></p>
+			<script>setTimeout(function(){document.getElementById('mkl-gallery-sync').submit();},800);</script>
+		<?php endif; ?>
+		<?php
+	}
+
+	public static function gallery_save() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Keine Berechtigung.' );
+		}
+		check_admin_referer( 'mkl_gallery_save' );
+		$messages = array();
+		$error    = false;
+
+		$json = isset( $_POST['mkl_drive_sa'] ) ? trim( (string) wp_unslash( $_POST['mkl_drive_sa'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- JSON wird geprüft und nicht ausgegeben
+		if ( '' !== $json ) {
+			$saved = MKL_Drive::save_service_account( $json );
+			if ( is_wp_error( $saved ) ) {
+				$messages[] = $saved->get_error_message();
+				$error      = true;
+			} else {
+				$messages[] = 'Dienstkonto gespeichert.';
+			}
+		}
+
+		$root_input = isset( $_POST['mkl_gallery_root'] ) ? sanitize_text_field( wp_unslash( $_POST['mkl_gallery_root'] ) ) : '';
+		$root       = MKL_Drive::parse_folder_id( $root_input );
+		if ( '' !== $root_input && '' === $root ) {
+			$messages[] = 'Der Galerie-Ordner wurde nicht erkannt.';
+			$error      = true;
+		} else {
+			update_option( MKL_Gallery::ROOT_OPTION, $root, false );
+			MKL_Gallery::schedule();
+		}
+		if ( ! $messages ) {
+			$messages[] = 'Gespeichert.';
+		}
+		wp_safe_redirect(
+			self::page_url(
+				array(
+					'mkl_gallery_msg'   => rawurlencode( implode( ' ', $messages ) ),
+					'mkl_gallery_error' => $error ? 1 : 0,
+				)
+			) . '#galerie'
+		);
+		exit;
+	}
+
+	public static function gallery_sync() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Keine Berechtigung.' );
+		}
+		check_admin_referer( 'mkl_gallery_sync' );
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		// Beim automatischen Weiterladen nur aufbereiten, nicht erneut abgleichen.
+		$stats = empty( $_POST['only_process'] ) ? MKL_Gallery::sync() : (array) get_option( MKL_Gallery::STATUS_OPTION, array() );
+		if ( is_wp_error( $stats ) ) {
+			$msg   = $stats->get_error_message();
+			$error = 1;
+		} else {
+			$done  = MKL_Gallery::process_pending( 20 );
+			$left  = MKL_Gallery::count_pending();
+			$msg   = sprintf( '%d Alben, %d Bilder gefunden. %d Bilder aufbereitet, %d ausstehend.', isset( $stats['albums'] ) ? $stats['albums'] : 0, isset( $stats['photos'] ) ? $stats['photos'] : 0, $done, $left );
+			$error = 0;
+		}
+		wp_safe_redirect(
+			self::page_url(
+				array(
+					'mkl_gallery_msg'   => rawurlencode( $msg ),
+					'mkl_gallery_error' => $error,
+					'mkl_continue'      => ! $error && ! empty( $left ) ? 1 : 0,
+				)
+			) . '#galerie'
+		);
+		exit;
 	}
 }

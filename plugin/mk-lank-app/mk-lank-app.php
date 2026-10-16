@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Marinekompanie Lank – App
  * Description:       Mitglieder-App (PWA) mit Terminen, Punkten und Strafen. Erreichbar unter /app/.
- * Version:           0.2.0
+ * Version:           0.3.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marinekompanie 1973 Lank
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MKL_VERSION', '0.2.0' );
-define( 'MKL_DB_VERSION', '2' );
+define( 'MKL_VERSION', '0.3.0' );
+define( 'MKL_DB_VERSION', '3' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
@@ -34,6 +34,8 @@ require_once MKL_DIR . 'includes/class-mkl-roles.php';
 require_once MKL_DIR . 'includes/class-mkl-calendar.php';
 require_once MKL_DIR . 'includes/class-mkl-events.php';
 require_once MKL_DIR . 'includes/class-mkl-shortcodes.php';
+require_once MKL_DIR . 'includes/class-mkl-drive.php';
+require_once MKL_DIR . 'includes/class-mkl-gallery.php';
 require_once MKL_DIR . 'includes/class-mkl-rest.php';
 require_once MKL_DIR . 'includes/class-mkl-app-page.php';
 require_once MKL_DIR . 'includes/class-mkl-settings.php';
@@ -49,6 +51,7 @@ function mkl_activate() {
 }
 
 function mkl_deactivate() {
+	MKL_Gallery::unschedule();
 	flush_rewrite_rules();
 }
 
@@ -58,3 +61,4 @@ MKL_Roles::init();
 MKL_App_Page::init();
 MKL_Settings::init();
 MKL_Shortcodes::init();
+MKL_Gallery::init();
