@@ -128,3 +128,36 @@ test('Mitglied 2 sieht keine fremden Strafen und keine Verwaltungsdaten', async 
   });
   expect(status).toBe(403);
 });
+
+test('Mitglied ändert sein Passwort und bleibt angemeldet', async ({ page }) => {
+  const NEW = 'Anker-Lank-1973';
+  await login(page, 'mariner2');
+  await page.getByRole('button', { name: 'Konto' }).click();
+  await expect(page.locator('.topbar-title')).toHaveText('Mein Konto');
+
+  await page.getByLabel('Aktuelles Passwort').fill('falsch');
+  await page.getByLabel(/^Neues Passwort \(/).fill(NEW);
+  await page.getByLabel('Neues Passwort wiederholen').fill(NEW);
+  await page.getByRole('button', { name: 'Passwort ändern' }).click();
+  await expect(page.locator('.form-error')).toHaveText('Das aktuelle Passwort ist falsch.');
+
+  await page.getByLabel('Aktuelles Passwort').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Passwort ändern' }).click();
+  await expect(page.locator('.toast')).toContainText('Passwort geändert');
+  await shot(page, '9-konto');
+
+  // Sitzung bleibt gültig: Daten laden weiterhin.
+  await page.getByRole('button', { name: 'Punkte' }).click();
+  await expect(page.locator('.stat-label')).toHaveText('Meine Punkte');
+
+  // Neue Anmeldung nur mit dem neuen Passwort.
+  await login(page, 'mariner2', NEW);
+
+  // Zurücksetzen, damit die Tests wiederholbar bleiben.
+  await page.getByRole('button', { name: 'Konto' }).click();
+  await page.getByLabel('Aktuelles Passwort').fill(NEW);
+  await page.getByLabel(/^Neues Passwort \(/).fill(PASSWORD);
+  await page.getByLabel('Neues Passwort wiederholen').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Passwort ändern' }).click();
+  await expect(page.locator('.toast')).toContainText('Passwort geändert');
+});

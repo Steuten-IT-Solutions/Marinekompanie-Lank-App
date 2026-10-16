@@ -30,6 +30,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_me' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $logged_in ) );
+		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $logged_in ) );
 
 		register_rest_route(
@@ -119,6 +120,43 @@ class MKL_REST {
 
 	public static function get_my_penalties() {
 		return rest_ensure_response( MKL_DB::get_penalties_for_user( get_current_user_id() ) );
+	}
+
+	/** Mindestlänge für selbst gewählte Passwörter. */
+	const MIN_PASSWORD_LENGTH = 8;
+
+	/**
+	 * Eigenes Passwort ändern. Erfordert das aktuelle Passwort.
+	 *
+	 * Ein neues Passwort macht in WordPress alle Anmelde-Cookies ungültig. Andere
+	 * Geräte werden dadurch abgemeldet; dieses Gerät bekommt sofort ein neues
+	 * Cookie. Die App holt sich danach einen frischen REST-Nonce.
+	 */
+	public static function change_my_password( WP_REST_Request $req ) {
+		$user    = wp_get_current_user();
+		$current = (string) $req->get_param( 'current_password' );
+		$new     = (string) $req->get_param( 'new_password' );
+
+		if ( '' === $current || ! wp_check_password( $current, $user->user_pass, $user->ID ) ) {
+			return self::error( 'Das aktuelle Passwort ist falsch.' );
+		}
+		if ( strlen( $new ) < self::MIN_PASSWORD_LENGTH ) {
+			return self::error( sprintf( 'Das neue Passwort muss mindestens %d Zeichen lang sein.', self::MIN_PASSWORD_LENGTH ) );
+		}
+		if ( $new !== trim( $new ) ) {
+			return self::error( 'Das neue Passwort darf nicht mit Leerzeichen beginnen oder enden.' );
+		}
+		if ( $new === $current ) {
+			return self::error( 'Das neue Passwort muss sich vom aktuellen unterscheiden.' );
+		}
+
+		wp_set_password( $new, $user->ID );
+		WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+		if ( ! headers_sent() ) {
+			wp_set_auth_cookie( $user->ID, true, is_ssl() );
+		}
+
+		return rest_ensure_response( array( 'changed' => true ) );
 	}
 
 	public static function get_calendar() {

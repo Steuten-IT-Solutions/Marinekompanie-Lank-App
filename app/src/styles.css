@@ -63,7 +63,8 @@ button, input, select { font: inherit; color: inherit; }
 .topbar-text { flex: 1; min-width: 0; }
 .topbar-title { font-weight: 700; font-size: 1.15rem; }
 .topbar-sub { font-size: 0.8rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topbar-logout { color: #fff !important; font-size: 0.85rem; }
+.topbar-account { color: #fff !important; font-size: 0.85rem; padding: 6px 12px; border: 1px solid rgb(255 255 255 / 45%); border-radius: 999px; }
+.topbar-account.active { background: rgb(255 255 255 / 18%); }
 
 .content { max-width: 640px; margin: 0 auto; padding: 16px; }
 
@@ -197,3 +198,9 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .credentials { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 16px 0; }
 .credentials dt { color: var(--muted); font-size: 0.85rem; align-self: center; }
 .credentials dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; overflow-wrap: anywhere; }
+
+.account-name { margin: 0 0 4px; font-size: 1.2rem; }
+.account-card { padding: 16px; margin-bottom: 16px; }
+.form.card h3 { margin: 0; font-size: 1rem; }
+input[type='password'] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); min-height: 44px; }
+.logout { margin-top: 24px; }

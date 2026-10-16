@@ -226,6 +226,25 @@ foreach ( $created as $uid ) {
 }
 wp_delete_user( $admin );
 
+echo "Eigenes Passwort ändern\n";
+wp_set_password( 'altes-passwort', $m2 );
+wp_set_current_user( 0 );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'neues-passwort' ) );
+mkl_assert( 401 === $s, 'Ohne Login → 401' );
+wp_set_current_user( $m2 );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'falsch', 'new_password' => 'neues-passwort' ) );
+mkl_assert( 400 === $s, 'Falsches aktuelles Passwort → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'kurz' ) );
+mkl_assert( 400 === $s, 'Neues Passwort zu kurz → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'altes-passwort' ) );
+mkl_assert( 400 === $s, 'Neues = altes Passwort → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'neues-passwort', 'user_id' => $m1 ) );
+mkl_assert( 200 === $s, 'Passwort geändert' );
+clean_user_cache( $m2 );
+clean_user_cache( $m1 );
+mkl_assert( wp_check_password( 'neues-passwort', get_userdata( $m2 )->user_pass, $m2 ), 'Neues Passwort gilt für das eigene Konto' );
+mkl_assert( ! wp_check_password( 'neues-passwort', get_userdata( $m1 )->user_pass, $m1 ), 'Fremdes Konto (user_id-Parameter) bleibt unverändert' );
+
 echo "ICS-Parser\n";
 $ics    = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a1\r\nDTSTART;VALUE=DATE:" . gmdate( 'Ymd', time() + 10 * DAY_IN_SECONDS ) . "\r\nDTEND;VALUE=DATE:" . gmdate( 'Ymd', time() + 11 * DAY_IN_SECONDS ) . "\r\nSUMMARY:Schützenfest\\, Lank\r\nLOCATION:Schützenplatz\r\nEND:VEVENT\r\n"
 	. "BEGIN:VEVENT\r\nUID:a2\r\nDTSTART;TZID=Europe/Berlin:" . gmdate( 'Ymd', time() + 20 * DAY_IN_SECONDS ) . "T190000\r\nDTEND;TZID=Europe/Berlin:" . gmdate( 'Ymd', time() + 20 * DAY_IN_SECONDS ) . "T220000\r\nSUMMARY:Kompanie\r\n abend\r\nEND:VEVENT\r\n"

@@ -124,6 +124,7 @@ class MKL_App_Page {
 			'user'      => array(
 				'id'             => $user->ID,
 				'name'           => $user->display_name,
+				'login'          => $user->user_login,
 				'isSpiess'       => MKL_Roles::is_spiess(),
 				'canCreateUsers' => current_user_can( 'create_users' ),
 			),

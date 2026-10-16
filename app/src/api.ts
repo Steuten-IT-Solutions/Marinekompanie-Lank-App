@@ -8,7 +8,7 @@ export interface AppConfig {
   appUrl: string;
   siteUrl: string;
   swUrl: string;
-  user: { id: number; name: string; isSpiess: boolean; canCreateUsers: boolean };
+  user: { id: number; name: string; login: string; isSpiess: boolean; canCreateUsers: boolean };
 }
 
 declare global {
@@ -102,7 +102,7 @@ function toLogin(): never {
   throw new ApiError('Sitzung abgelaufen – bitte neu anmelden.', 401);
 }
 
-async function refreshNonce(): Promise<void> {
+export async function refreshNonce(): Promise<void> {
   const sep = config!.ajaxUrl.includes('?') ? '&' : '?';
   const res = await fetch(`${config!.ajaxUrl}${sep}action=rest-nonce`, { credentials: 'same-origin' });
   const text = (await res.text()).trim();
@@ -176,6 +176,11 @@ export const api = {
 
   members: () => request<MemberSummary[]>('GET', '/members'),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),
+  /** Ändert das eigene Passwort; danach gilt ein neues Anmelde-Cookie, daher Nonce erneuern. */
+  changePassword: async (current_password: string, new_password: string) => {
+    await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
+    await refreshNonce();
+  },
   createUser: (data: { name: string; username?: string; email?: string }) =>
     request<CreatedUser>('POST', '/users', data),
 
