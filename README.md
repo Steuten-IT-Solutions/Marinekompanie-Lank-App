@@ -53,7 +53,7 @@ scripts/                   Build- und Test-Skripte
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
 5. **Spieße festlegen:** Unter Benutzer → Profil bearbeiten die Checkbox **„Spieß“** setzen. Die bisherige Rolle, z. B. Redakteur, bleibt dabei erhalten.
-6. Jedes Mitglied braucht ein WordPress-Benutzerkonto. Die Rolle „Abonnent“ reicht.
+6. Jedes Mitglied braucht ein WordPress-Benutzerkonto. Die Rolle „Abonnent“ reicht. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach unter `/wp-admin/profile.php` ändern. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
 7. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder. Die Daten liegen in der WordPress-Datenbank auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.

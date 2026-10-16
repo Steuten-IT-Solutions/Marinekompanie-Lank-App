@@ -175,7 +175,7 @@ button, input, select { font: inherit; color: inherit; }
 .field > span { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 .field-row { display: flex; gap: 10px; }
 .field.narrow { flex: 0 0 96px; }
-input[type='text'], input[type='number'], input[type='date'], input[type='search'], select {
+input[type='text'], input[type='number'], input[type='date'], input[type='search'], input[type='email'], select {
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); min-height: 44px;
 }
 input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid var(--navy-2); outline-offset: 1px; }
@@ -189,3 +189,11 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .picker-list input { width: 20px; height: 20px; accent-color: var(--navy); }
 .picker-list .muted { padding: 8px 12px; }
 .picker-count { font-size: 0.8rem; color: var(--muted); padding: 6px 12px; border-top: 1px solid var(--line); }
+
+.add-member { margin-top: 12px; }
+.small { font-size: 0.85rem; margin: 0; }
+.created { padding: 16px; }
+.created h2 { margin: 0 0 8px; font-size: 1.15rem; }
+.credentials { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 16px 0; }
+.credentials dt { color: var(--muted); font-size: 0.85rem; align-self: center; }
+.credentials dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; overflow-wrap: anywhere; }

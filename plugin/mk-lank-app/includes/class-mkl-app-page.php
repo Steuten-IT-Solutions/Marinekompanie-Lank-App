@@ -122,9 +122,10 @@ class MKL_App_Page {
 			'siteUrl'   => home_url( '/' ),
 			'swUrl'     => self::app_url() . 'sw.js',
 			'user'      => array(
-				'id'       => $user->ID,
-				'name'     => $user->display_name,
-				'isSpiess' => MKL_Roles::is_spiess(),
+				'id'             => $user->ID,
+				'name'           => $user->display_name,
+				'isSpiess'       => MKL_Roles::is_spiess(),
+				'canCreateUsers' => current_user_can( 'create_users' ),
 			),
 		);
 

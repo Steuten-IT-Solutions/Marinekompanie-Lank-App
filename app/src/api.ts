@@ -8,7 +8,7 @@ export interface AppConfig {
   appUrl: string;
   siteUrl: string;
   swUrl: string;
-  user: { id: number; name: string; isSpiess: boolean };
+  user: { id: number; name: string; isSpiess: boolean; canCreateUsers: boolean };
 }
 
 declare global {
@@ -77,6 +77,15 @@ export interface MemberSummary {
 export interface MemberDetail extends MemberSummary {
   point_list: PointEntry[];
   penalties: Penalty[];
+}
+
+export interface CreatedUser {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  /** Startpasswort – wird nur in dieser einen Antwort geliefert. */
+  password: string;
 }
 
 export class ApiError extends Error {
@@ -167,6 +176,8 @@ export const api = {
 
   members: () => request<MemberSummary[]>('GET', '/members'),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),
+  createUser: (data: { name: string; username?: string; email?: string }) =>
+    request<CreatedUser>('POST', '/users', data),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
     request<PointEntry[]>('POST', '/points', data),
