@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Marinekompanie Lank – App
  * Description:       Mitglieder-App (PWA) mit Terminen, Punkten und Strafen. Erreichbar unter /app/.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marinekompanie 1973 Lank
@@ -12,20 +12,28 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MKL_VERSION', '0.1.0' );
-define( 'MKL_DB_VERSION', '1' );
+define( 'MKL_VERSION', '0.2.0' );
+define( 'MKL_DB_VERSION', '2' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
 
-/** Capability, die zum Vergeben/Verwalten von Punkten und Strafen berechtigt. */
+/** Capability, die zum Vergeben/Verwalten von Punkten und Strafen berechtigt (Spieß). */
 define( 'MKL_CAP_MANAGE', 'mkl_manage' );
+/** Capability „Mitglied“: eigene Punkte/Strafen, interner Kalender, interne Galerie. */
+define( 'MKL_CAP_MEMBER', 'mkl_member' );
+/** Capability zum Pflegen der öffentlichen Terminliste (Admin). */
+define( 'MKL_CAP_EVENTS', 'mkl_manage_events' );
 /** Rolle „Spieß“. Wird Benutzern zusätzlich zu ihrer bisherigen Rolle gegeben. */
 define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
+/** Rolle „Mitglied“. Ohne sie (und ohne Spieß/Admin) ist ein Konto in der App „Gast“. */
+define( 'MKL_ROLE_MITGLIED', 'mkl_mitglied' );
 
 require_once MKL_DIR . 'includes/class-mkl-db.php';
 require_once MKL_DIR . 'includes/class-mkl-roles.php';
 require_once MKL_DIR . 'includes/class-mkl-calendar.php';
+require_once MKL_DIR . 'includes/class-mkl-events.php';
+require_once MKL_DIR . 'includes/class-mkl-shortcodes.php';
 require_once MKL_DIR . 'includes/class-mkl-rest.php';
 require_once MKL_DIR . 'includes/class-mkl-app-page.php';
 require_once MKL_DIR . 'includes/class-mkl-settings.php';
@@ -34,7 +42,7 @@ register_activation_hook( __FILE__, 'mkl_activate' );
 register_deactivation_hook( __FILE__, 'mkl_deactivate' );
 
 function mkl_activate() {
-	MKL_DB::install();
+	MKL_DB::maybe_upgrade();
 	MKL_Roles::install();
 	MKL_App_Page::add_rewrite_rules();
 	flush_rewrite_rules();
@@ -49,3 +57,4 @@ add_action( 'rest_api_init', array( 'MKL_REST', 'register_routes' ) );
 MKL_Roles::init();
 MKL_App_Page::init();
 MKL_Settings::init();
+MKL_Shortcodes::init();

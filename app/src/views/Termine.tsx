@@ -1,18 +1,28 @@
 import { useMemo, useState } from 'react';
-import { api, type CalendarEvent } from '../api';
+import { api, config, type CalendarEvent } from '../api';
+import { navigate } from '../router';
 import { eventEnd, eventStart, formatEventWhen, formatMonth } from '../format';
 import { downloadIcs } from '../ics';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
 
+type EventLike = CalendarEvent & { url?: string };
+
+/** Mitglieder sehen den Google Kalender (alle Termine), Gäste die öffentliche Terminliste. */
+async function loadEvents(): Promise<EventLike[]> {
+  if (config?.user?.isMember) return api.calendar();
+  const list = await api.events();
+  return list.map((ev) => ({ ...ev, id: `p${ev.id}` }));
+}
+
 export default function Termine() {
-  const { data, error, loading, reload } = useAsync(api.calendar);
+  const { data, error, loading, reload } = useAsync(loadEvents);
   const [open, setOpen] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     const upcoming = (data ?? []).filter((ev) => eventEnd(ev) >= now);
-    const map = new Map<string, CalendarEvent[]>();
+    const map = new Map<string, EventLike[]>();
     for (const ev of upcoming) {
       const s = eventStart(ev);
       const key = `${s.getFullYear()}-${String(s.getMonth()).padStart(2, '0')}`;
@@ -22,12 +32,25 @@ export default function Termine() {
     return Array.from(map.values());
   }, [data]);
 
+  const manage = config?.user?.canManageEvents ? (
+    <button className="btn btn-secondary btn-block manage-events" onClick={() => navigate('termine/verwalten')}>
+      Öffentliche Termine verwalten
+    </button>
+  ) : null;
+
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
-  if (groups.length === 0) return <Empty>Keine anstehenden Termine.</Empty>;
+  if (groups.length === 0)
+    return (
+      <>
+        {manage}
+        <Empty>Keine anstehenden Termine.</Empty>
+      </>
+    );
 
   return (
     <div className="events">
+      {manage}
       {groups.map((evs) => (
         <section key={evs[0].id} className="month">
           <h2 className="month-title">{formatMonth(eventStart(evs[0]))}</h2>
@@ -55,6 +78,11 @@ export default function Termine() {
                         <button className="btn btn-secondary" onClick={() => downloadIcs(ev)}>
                           In meinen Kalender
                         </button>
+                        {ev.url && (
+                          <a className="btn btn-secondary" href={ev.url} target="_blank" rel="noreferrer">
+                            Mehr Infos
+                          </a>
+                        )}
                         {ev.location && (
                           <a
                             className="btn btn-secondary"

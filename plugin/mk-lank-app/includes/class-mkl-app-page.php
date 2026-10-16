@@ -2,7 +2,7 @@
 /**
  * Liefert die PWA unter /app/ aus.
  *
- * /app/                      → App (nur angemeldet; sonst Weiterleitung zum Login)
+ * /app/                      → App (Gäste sehen die öffentliche Ansicht)
  * /app/manifest.webmanifest  → Web-App-Manifest
  * /app/sw.js                 → Service Worker (Scope /app/)
  *
@@ -100,10 +100,6 @@ class MKL_App_Page {
 		}
 		nocache_headers();
 
-		if ( ! is_user_logged_in() ) {
-			wp_safe_redirect( wp_login_url( self::app_url() ) );
-			return;
-		}
 
 		$file = self::dist_dir() . 'index.html';
 		if ( ! is_readable( $file ) ) {
@@ -112,21 +108,27 @@ class MKL_App_Page {
 			return;
 		}
 
+		// Gäste (nicht angemeldet) sehen die öffentliche Ansicht; ein Nonce gibt es nur mit Anmeldung.
 		$user   = wp_get_current_user();
 		$config = array(
 			'restUrl'   => esc_url_raw( rest_url( MKL_REST::NS . '/' ) ),
-			'nonce'     => wp_create_nonce( 'wp_rest' ),
+			'nonce'     => $user->exists() ? wp_create_nonce( 'wp_rest' ) : '',
 			'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+			'loginUrl'  => wp_login_url( self::app_url() ),
 			'logoutUrl' => wp_logout_url( self::app_url() ),
 			'appUrl'    => self::app_url(),
 			'siteUrl'   => home_url( '/' ),
 			'swUrl'     => self::app_url() . 'sw.js',
-			'user'      => array(
-				'id'             => $user->ID,
-				'name'           => $user->display_name,
-				'login'          => $user->user_login,
-				'isSpiess'       => MKL_Roles::is_spiess(),
-				'canCreateUsers' => current_user_can( 'create_users' ),
+			'user'      => ! $user->exists() ? null : array(
+				'id'              => $user->ID,
+				'name'            => $user->display_name,
+				'login'           => $user->user_login,
+				'level'           => MKL_Roles::get_level( $user->ID ),
+				'isMember'        => MKL_Roles::is_member(),
+				'isSpiess'        => MKL_Roles::is_spiess(),
+				'canCreateUsers'  => current_user_can( 'create_users' ),
+				'canManageEvents' => current_user_can( MKL_CAP_EVENTS ),
+				'canPromoteUsers' => current_user_can( 'promote_users' ),
 			),
 		);
 

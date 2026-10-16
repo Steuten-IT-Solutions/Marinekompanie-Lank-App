@@ -54,7 +54,9 @@ class MKL_Settings {
 			<p>
 				Die App ist erreichbar unter
 				<a href="<?php echo esc_url( MKL_App_Page::app_url() ); ?>" target="_blank"><?php echo esc_html( MKL_App_Page::app_url() ); ?></a>.
-				Spieße werden im jeweiligen <a href="<?php echo esc_url( admin_url( 'users.php' ) ); ?>">Benutzerprofil</a> über die Checkbox „Spieß“ festgelegt.
+				Die Rolle in der App (Gast, Mitglied, Spieß) legt ein Admin in der App unter Spieß → Mitglieder fest
+				oder im jeweiligen <a href="<?php echo esc_url( admin_url( 'users.php' ) ); ?>">Benutzerprofil</a>.
+				Öffentliche Termine für die Startseite zeigt der Shortcode <code>[mkl_termine]</code>.
 			</p>
 
 			<h2>Kalender</h2>

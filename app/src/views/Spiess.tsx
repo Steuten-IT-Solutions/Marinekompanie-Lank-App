@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api, config, type CatalogItem, type CreatedUser, type MemberSummary } from '../api';
+import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
 import { formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
@@ -35,7 +35,7 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
       </nav>
       {sub === 'mitglied' && arg ? (
         <MemberDetailView id={Number(arg)} onToast={onToast} />
-      ) : sub === 'neu' && config?.user.canCreateUsers ? (
+      ) : sub === 'neu' && config?.user?.canCreateUsers ? (
         <NewMember />
       ) : active === 'punkte' ? (
         <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
@@ -53,7 +53,9 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 /* ------------------------------------------------------------------ */
 
 function Members() {
-  const { data, error, loading, reload } = useAsync(api.members);
+  const canPromote = !!config?.user?.canPromoteUsers;
+  const [showGuests, setShowGuests] = useState(false);
+  const { data, error, loading, reload } = useAsync(() => api.members(showGuests), [showGuests]);
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -63,12 +65,12 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => m.level !== 'gast').reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
       <StatCard label="Offene Strafen gesamt" value={formatEuro(totalOpen)} tone={totalOpen > 0 ? 'warn' : 'good'} />
-      {config?.user.canCreateUsers && (
+      {config?.user?.canCreateUsers && (
         <button className="btn btn-block add-member" onClick={() => navigate('spiess/neu')}>
           + Mitglied anlegen
         </button>
@@ -81,12 +83,19 @@ function Members() {
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Mitglied suchen"
       />
+      {canPromote && (
+        <label className="toggle">
+          <input type="checkbox" checked={showGuests} onChange={(e) => setShowGuests(e.target.checked)} />
+          Auch Gast-Konten anzeigen (um ihnen eine Rolle zu geben)
+        </label>
+      )}
       <ul className="card-list">
         {list.map((m) => (
           <li key={m.id} className="card row clickable" onClick={() => navigate(`spiess/mitglied/${m.id}`)}>
             <div className="row-main">
               <div className="row-title">
-                {m.name} {m.is_spiess && <span className="badge badge-role">Spieß</span>}
+                {m.name}{' '}
+                {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{LEVEL_LABELS[m.level]}</span>}
               </div>
               <div className="row-sub">
                 {m.points.toLocaleString('de-DE')} Punkte
@@ -131,18 +140,21 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         ‹ Alle Mitglieder
       </button>
       <h2 className="member-name">{m.name}</h2>
+      <RoleControl id={m.id} level={m.level} onChanged={reload} onToast={onToast} />
       <div className="stats">
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      <div className="button-row">
-        <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
-          Punkte vergeben
-        </button>
-        <button className="btn btn-warn" onClick={() => navigate(`spiess/strafe/${m.id}`)}>
-          Strafe vergeben
-        </button>
-      </div>
+      {m.level !== 'gast' && (
+        <div className="button-row">
+          <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
+            Punkte vergeben
+          </button>
+          <button className="btn btn-warn" onClick={() => navigate(`spiess/strafe/${m.id}`)}>
+            Strafe vergeben
+          </button>
+        </div>
+      )}
 
       <h3 className="section-title">Strafen</h3>
       {m.penalties.length === 0 ? (
@@ -220,6 +232,63 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Admins legen hier die Rolle in der App fest (Gast / Mitglied / Spieß). */
+function RoleControl({
+  id,
+  level,
+  onChanged,
+  onToast,
+}: {
+  id: number;
+  level: Level;
+  onChanged: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (!config?.user?.canPromoteUsers) {
+    return <p className="muted small member-level">Rolle: {LEVEL_LABELS[level]}</p>;
+  }
+  if (level === 'admin' || id === config.user.id) {
+    return (
+      <p className="muted small member-level">
+        Rolle: {LEVEL_LABELS[level]}
+        {level === 'admin' && ' (wird im WordPress-Backend verwaltet)'}
+      </p>
+    );
+  }
+  async function change(next: Exclude<Level, 'admin'>) {
+    if (next === level) return;
+    setBusy(true);
+    try {
+      await api.setRole(id, next);
+      onToast(`Rolle geändert: ${LEVEL_LABELS[next]}`);
+      onChanged();
+    } catch (e) {
+      onToast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="role-control">
+      <span className="field-label">Rolle in der App</span>
+      <div className="segmented small" role="group" aria-label="Rolle in der App">
+        {(['gast', 'mitglied', 'spiess'] as const).map((l) => (
+          <button
+            key={l}
+            className={level === l ? 'active' : ''}
+            disabled={busy}
+            aria-pressed={level === l}
+            onClick={() => change(l)}
+          >
+            {LEVEL_LABELS[l]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

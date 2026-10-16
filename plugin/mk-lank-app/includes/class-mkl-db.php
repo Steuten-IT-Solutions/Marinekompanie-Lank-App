@@ -74,12 +74,43 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$events = self::table( 'events' );
+		dbDelta(
+			"CREATE TABLE $events (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  start_date date NOT NULL,
+  start_time time DEFAULT NULL,
+  end_date date DEFAULT NULL,
+  end_time time DEFAULT NULL,
+  location varchar(191) NOT NULL DEFAULT '',
+  description text NOT NULL,
+  url varchar(255) NOT NULL DEFAULT '',
+  created_by bigint(20) unsigned NOT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY start_date (start_date)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
+	/**
+	 * Läuft bei jedem Seitenaufruf, tut aber nur nach einem Plugin-Update etwas.
+	 * Ein Update per ZIP-Upload löst keinen Aktivierungs-Hook aus, deshalb werden
+	 * auch Rollen und Migrationen hier nachgezogen.
+	 */
 	public static function maybe_upgrade() {
-		if ( get_option( 'mkl_db_version' ) !== MKL_DB_VERSION ) {
-			self::install();
+		$installed = get_option( 'mkl_db_version' );
+		if ( MKL_DB_VERSION === $installed ) {
+			return;
+		}
+		self::install();
+		MKL_Roles::install();
+		if ( $installed && version_compare( $installed, '2', '<' ) ) {
+			MKL_Roles::migrate_subscribers_to_members();
 		}
 	}
 

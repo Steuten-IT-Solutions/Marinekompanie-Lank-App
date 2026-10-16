@@ -41,7 +41,8 @@ function mkl_req( $method, $route, $params = array(), $query = array() ) {
 	return array( $res->get_status(), $res->get_data() );
 }
 
-function mkl_test_user( $login, $spiess = false ) {
+/** Legt einen Testbenutzer an; $level: gast|mitglied|spiess|admin. */
+function mkl_test_user( $login, $level = 'mitglied' ) {
 	$existing = get_user_by( 'login', $login );
 	if ( $existing ) {
 		wp_delete_user( $existing->ID );
@@ -54,13 +55,15 @@ function mkl_test_user( $login, $spiess = false ) {
 			'role'         => 'subscriber',
 		)
 	);
-	if ( $spiess ) {
-		( new WP_User( $id ) )->add_role( MKL_ROLE_SPIESS );
+	if ( 'admin' === $level ) {
+		( new WP_User( $id ) )->set_role( 'administrator' );
+	} else {
+		MKL_Roles::set_level( $id, $level );
 	}
 	return $id;
 }
 
-$spiess = mkl_test_user( 'mkltest_spiess', true );
+$spiess = mkl_test_user( 'mkltest_spiess', 'spiess' );
 $m1     = mkl_test_user( 'mkltest_mariner1' );
 $m2     = mkl_test_user( 'mkltest_mariner2' );
 
@@ -172,8 +175,7 @@ list( $s ) = mkl_req( 'DELETE', '/penalties/' . $pen1 );
 mkl_assert( 403 === $s, 'Mitglied kann eigene Strafe nicht stornieren' );
 
 echo "Mitglieder anlegen (nur Admin)\n";
-$admin = mkl_test_user( 'mkltest_admin' );
-( new WP_User( $admin ) )->set_role( 'administrator' );
+$admin = mkl_test_user( 'mkltest_admin', 'admin' );
 $created = array();
 
 wp_set_current_user( $m1 );
@@ -201,7 +203,7 @@ mkl_assert( 201 === $s && 'mkltest.mueller' === $u1['username'], 'Admin legt Mit
 mkl_assert( 12 === strlen( $u1['password'] ) && ! preg_match( '/[0O1lI]/', $u1['password'] ), 'Startpasswort: 12 Zeichen, keine verwechselbaren Zeichen' );
 $auth = wp_authenticate( $u1['username'], $u1['password'] );
 mkl_assert( $auth instanceof WP_User && $auth->ID === $u1['id'], 'Anmeldung mit Startpasswort funktioniert' );
-mkl_assert( array( 'subscriber' ) === array_values( get_userdata( $u1['id'] )->roles ), 'Neues Mitglied hat nur die Rolle Abonnent' );
+mkl_assert( array( MKL_ROLE_MITGLIED ) === array_values( get_userdata( $u1['id'] )->roles ) && 'mitglied' === MKL_Roles::get_level( $u1['id'] ), 'Neues Mitglied hat die Rolle Mitglied' );
 mkl_assert( 'Mkltest Müller' === get_userdata( $u1['id'] )->display_name, 'Anzeigename gesetzt' );
 
 list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
@@ -244,6 +246,126 @@ clean_user_cache( $m2 );
 clean_user_cache( $m1 );
 mkl_assert( wp_check_password( 'neues-passwort', get_userdata( $m2 )->user_pass, $m2 ), 'Neues Passwort gilt für das eigene Konto' );
 mkl_assert( ! wp_check_password( 'neues-passwort', get_userdata( $m1 )->user_pass, $m1 ), 'Fremdes Konto (user_id-Parameter) bleibt unverändert' );
+
+echo "Rollen: Gast, Mitglied, Spieß, Admin\n";
+$gast  = mkl_test_user( 'mkltest_gast', 'gast' );
+$admin = mkl_test_user( 'mkltest_admin2', 'admin' );
+mkl_assert( 'gast' === MKL_Roles::get_level( $gast ) && 'mitglied' === MKL_Roles::get_level( $m1 ) && 'spiess' === MKL_Roles::get_level( $spiess ) && 'admin' === MKL_Roles::get_level( $admin ), 'Rollen werden erkannt' );
+
+// Rechte-Matrix: [Methode, Route, Body, erwarteter Status je Rolle (anonym, gast, mitglied, spiess, admin)]
+$matrix = array(
+	array( 'GET', '/events', array(), array( 200, 200, 200, 200, 200 ) ),
+	array( 'GET', '/news', array(), array( 200, 200, 200, 200, 200 ) ),
+	array( 'GET', '/me', array(), array( 401, 200, 200, 200, 200 ) ),
+	array( 'GET', '/me/points', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'GET', '/me/penalties', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'GET', '/members', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'POST', '/events', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
+);
+$who = array( 0, $gast, $m1, $spiess, $admin );
+foreach ( $matrix as $row ) {
+	list( $method, $route, $body, $expected ) = $row;
+	$got = array();
+	foreach ( $who as $uid ) {
+		wp_set_current_user( $uid );
+		list( $st ) = mkl_req( $method, $route, $body );
+		$got[]      = $st;
+	}
+	mkl_assert( $got === $expected, sprintf( '%s %s → %s', $method, $route, implode( '/', $got ) ) );
+}
+
+wp_set_current_user( $gast );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 'gast' === $d['level'] && false === $d['is_member'], 'GET /me als Gast-Konto → level gast' );
+
+wp_set_current_user( $spiess );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+mkl_assert( ! in_array( $gast, wp_list_pluck( $members, 'id' ), true ), 'Mitgliederliste enthält keine Gäste' );
+list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'all' => 1 ) );
+mkl_assert( ! in_array( $gast, wp_list_pluck( $members, 'id' ), true ), 'Spieß bekommt auch mit all=1 keine Gäste' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $gast ), 'points' => 1, 'reason' => 'x' ) );
+mkl_assert( 400 === $s, 'Gast kann keine Punkte bekommen → 400' );
+
+wp_set_current_user( $admin );
+list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'all' => 1 ) );
+$levels = wp_list_pluck( $members, 'level', 'id' );
+mkl_assert( isset( $levels[ $gast ] ) && 'gast' === $levels[ $gast ], 'Admin sieht mit all=1 auch Gäste' );
+
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'mitglied' ) );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'] && MKL_Roles::is_member( $gast ), 'Admin macht Gast zum Mitglied' );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'spiess' ) );
+mkl_assert( 200 === $s && MKL_Roles::is_spiess( $gast ), 'Admin macht Mitglied zum Spieß' );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'gast' ) );
+clean_user_cache( $gast );
+mkl_assert( 200 === $s && 'gast' === MKL_Roles::get_level( $gast ) && array( 'subscriber' ) === array_values( get_userdata( $gast )->roles ), 'Zurück zum Gast: Konto behält Rolle Abonnent' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $admin . '/role', array( 'level' => 'gast' ) );
+mkl_assert( 400 === $s, 'Eigene Rolle nicht änderbar → 400' );
+$admin_other = mkl_test_user( 'mkltest_admin3', 'admin' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $admin_other . '/role', array( 'level' => 'gast' ) );
+mkl_assert( 400 === $s && 'admin' === MKL_Roles::get_level( $admin_other ), 'Admins sind in der App nicht herabstufbar' );
+
+echo "Migration\n";
+$old_sub = mkl_test_user( 'mkltest_altabonnent', 'gast' );
+MKL_Roles::migrate_subscribers_to_members();
+clean_user_cache( $old_sub );
+mkl_assert( 'mitglied' === MKL_Roles::get_level( $old_sub ), 'Bisherige Abonnenten werden zu Mitgliedern' );
+
+echo "Öffentliche Termine\n";
+wp_set_current_user( $admin );
+$tomorrow = wp_date( 'Y-m-d', time() + DAY_IN_SECONDS );
+$nextweek = wp_date( 'Y-m-d', time() + 7 * DAY_IN_SECONDS );
+list( $s, $ev1 ) = mkl_req( 'POST', '/events', array( 'title' => 'Mkltest Schützenfest', 'start_date' => $tomorrow, 'end_date' => $nextweek, 'location' => 'Schützenplatz', 'url' => 'https://example.org/fest' ) );
+mkl_assert( 201 === $s && true === $ev1['all_day'] && $ev1['end'] === wp_date( 'Y-m-d', time() + 8 * DAY_IN_SECONDS ), 'Mehrtägigen Termin anlegen (Ende exklusiv)' );
+list( $s, $ev2 ) = mkl_req( 'POST', '/events', array( 'title' => 'Mkltest Kompanieabend', 'start_date' => $tomorrow, 'start_time' => '19:00', 'end_time' => '23:00' ) );
+mkl_assert( 201 === $s && false === $ev2['all_day'] && '19:00' === $ev2['start_time'], 'Termin mit Uhrzeit anlegen' );
+list( $s ) = mkl_req( 'POST', '/events', array( 'title' => 'Alt', 'start_date' => '2020-01-01' ) );
+list( $s ) = mkl_req( 'POST', '/events', array( 'title' => 'X', 'start_date' => '2026-02-30' ) );
+mkl_assert( 400 === $s, 'Ungültiges Datum → 400' );
+list( $s ) = mkl_req( 'POST', '/events', array( 'title' => 'X', 'start_date' => $nextweek, 'end_date' => $tomorrow ) );
+mkl_assert( 400 === $s, 'Ende vor Start → 400' );
+list( $s ) = mkl_req( 'POST', '/events', array( 'title' => 'X', 'start_date' => $tomorrow, 'start_time' => '25:00' ) );
+mkl_assert( 400 === $s, 'Ungültige Uhrzeit → 400' );
+list( $s ) = mkl_req( 'POST', '/events', array( 'title' => 'X', 'start_date' => $tomorrow, 'url' => 'javascript:alert(1)' ) );
+mkl_assert( 400 === $s, 'javascript:-Link → 400' );
+list( $s, $d ) = mkl_req( 'PATCH', '/events/' . $ev2['id'], array( 'location' => 'Vereinslokal' ) );
+mkl_assert( 200 === $s && 'Vereinslokal' === $d['location'] && '19:00' === $d['start_time'], 'Termin teilweise ändern' );
+
+wp_set_current_user( 0 );
+list( $s, $list ) = mkl_req( 'GET', '/events' );
+$titles = wp_list_pluck( $list, 'title' );
+mkl_assert( in_array( 'Mkltest Schützenfest', $titles, true ) && ! in_array( 'Alt', $titles, true ), 'Gast sieht kommende, aber keine vergangenen Termine' );
+
+$html = do_shortcode( '[mkl_termine anzahl="50"]' );
+mkl_assert( false !== strpos( $html, 'Mkltest Schützenfest' ) && false !== strpos( $html, 'href="https://example.org/fest"' ) && false !== strpos( $html, '19:00–23:00 Uhr' ), 'Shortcode [mkl_termine] zeigt Termine mit Link und Uhrzeit' );
+
+wp_set_current_user( $admin );
+list( $s ) = mkl_req( 'DELETE', '/events/' . $ev2['id'] );
+mkl_assert( 200 === $s && ! MKL_Events::get( $ev2['id'] ), 'Termin löschen' );
+global $wpdb;
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Events::table() . " WHERE title LIKE %s OR title = 'Alt'", 'Mkltest%' ) );
+
+echo "Neuigkeiten\n";
+$pub   = wp_insert_post( array( 'post_title' => 'Mkltest Beitrag', 'post_content' => '<p>Hallo <strong>Kompanie</strong></p>', 'post_status' => 'publish' ) );
+$draft = wp_insert_post( array( 'post_title' => 'Mkltest Entwurf', 'post_content' => 'geheim', 'post_status' => 'draft' ) );
+$pw    = wp_insert_post( array( 'post_title' => 'Mkltest Kennwort', 'post_content' => 'geheim', 'post_status' => 'publish', 'post_password' => 'x' ) );
+wp_set_current_user( 0 );
+list( $s, $news ) = mkl_req( 'GET', '/news' );
+$titles = wp_list_pluck( $news, 'title' );
+mkl_assert( 200 === $s && in_array( 'Mkltest Beitrag', $titles, true ) && ! in_array( 'Mkltest Entwurf', $titles, true ) && ! in_array( 'Mkltest Kennwort', $titles, true ), 'News: nur veröffentlichte Beiträge ohne Kennwort' );
+list( $s, $item ) = mkl_req( 'GET', '/news/' . $pub );
+mkl_assert( 200 === $s && false !== strpos( $item['content'], '<strong>Kompanie</strong>' ), 'News-Detail mit Inhalt' );
+list( $s ) = mkl_req( 'GET', '/news/' . $draft );
+mkl_assert( 404 === $s, 'Entwurf → 404' );
+list( $s ) = mkl_req( 'GET', '/news/' . $pw );
+mkl_assert( 404 === $s, 'Kennwortgeschützter Beitrag → 404' );
+foreach ( array( $pub, $draft, $pw ) as $pid ) {
+	wp_delete_post( $pid, true );
+}
+foreach ( array( $gast, $admin, $admin_other, $old_sub ) as $uid ) {
+	wp_delete_user( $uid );
+}
 
 echo "ICS-Parser\n";
 $ics    = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a1\r\nDTSTART;VALUE=DATE:" . gmdate( 'Ymd', time() + 10 * DAY_IN_SECONDS ) . "\r\nDTEND;VALUE=DATE:" . gmdate( 'Ymd', time() + 11 * DAY_IN_SECONDS ) . "\r\nSUMMARY:Schützenfest\\, Lank\r\nLOCATION:Schützenplatz\r\nEND:VEVENT\r\n"

@@ -1,14 +1,38 @@
 // Zugriff auf die REST-API des WordPress-Plugins (Cookie-Login + REST-Nonce).
 
+export type Level = 'admin' | 'spiess' | 'mitglied' | 'gast';
+
+export const LEVEL_LABELS: Record<Level, string> = {
+  admin: 'Admin',
+  spiess: 'Spieß',
+  mitglied: 'Mitglied',
+  gast: 'Gast',
+};
+
+export interface AppUser {
+  id: number;
+  name: string;
+  login: string;
+  level: Level;
+  isMember: boolean;
+  isSpiess: boolean;
+  canCreateUsers: boolean;
+  canManageEvents: boolean;
+  canPromoteUsers: boolean;
+}
+
 export interface AppConfig {
   restUrl: string;
+  /** Leer für Gäste ohne Anmeldung. */
   nonce: string;
   ajaxUrl: string;
+  loginUrl: string;
   logoutUrl: string;
   appUrl: string;
   siteUrl: string;
   swUrl: string;
-  user: { id: number; name: string; login: string; isSpiess: boolean; canCreateUsers: boolean };
+  /** null = Gast ohne Anmeldung. */
+  user: AppUser | null;
 }
 
 declare global {
@@ -66,9 +90,40 @@ export interface CatalogItem {
   sort: number;
 }
 
+export interface PublicEvent extends Omit<CalendarEvent, 'id'> {
+  id: number;
+  start_date: string;
+  start_time: string | null;
+  end_date: string | null;
+  end_time: string | null;
+  url: string;
+}
+
+export interface EventInput {
+  title: string;
+  start_date: string;
+  start_time: string;
+  end_date: string;
+  end_time: string;
+  location: string;
+  description: string;
+  url: string;
+}
+
+export interface NewsItem {
+  id: number;
+  title: string;
+  date: string;
+  excerpt: string;
+  image: string | null;
+  link: string;
+  content?: string;
+}
+
 export interface MemberSummary {
   id: number;
   name: string;
+  level: Level;
   is_spiess: boolean;
   points: number;
   open_cents: number;
@@ -97,8 +152,7 @@ export class ApiError extends Error {
 let nonce = config?.nonce ?? '';
 
 function toLogin(): never {
-  // /app/ leitet nicht angemeldete Benutzer serverseitig zum Login weiter.
-  window.location.href = config?.appUrl ?? '/app/';
+  window.location.href = config?.loginUrl ?? '/wp-login.php';
   throw new ApiError('Sitzung abgelaufen – bitte neu anmelden.', 401);
 }
 
@@ -127,8 +181,17 @@ async function request<T>(
   path: string,
   body?: unknown,
   query?: Record<string, string>,
-  retry = true,
 ): Promise<T> {
+  return (await requestFull<T>(method, path, body, query)).data;
+}
+
+async function requestFull<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  query?: Record<string, string>,
+  retry = true,
+): Promise<{ data: T; headers: Headers }> {
   if (!config) {
     throw new ApiError('Die App muss über WordPress (/app/) geöffnet werden.', 0);
   }
@@ -138,7 +201,7 @@ async function request<T>(
       method,
       credentials: 'same-origin',
       headers: {
-        'X-WP-Nonce': nonce,
+        ...(nonce ? { 'X-WP-Nonce': nonce } : {}),
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -151,15 +214,15 @@ async function request<T>(
 
   if (res.status === 403 && retry && data?.code === 'rest_cookie_invalid_nonce') {
     await refreshNonce();
-    return request<T>(method, path, body, query, false);
+    return requestFull<T>(method, path, body, query, false);
   }
-  if (res.status === 401) {
+  if (res.status === 401 && config.user) {
     toLogin();
   }
   if (!res.ok) {
     throw new ApiError(data?.message ?? `Fehler ${res.status}`, res.status);
   }
-  return data as T;
+  return { data: data as T, headers: res.headers };
 }
 
 export const api = {
@@ -168,13 +231,26 @@ export const api = {
   myPenalties: () => request<Penalty[]>('GET', '/me/penalties'),
   calendar: () => request<CalendarEvent[]>('GET', '/calendar'),
 
+  events: () => request<PublicEvent[]>('GET', '/events'),
+  createEvent: (data: EventInput) => request<PublicEvent>('POST', '/events', data),
+  updateEvent: (id: number, data: EventInput) => request<PublicEvent>('PATCH', `/events/${id}`, data),
+  deleteEvent: (id: number) => request<{ deleted: boolean }>('DELETE', `/events/${id}`),
+
+  news: async (page = 1) => {
+    const { data, headers } = await requestFull<NewsItem[]>('GET', '/news', undefined, { page: String(page) });
+    return { items: data, totalPages: Number(headers.get('X-WP-TotalPages') ?? 1) };
+  },
+  newsItem: (id: number) => request<NewsItem>('GET', `/news/${id}`),
+
   catalog: (all = false) => request<CatalogItem[]>('GET', '/catalog', undefined, all ? { all: '1' } : undefined),
   createCatalogItem: (title: string, points: number) =>
     request<CatalogItem>('POST', '/catalog', { title, points }),
   updateCatalogItem: (id: number, data: Partial<Pick<CatalogItem, 'title' | 'points' | 'active' | 'sort'>>) =>
     request<CatalogItem>('PATCH', `/catalog/${id}`, data),
 
-  members: () => request<MemberSummary[]>('GET', '/members'),
+  members: (all = false) => request<MemberSummary[]>('GET', '/members', undefined, all ? { all: '1' } : undefined),
+  setRole: (id: number, level: Exclude<Level, 'admin'>) =>
+    request<{ id: number; level: Level }>('PATCH', `/members/${id}/role`, { level }),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),
   /** Ändert das eigene Passwort; danach gilt ein neues Anmelde-Cookie, daher Nonce erneuern. */
   changePassword: async (current_password: string, new_password: string) => {

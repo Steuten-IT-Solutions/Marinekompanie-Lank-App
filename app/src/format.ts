@@ -52,6 +52,7 @@ export function formatEventWhen(ev: { start: string; end: string; all_day: boole
   if (ev.all_day) {
     return sameDay ? `${weekdayFmt.format(s)} · ganztägig` : `${weekdayFmt.format(s)} – ${weekdayFmt.format(e)}`;
   }
+  if (e.getTime() <= s.getTime()) return `${weekdayFmt.format(s)} · ${timeFmt.format(s)} Uhr`;
   return sameDay
     ? `${weekdayFmt.format(s)} · ${timeFmt.format(s)}–${timeFmt.format(e)} Uhr`
     : `${weekdayFmt.format(s)}, ${timeFmt.format(s)} – ${weekdayFmt.format(e)}, ${timeFmt.format(e)} Uhr`;
