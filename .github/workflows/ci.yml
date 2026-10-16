@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    # Auf main laufen die Tests über den Release-Workflow (workflow_call).
+    branches-ignore: [main]
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: sqlite3, pdo_sqlite, mbstring
+          tools: none
+
+      - name: PHP-Syntax prüfen
+        run: find plugin -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Frontend bauen (inkl. TypeScript-Prüfung)
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Test-WordPress einrichten
+        run: scripts/setup-test-wp.sh .wp-test
+
+      - name: REST-API-Tests
+        run: php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
+
+      - name: E2E-Tests (Playwright)
+        working-directory: app
+        run: |
+          npx playwright install --with-deps chromium
+          (cd .. && PHP_CLI_SERVER_WORKERS=4 php -S localhost:8888 -t .wp-test/wp .wp-test/router.php > /tmp/php-server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:8888/wp-login.php && break; sleep 1; done
+          npx playwright test --reporter=line
+
+      - name: Plugin-ZIP packen
+        run: MKL_SKIP_FRONTEND=1 scripts/build-plugin.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mk-lank-app-plugin
+          path: dist/mk-lank-app.zip

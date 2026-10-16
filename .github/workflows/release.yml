@@ -1,0 +1,52 @@
+name: Release
+
+# Jeder Merge auf main: Tests ausführen, Version hochzählen, Plugin-ZIP als Release veröffentlichen.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Version bestimmen
+        id: version
+        run: |
+          HEADER=$(sed -nE 's/^ \* Version:[[:space:]]+([0-9.]+).*/\1/p' plugin/mk-lank-app/mk-lank-app.php)
+          LAST=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n1)
+          VERSION=$(scripts/next-version.sh "$HEADER" "$LAST")
+          echo "Header: $HEADER, letztes Tag: ${LAST:-keins} → v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Plugin-ZIP bauen
+        run: MKL_VERSION=${{ steps.version.outputs.version }} scripts/build-plugin.sh
+
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/mk-lank-app.zip \
+            --target "$GITHUB_SHA" \
+            --title "Kompanie-App v$VERSION" \
+            --generate-notes

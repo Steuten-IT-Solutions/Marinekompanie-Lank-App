@@ -1,0 +1,467 @@
+import { useMemo, useState, type FormEvent } from 'react';
+import { api, type CatalogItem, type MemberSummary } from '../api';
+import { formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
+import { navigate } from '../router';
+import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
+import { PenaltyRow } from './Strafen';
+
+type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'katalog';
+
+export default function Spiess({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
+  const [sub, arg] = [path[0] as Sub | 'mitglied' | undefined, path[1]];
+  const preselect = arg && /^\d+$/.test(arg) ? [Number(arg)] : [];
+
+  const tabs: { id: Sub; label: string }[] = [
+    { id: 'mitglieder', label: 'Mitglieder' },
+    { id: 'punkte', label: 'Punkte +' },
+    { id: 'strafe', label: 'Strafe +' },
+    { id: 'katalog', label: 'Katalog' },
+  ];
+  const active: Sub = sub === 'mitglied' || !sub ? 'mitglieder' : (sub as Sub);
+
+  return (
+    <div>
+      <nav className="segmented" aria-label="Spieß-Bereich">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            className={active === t.id ? 'active' : ''}
+            onClick={() => navigate(`spiess/${t.id}`)}
+            aria-current={active === t.id ? 'page' : undefined}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      {sub === 'mitglied' && arg ? (
+        <MemberDetailView id={Number(arg)} onToast={onToast} />
+      ) : active === 'punkte' ? (
+        <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
+      ) : active === 'strafe' ? (
+        <GivePenalty key={path.join('/')} preselect={preselect} onToast={onToast} />
+      ) : active === 'katalog' ? (
+        <Catalog onToast={onToast} />
+      ) : (
+        <Members />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function Members() {
+  const { data, error, loading, reload } = useAsync(api.members);
+  const [query, setQuery] = useState('');
+  const list = useMemo(
+    () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
+    [data, query],
+  );
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+
+  const totalOpen = (data ?? []).reduce((s, m) => s + m.open_cents, 0);
+
+  return (
+    <div>
+      <StatCard label="Offene Strafen gesamt" value={formatEuro(totalOpen)} tone={totalOpen > 0 ? 'warn' : 'good'} />
+      <input
+        className="search"
+        type="search"
+        placeholder="Mitglied suchen …"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Mitglied suchen"
+      />
+      <ul className="card-list">
+        {list.map((m) => (
+          <li key={m.id} className="card row clickable" onClick={() => navigate(`spiess/mitglied/${m.id}`)}>
+            <div className="row-main">
+              <div className="row-title">
+                {m.name} {m.is_spiess && <span className="badge badge-role">Spieß</span>}
+              </div>
+              <div className="row-sub">
+                {m.points.toLocaleString('de-DE')} Punkte
+                {m.open_cents > 0 && <> · <span className="neg">{formatEuro(m.open_cents)} offen</span></>}
+              </div>
+            </div>
+            <span className="chevron" aria-hidden="true">›</span>
+          </li>
+        ))}
+        {list.length === 0 && <Empty>Niemand gefunden.</Empty>}
+      </ul>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) => void }) {
+  const { data, error, loading, reload } = useAsync(() => api.member(id), [id]);
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: () => Promise<unknown>, msg: string) {
+    setBusy(true);
+    try {
+      await action();
+      onToast(msg);
+      reload();
+    } catch (e) {
+      onToast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+  const m = data!;
+
+  return (
+    <div>
+      <button className="btn btn-link back" onClick={() => navigate('spiess/mitglieder')}>
+        ‹ Alle Mitglieder
+      </button>
+      <h2 className="member-name">{m.name}</h2>
+      <div className="stats">
+        <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
+        <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
+      </div>
+      <div className="button-row">
+        <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
+          Punkte vergeben
+        </button>
+        <button className="btn btn-warn" onClick={() => navigate(`spiess/strafe/${m.id}`)}>
+          Strafe vergeben
+        </button>
+      </div>
+
+      <h3 className="section-title">Strafen</h3>
+      {m.penalties.length === 0 ? (
+        <Empty>Keine Strafen.</Empty>
+      ) : (
+        <ul className="card-list">
+          {m.penalties.map((p) => (
+            <PenaltyRow
+              key={p.id}
+              p={p}
+              actions={
+                <>
+                  {p.status === 'open' ? (
+                    <button
+                      className="btn btn-small"
+                      disabled={busy}
+                      onClick={() => run(() => api.setPenaltyStatus(p.id, 'paid'), 'Als bezahlt markiert')}
+                    >
+                      Bezahlt
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-small btn-secondary"
+                      disabled={busy}
+                      onClick={() => run(() => api.setPenaltyStatus(p.id, 'open'), 'Wieder auf offen gesetzt')}
+                    >
+                      Doch offen
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-small btn-danger"
+                    disabled={busy}
+                    onClick={() =>
+                      window.confirm(`Strafe „${p.reason}“ (${formatEuro(p.amount_cents)}) wirklich stornieren?`) &&
+                      run(() => api.deletePenalty(p.id), 'Strafe storniert')
+                    }
+                  >
+                    Stornieren
+                  </button>
+                </>
+              }
+            />
+          ))}
+        </ul>
+      )}
+
+      <h3 className="section-title">Punkte</h3>
+      {m.point_list.length === 0 ? (
+        <Empty>Keine Punkte.</Empty>
+      ) : (
+        <ul className="card-list">
+          {m.point_list.map((p) => (
+            <li key={p.id} className="card row">
+              <div className="row-main">
+                <div className="row-title">{p.reason}</div>
+                <div className="row-sub">
+                  {formatDate(p.date)}
+                  {p.created_by_name && ` · von ${p.created_by_name}`}
+                </div>
+                <div className="row-actions">
+                  <button
+                    className="btn btn-small btn-danger"
+                    disabled={busy}
+                    onClick={() =>
+                      window.confirm(`Eintrag „${p.reason}“ (${formatPoints(p.points)}) wirklich stornieren?`) &&
+                      run(() => api.deletePoints(p.id), 'Punkte storniert')
+                    }
+                  >
+                    Stornieren
+                  </button>
+                </div>
+              </div>
+              <div className={`row-value ${p.points < 0 ? 'neg' : 'pos'}`}>{formatPoints(p.points)}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function useMembersAndCatalog() {
+  return useAsync(() => Promise.all([api.members(), api.catalog()]));
+}
+
+function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
+  const { data, error, loading, reload } = useMembersAndCatalog();
+  const [selected, setSelected] = useState<number[]>(preselect);
+  const [catalogId, setCatalogId] = useState<string>('');
+  const [points, setPoints] = useState('');
+  const [reason, setReason] = useState('');
+  const [date, setDate] = useState(todayYmd());
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+  const [members, catalog] = data as [MemberSummary[], CatalogItem[]];
+
+  function chooseCatalog(id: string) {
+    setCatalogId(id);
+    const item = catalog.find((c) => String(c.id) === id);
+    if (item) {
+      setPoints(String(item.points));
+      setReason(item.title);
+    }
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    const n = Number(points);
+    if (selected.length === 0) return setFormError('Bitte mindestens ein Mitglied auswählen.');
+    if (!Number.isInteger(n) || n === 0) return setFormError('Bitte eine ganze Punktzahl ungleich 0 angeben.');
+    if (!reason.trim()) return setFormError('Bitte einen Grund angeben.');
+    setBusy(true);
+    try {
+      await api.givePoints({
+        user_ids: selected,
+        points: n,
+        reason: reason.trim(),
+        date,
+        ...(catalogId ? { catalog_id: Number(catalogId) } : {}),
+      });
+      onToast(`${formatPoints(n)} Punkte an ${selected.length} ${selected.length === 1 ? 'Mitglied' : 'Mitglieder'} vergeben`);
+      setSelected([]);
+    } catch (err) {
+      setFormError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <label className="field">
+        <span>Vorlage aus dem Punktekatalog</span>
+        <select value={catalogId} onChange={(e) => chooseCatalog(e.target.value)}>
+          <option value="">– freie Eingabe –</option>
+          {catalog.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title} ({formatPoints(c.points)})
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="field-row">
+        <label className="field">
+          <span>Punkte</span>
+          <input type="number" inputMode="numeric" step="1" value={points} onChange={(e) => setPoints(e.target.value)} required />
+        </label>
+        <label className="field">
+          <span>Datum</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        </label>
+      </div>
+      <label className="field">
+        <span>Grund</span>
+        <input type="text" maxLength={255} value={reason} onChange={(e) => setReason(e.target.value)} required />
+      </label>
+      <div className="field">
+        <span>Mitglieder</span>
+        <MemberPicker members={members} selected={selected} onChange={setSelected} />
+      </div>
+      {formError && <p className="form-error" role="alert">{formError}</p>}
+      <button className="btn btn-block" type="submit" disabled={busy}>
+        {busy ? 'Speichert …' : 'Punkte vergeben'}
+      </button>
+    </form>
+  );
+}
+
+function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
+  const { data, error, loading, reload } = useAsync(api.members);
+  const [selected, setSelected] = useState<number[]>(preselect);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [date, setDate] = useState(todayYmd());
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    const cents = parseEuroToCents(amount);
+    if (selected.length === 0) return setFormError('Bitte mindestens ein Mitglied auswählen.');
+    if (cents === null || cents <= 0) return setFormError('Bitte einen gültigen Betrag angeben, z. B. 2,50.');
+    if (cents > 100000) return setFormError('Eine einzelne Strafe darf höchstens 1.000 € betragen.');
+    if (!reason.trim()) return setFormError('Bitte einen Grund angeben.');
+    setBusy(true);
+    try {
+      await api.givePenalty({ user_ids: selected, amount_cents: cents, reason: reason.trim(), date });
+      onToast(`Strafe über ${formatEuro(cents)} an ${selected.length} ${selected.length === 1 ? 'Mitglied' : 'Mitglieder'} vergeben`);
+      setSelected([]);
+      setAmount('');
+      setReason('');
+    } catch (err) {
+      setFormError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <div className="field-row">
+        <label className="field">
+          <span>Betrag in €</span>
+          <input type="text" inputMode="decimal" placeholder="2,50" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+        </label>
+        <label className="field">
+          <span>Datum</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        </label>
+      </div>
+      <label className="field">
+        <span>Grund</span>
+        <input type="text" maxLength={255} placeholder="z. B. Zu spät beim Antreten" value={reason} onChange={(e) => setReason(e.target.value)} required />
+      </label>
+      <div className="field">
+        <span>Mitglieder</span>
+        <MemberPicker members={data ?? []} selected={selected} onChange={setSelected} />
+      </div>
+      {formError && <p className="form-error" role="alert">{formError}</p>}
+      <button className="btn btn-warn btn-block" type="submit" disabled={busy}>
+        {busy ? 'Speichert …' : 'Strafe vergeben'}
+      </button>
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function Catalog({ onToast }: { onToast: (msg: string) => void }) {
+  const { data, error, loading, reload } = useAsync(() => api.catalog(true));
+  const [title, setTitle] = useState('');
+  const [points, setPoints] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: () => Promise<unknown>, msg: string) {
+    setBusy(true);
+    try {
+      await action();
+      onToast(msg);
+      reload();
+      return true;
+    } catch (e) {
+      onToast((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    const n = Number(points);
+    if (!title.trim() || !Number.isInteger(n)) {
+      onToast('Bitte Titel und ganze Punktzahl angeben.');
+      return;
+    }
+    if (await run(() => api.createCatalogItem(title.trim(), n), 'Vorlage angelegt')) {
+      setTitle('');
+      setPoints('');
+    }
+  }
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+
+  return (
+    <div>
+      <form className="form card" onSubmit={add}>
+        <div className="field-row">
+          <label className="field grow">
+            <span>Neue Vorlage</span>
+            <input type="text" placeholder="z. B. Teilnahme Schützenfest" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </label>
+          <label className="field narrow">
+            <span>Punkte</span>
+            <input type="number" inputMode="numeric" step="1" value={points} onChange={(e) => setPoints(e.target.value)} />
+          </label>
+        </div>
+        <button className="btn btn-block" type="submit" disabled={busy}>
+          Hinzufügen
+        </button>
+      </form>
+      <ul className="card-list">
+        {(data ?? []).map((c) => (
+          <li key={c.id} className={`card row ${c.active ? '' : 'inactive'}`}>
+            <div className="row-main">
+              <div className="row-title">{c.title}</div>
+              <div className="row-sub">{c.active ? 'aktiv' : 'deaktiviert'}</div>
+              <div className="row-actions">
+                <button
+                  className="btn btn-small btn-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    const next = window.prompt(`Punkte für „${c.title}“`, String(c.points));
+                    if (next === null) return;
+                    const n = Number(next);
+                    if (!Number.isInteger(n)) return onToast('Bitte eine ganze Zahl angeben.');
+                    run(() => api.updateCatalogItem(c.id, { points: n }), 'Gespeichert');
+                  }}
+                >
+                  Punkte ändern
+                </button>
+                <button
+                  className="btn btn-small btn-secondary"
+                  disabled={busy}
+                  onClick={() => run(() => api.updateCatalogItem(c.id, { active: !c.active }), c.active ? 'Deaktiviert' : 'Aktiviert')}
+                >
+                  {c.active ? 'Deaktivieren' : 'Aktivieren'}
+                </button>
+              </div>
+            </div>
+            <div className="row-value pos">{formatPoints(c.points)}</div>
+          </li>
+        ))}
+        {(data ?? []).length === 0 && <Empty>Noch keine Vorlagen. Lege oben die erste an.</Empty>}
+      </ul>
+    </div>
+  );
+}
