@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
-import { formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
+import { caps, formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
 import { PenaltyRow } from './Strafen';
@@ -95,7 +95,7 @@ function Members() {
             <div className="row-main">
               <div className="row-title">
                 {m.name}{' '}
-                {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{LEVEL_LABELS[m.level]}</span>}
+                {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{caps(LEVEL_LABELS[m.level])}</span>}
               </div>
               <div className="row-sub">
                 {m.points.toLocaleString('de-DE')} Punkte
@@ -283,9 +283,10 @@ function RoleControl({
             className={level === l ? 'active' : ''}
             disabled={busy}
             aria-pressed={level === l}
+            aria-label={LEVEL_LABELS[l]}
             onClick={() => change(l)}
           >
-            {LEVEL_LABELS[l]}
+            {caps(LEVEL_LABELS[l])}
           </button>
         ))}
       </div>

@@ -6,6 +6,10 @@ import { config } from './api';
 import '@fontsource/oswald/latin-500.css';
 import '@fontsource/oswald/latin-600.css';
 import '@fontsource/oswald/latin-700.css';
+// latin-ext enthält das große ẞ (wird nur geladen, wenn es auf der Seite vorkommt).
+import '@fontsource/oswald/latin-ext-500.css';
+import '@fontsource/oswald/latin-ext-600.css';
+import '@fontsource/oswald/latin-ext-700.css';
 import './styles.css';
 
 createRoot(document.getElementById('root')!).render(

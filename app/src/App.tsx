@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
+import { caps } from './format';
 import { navigate, useRoute } from './router';
 import Galerie from './views/Galerie';
 import Konto from './views/Konto';
@@ -160,7 +161,7 @@ export default function App() {
       <header className="topbar">
         <img src={logoUrl} alt="" className="logo" />
         <div className="topbar-text">
-          <div className="topbar-title">{TITLES[tab]}</div>
+          <div className="topbar-title">{caps(TITLES[tab])}</div>
           <div className="topbar-sub">{user ? `Ahoi, ${user.name}` : 'Marinekompanie 1973 Lank'}</div>
         </div>
         {user ? (
@@ -202,11 +203,12 @@ export default function App() {
           <button
             key={t}
             className={tab === t ? 'active' : ''}
+            aria-label={TAB_LABELS[t]}
             onClick={() => navigate(t)}
             aria-current={tab === t ? 'page' : undefined}
           >
             <Icon name={t} />
-            <span>{TAB_LABELS[t]}</span>
+            <span>{caps(TAB_LABELS[t])}</span>
           </button>
         ))}
       </nav>
