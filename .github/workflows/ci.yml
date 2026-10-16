@@ -1,8 +1,11 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    # Auf main laufen die Tests über den Release-Workflow (workflow_call).
+    branches-ignore: [main]
+  workflow_call:
 
 jobs:
   test:
@@ -46,9 +49,7 @@ jobs:
           npx playwright test --reporter=line
 
       - name: Plugin-ZIP packen
-        run: |
-          mkdir -p dist
-          (cd plugin && zip -rq ../dist/mk-lank-app.zip mk-lank-app)
+        run: MKL_SKIP_FRONTEND=1 scripts/build-plugin.sh
 
       - uses: actions/upload-artifact@v4
         with:

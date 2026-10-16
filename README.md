@@ -47,7 +47,7 @@ scripts/                   Build- und Test-Skripte
 ## Installation auf der Webseite
 
 1. **Backup** der Webseite anlegen.
-2. Das Plugin-ZIP bauen: `scripts/build-plugin.sh` erzeugt `dist/mk-lank-app.zip`. Alternativ das Artefakt `mk-lank-app-plugin` aus GitHub Actions herunterladen.
+2. Das Plugin-ZIP besorgen: Lade `mk-lank-app.zip` aus dem neuesten GitHub-Release herunter (siehe [Updates](#updates)). Alternativ baust du es selbst mit `scripts/build-plugin.sh`; das Ergebnis liegt dann in `dist/mk-lank-app.zip`.
 3. In WordPress **Plugins → Installieren → Plugin hochladen**, das ZIP auswählen und aktivieren.
 4. **Einstellungen → Kompanie-App** öffnen und **„Kalender jetzt testen“** klicken.
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
@@ -59,6 +59,22 @@ scripts/                   Build- und Test-Skripte
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
 > Hinweis: Wird die Rolle eines Benutzers später über die **Sammelaktion** in der Benutzerliste geändert, entfernt WordPress dabei auch die Zusatzrolle „Spieß“. Dann einfach die Checkbox im Profil wieder setzen.
+
+## Updates
+
+Jeder Merge auf `main` startet zuerst alle Tests. Sind sie grün, entsteht automatisch ein **GitHub-Release** mit der Datei `mk-lank-app.zip`. Du findest es unter **Releases** rechts auf der Repo-Seite.
+
+So spielst du ein Update ein:
+
+1. Lade `mk-lank-app.zip` aus dem neuesten Release herunter.
+2. Gehe in WordPress zu **Plugins → Installieren → Plugin hochladen** und wähle das ZIP aus.
+3. Bestätige **„Aktuelle Version durch hochgeladene ersetzen“**.
+
+Daten und Einstellungen bleiben dabei erhalten.
+
+Versionsnummern:
+- Bei jedem Merge wird die letzte Stelle automatisch hochgezählt, z. B. `0.1.0 → 0.1.1`.
+- Für einen größeren Sprung trägst du die neue Version im Plugin-Header von `plugin/mk-lank-app/mk-lank-app.php` ein, z. B. `Version: 0.2.0` und `MKL_VERSION`. Der nächste Merge veröffentlicht dann genau diese Version.
 
 ## Entwicklung
 
@@ -88,7 +104,7 @@ php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/
 cd app && npx playwright test
 ```
 
-GitHub Actions führt bei jedem Push alles aus: Syntaxprüfung, Build, REST-Tests und E2E-Tests. Danach stellt der Workflow das Plugin-ZIP als Artefakt bereit.
+GitHub Actions führt bei jedem Push und jedem Pull Request alles aus: Syntaxprüfung, Build, REST-Tests und E2E-Tests. Danach stellt der Workflow das Plugin-ZIP als Artefakt bereit. Ein Merge auf `main` veröffentlicht zusätzlich ein Release.
 
 ## Ideen für später
 
