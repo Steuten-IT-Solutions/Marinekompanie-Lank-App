@@ -70,7 +70,7 @@ class MKL_App_Page {
 				'scope'            => self::app_url(),
 				'display'          => 'standalone',
 				'orientation'      => 'portrait',
-				'background_color' => '#F0F5FA',
+				'background_color' => '#f4efe4',
 				'theme_color'      => '#1f4498',
 				'icons'            => array(
 					array( 'src' => $icons . 'icon-192.png', 'sizes' => '192x192', 'type' => 'image/png' ),
@@ -122,9 +122,11 @@ class MKL_App_Page {
 			'siteUrl'   => home_url( '/' ),
 			'swUrl'     => self::app_url() . 'sw.js',
 			'user'      => array(
-				'id'       => $user->ID,
-				'name'     => $user->display_name,
-				'isSpiess' => MKL_Roles::is_spiess(),
+				'id'             => $user->ID,
+				'name'           => $user->display_name,
+				'login'          => $user->user_login,
+				'isSpiess'       => MKL_Roles::is_spiess(),
+				'canCreateUsers' => current_user_can( 'create_users' ),
 			),
 		);
 

@@ -2,18 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { navigate, useRoute } from './router';
+import Konto from './views/Konto';
 import Punkte from './views/Punkte';
 import Spiess from './views/Spiess';
 import Strafen from './views/Strafen';
 import Termine from './views/Termine';
 
 type Tab = 'termine' | 'punkte' | 'strafen' | 'spiess';
+type View = Tab | 'konto';
 
-const TITLES: Record<Tab, string> = {
+const TITLES: Record<View, string> = {
   termine: 'Termine',
   punkte: 'Meine Punkte',
   strafen: 'Meine Strafen',
   spiess: 'Spieß',
+  konto: 'Mein Konto',
 };
 
 function Icon({ name }: { name: Tab }) {
@@ -87,8 +90,8 @@ async function logout() {
 export default function App() {
   const path = useRoute();
   const isSpiess = !!config?.user.isSpiess;
-  const requested = (path[0] as Tab) || 'termine';
-  const tab: Tab = requested in TITLES && (requested !== 'spiess' || isSpiess) ? requested : 'termine';
+  const requested = (path[0] as View) || 'termine';
+  const tab: View = requested in TITLES && (requested !== 'spiess' || isSpiess) ? requested : 'termine';
 
   const [toast, setToast] = useState<string | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
@@ -129,8 +132,12 @@ export default function App() {
           <div className="topbar-title">{TITLES[tab]}</div>
           <div className="topbar-sub">Ahoi, {config.user.name}</div>
         </div>
-        <button className="btn btn-link topbar-logout" onClick={logout}>
-          Abmelden
+        <button
+          className={`btn btn-link topbar-account ${tab === 'konto' ? 'active' : ''}`}
+          onClick={() => navigate('konto')}
+          aria-current={tab === 'konto' ? 'page' : undefined}
+        >
+          Konto
         </button>
       </header>
 
@@ -142,6 +149,7 @@ export default function App() {
         {tab === 'punkte' && <Punkte />}
         {tab === 'strafen' && <Strafen />}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
+        {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}
       </main>
 
       {toast && (

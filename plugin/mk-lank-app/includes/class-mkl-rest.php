@@ -30,6 +30,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_me' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $logged_in ) );
+		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $logged_in ) );
 
 		register_rest_route(
@@ -44,6 +45,8 @@ class MKL_REST {
 
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+
+		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
 
 		register_rest_route( self::NS, '/points', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_points' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/points/(?P<id>\d+)', array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_points' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
@@ -81,6 +84,18 @@ class MKL_REST {
 		return true;
 	}
 
+	/** Benutzer anlegen dürfen nur WordPress-Administratoren (Capability create_users). */
+	public static function can_create_users() {
+		$read = self::can_read();
+		if ( true !== $read ) {
+			return $read;
+		}
+		if ( ! current_user_can( 'create_users' ) ) {
+			return new WP_Error( 'mkl_forbidden', 'Nur Administratoren dürfen Mitglieder anlegen.', array( 'status' => 403 ) );
+		}
+		return true;
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Eigene Daten                                                        */
 	/* ------------------------------------------------------------------ */
@@ -89,11 +104,12 @@ class MKL_REST {
 		$user = wp_get_current_user();
 		return rest_ensure_response(
 			array(
-				'id'         => $user->ID,
-				'name'       => $user->display_name,
-				'is_spiess'  => MKL_Roles::is_spiess(),
-				'points'     => MKL_DB::get_points_total( $user->ID ),
-				'open_cents' => MKL_DB::get_open_penalties_cents( $user->ID ),
+				'id'               => $user->ID,
+				'name'             => $user->display_name,
+				'is_spiess'        => MKL_Roles::is_spiess(),
+				'can_create_users' => current_user_can( 'create_users' ),
+				'points'           => MKL_DB::get_points_total( $user->ID ),
+				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
 			)
 		);
 	}
@@ -104,6 +120,43 @@ class MKL_REST {
 
 	public static function get_my_penalties() {
 		return rest_ensure_response( MKL_DB::get_penalties_for_user( get_current_user_id() ) );
+	}
+
+	/** Mindestlänge für selbst gewählte Passwörter. */
+	const MIN_PASSWORD_LENGTH = 8;
+
+	/**
+	 * Eigenes Passwort ändern. Erfordert das aktuelle Passwort.
+	 *
+	 * Ein neues Passwort macht in WordPress alle Anmelde-Cookies ungültig. Andere
+	 * Geräte werden dadurch abgemeldet; dieses Gerät bekommt sofort ein neues
+	 * Cookie. Die App holt sich danach einen frischen REST-Nonce.
+	 */
+	public static function change_my_password( WP_REST_Request $req ) {
+		$user    = wp_get_current_user();
+		$current = (string) $req->get_param( 'current_password' );
+		$new     = (string) $req->get_param( 'new_password' );
+
+		if ( '' === $current || ! wp_check_password( $current, $user->user_pass, $user->ID ) ) {
+			return self::error( 'Das aktuelle Passwort ist falsch.' );
+		}
+		if ( strlen( $new ) < self::MIN_PASSWORD_LENGTH ) {
+			return self::error( sprintf( 'Das neue Passwort muss mindestens %d Zeichen lang sein.', self::MIN_PASSWORD_LENGTH ) );
+		}
+		if ( $new !== trim( $new ) ) {
+			return self::error( 'Das neue Passwort darf nicht mit Leerzeichen beginnen oder enden.' );
+		}
+		if ( $new === $current ) {
+			return self::error( 'Das neue Passwort muss sich vom aktuellen unterscheiden.' );
+		}
+
+		wp_set_password( $new, $user->ID );
+		WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+		if ( ! headers_sent() ) {
+			wp_set_auth_cookie( $user->ID, true, is_ssl() );
+		}
+
+		return rest_ensure_response( array( 'changed' => true ) );
 	}
 
 	public static function get_calendar() {
@@ -216,6 +269,103 @@ class MKL_REST {
 				'penalties'  => MKL_DB::get_penalties_for_user( $user->ID ),
 			)
 		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Mitglieder anlegen (Admin)                                          */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
+	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
+	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
+	 */
+	public static function create_user( WP_REST_Request $req ) {
+		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
+		if ( '' === $name ) {
+			return self::error( 'Bitte einen Namen angeben.' );
+		}
+
+		$login = trim( (string) $req->get_param( 'username' ) );
+		if ( '' === $login ) {
+			$login = self::unique_login( $name );
+		} else {
+			if ( sanitize_user( $login, true ) !== $login || strlen( $login ) > 60 ) {
+				return self::error( 'Der Benutzername darf nur Buchstaben (a–z), Ziffern sowie . _ - @ enthalten.' );
+			}
+			if ( username_exists( $login ) ) {
+				return self::error( 'Dieser Benutzername ist schon vergeben.' );
+			}
+		}
+
+		$email = trim( (string) $req->get_param( 'email' ) );
+		if ( '' !== $email ) {
+			if ( ! is_email( $email ) ) {
+				return self::error( 'Die E-Mail-Adresse ist ungültig.' );
+			}
+			if ( email_exists( $email ) ) {
+				return self::error( 'Diese E-Mail-Adresse wird schon verwendet.' );
+			}
+		}
+
+		$parts    = preg_split( '/\s+/', $name, 2 );
+		$password = self::readable_password( 12 );
+		$user_id  = wp_insert_user(
+			array(
+				'user_login'   => $login,
+				'user_pass'    => $password,
+				'user_email'   => $email,
+				'display_name' => $name,
+				'nickname'     => $name,
+				'first_name'   => $parts[0],
+				'last_name'    => isset( $parts[1] ) ? $parts[1] : '',
+				'role'         => 'subscriber',
+			)
+		);
+		if ( is_wp_error( $user_id ) ) {
+			return self::error( $user_id->get_error_message() );
+		}
+
+		return new WP_REST_Response(
+			array(
+				'id'       => $user_id,
+				'name'     => $name,
+				'username' => $login,
+				'email'    => $email,
+				'password' => $password,
+			),
+			201
+		);
+	}
+
+	/**
+	 * Zufallspasswort ohne leicht verwechselbare Zeichen (0/O, 1/l/I),
+	 * weil es abgeschrieben bzw. persönlich weitergegeben wird.
+	 */
+	private static function readable_password( $length ) {
+		$chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+		$max   = strlen( $chars ) - 1;
+		$out   = '';
+		for ( $i = 0; $i < $length; $i++ ) {
+			$out .= $chars[ random_int( 0, $max ) ];
+		}
+		return $out;
+	}
+
+	/** „Max Müller“ → „max.mueller“, bei Kollision „max.mueller2“ usw. */
+	private static function unique_login( $name ) {
+		$base = strtr( mb_strtolower( $name, 'UTF-8' ), array( 'ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss' ) );
+		$base = remove_accents( $base );
+		$base = preg_replace( '/[^a-z0-9]+/', '.', $base );
+		$base = substr( trim( $base, '.' ), 0, 50 );
+		if ( '' === $base ) {
+			$base = 'mitglied';
+		}
+		$login = $base;
+		for ( $i = 2; username_exists( $login ); $i++ ) {
+			$login = $base . $i;
+		}
+		return $login;
 	}
 
 	/* ------------------------------------------------------------------ */

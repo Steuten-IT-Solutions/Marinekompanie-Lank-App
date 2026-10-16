@@ -171,6 +171,80 @@ mkl_assert( 403 === $s, 'Mitglied kann eigene Strafe nicht auf bezahlt setzen' )
 list( $s ) = mkl_req( 'DELETE', '/penalties/' . $pen1 );
 mkl_assert( 403 === $s, 'Mitglied kann eigene Strafe nicht stornieren' );
 
+echo "Mitglieder anlegen (nur Admin)\n";
+$admin = mkl_test_user( 'mkltest_admin' );
+( new WP_User( $admin ) )->set_role( 'administrator' );
+$created = array();
+
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'Hans Hacker' ) );
+mkl_assert( 403 === $s, 'Mitglied darf keine Benutzer anlegen → 403' );
+wp_set_current_user( $spiess );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'Hans Hacker' ) );
+mkl_assert( 403 === $s, 'Spieß darf keine Benutzer anlegen → 403' );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( false === $d['can_create_users'], 'GET /me als Spieß → can_create_users=false' );
+
+wp_set_current_user( $admin );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( true === $d['can_create_users'], 'GET /me als Admin → can_create_users=true' );
+
+foreach ( array( 'mkltest.mueller', 'mkltest.mueller2' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+list( $s, $u1 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
+$created[]      = isset( $u1['id'] ) ? $u1['id'] : 0;
+mkl_assert( 201 === $s && 'mkltest.mueller' === $u1['username'], 'Admin legt Mitglied an, Benutzername aus Name (Umlaut → ue)' );
+mkl_assert( 12 === strlen( $u1['password'] ) && ! preg_match( '/[0O1lI]/', $u1['password'] ), 'Startpasswort: 12 Zeichen, keine verwechselbaren Zeichen' );
+$auth = wp_authenticate( $u1['username'], $u1['password'] );
+mkl_assert( $auth instanceof WP_User && $auth->ID === $u1['id'], 'Anmeldung mit Startpasswort funktioniert' );
+mkl_assert( array( 'subscriber' ) === array_values( get_userdata( $u1['id'] )->roles ), 'Neues Mitglied hat nur die Rolle Abonnent' );
+mkl_assert( 'Mkltest Müller' === get_userdata( $u1['id'] )->display_name, 'Anzeigename gesetzt' );
+
+list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
+$created[]      = isset( $u2['id'] ) ? $u2['id'] : 0;
+mkl_assert( 201 === $s && 'mkltest.mueller2' === $u2['username'], 'Gleicher Name → eindeutiger Benutzername mit Zähler' );
+
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.mueller' ) );
+mkl_assert( 400 === $s, 'Vergebener Benutzername → 400' );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'Mit Leerzeichen!' ) );
+mkl_assert( 400 === $s, 'Ungültiger Benutzername → 400' );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'email' => 'keine-mail' ) );
+mkl_assert( 400 === $s, 'Ungültige E-Mail → 400' );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => '   ' ) );
+mkl_assert( 400 === $s, 'Leerer Name → 400' );
+
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+mkl_assert( in_array( $u1['id'], wp_list_pluck( $members, 'id' ), true ), 'Neues Mitglied erscheint in der Mitgliederliste' );
+foreach ( $created as $uid ) {
+	if ( $uid ) {
+		wp_delete_user( $uid );
+	}
+}
+wp_delete_user( $admin );
+
+echo "Eigenes Passwort ändern\n";
+wp_set_password( 'altes-passwort', $m2 );
+wp_set_current_user( 0 );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'neues-passwort' ) );
+mkl_assert( 401 === $s, 'Ohne Login → 401' );
+wp_set_current_user( $m2 );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'falsch', 'new_password' => 'neues-passwort' ) );
+mkl_assert( 400 === $s, 'Falsches aktuelles Passwort → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'kurz' ) );
+mkl_assert( 400 === $s, 'Neues Passwort zu kurz → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'altes-passwort' ) );
+mkl_assert( 400 === $s, 'Neues = altes Passwort → 400' );
+list( $s ) = mkl_req( 'POST', '/me/password', array( 'current_password' => 'altes-passwort', 'new_password' => 'neues-passwort', 'user_id' => $m1 ) );
+mkl_assert( 200 === $s, 'Passwort geändert' );
+clean_user_cache( $m2 );
+clean_user_cache( $m1 );
+mkl_assert( wp_check_password( 'neues-passwort', get_userdata( $m2 )->user_pass, $m2 ), 'Neues Passwort gilt für das eigene Konto' );
+mkl_assert( ! wp_check_password( 'neues-passwort', get_userdata( $m1 )->user_pass, $m1 ), 'Fremdes Konto (user_id-Parameter) bleibt unverändert' );
+
 echo "ICS-Parser\n";
 $ics    = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a1\r\nDTSTART;VALUE=DATE:" . gmdate( 'Ymd', time() + 10 * DAY_IN_SECONDS ) . "\r\nDTEND;VALUE=DATE:" . gmdate( 'Ymd', time() + 11 * DAY_IN_SECONDS ) . "\r\nSUMMARY:Schützenfest\\, Lank\r\nLOCATION:Schützenplatz\r\nEND:VEVENT\r\n"
 	. "BEGIN:VEVENT\r\nUID:a2\r\nDTSTART;TZID=Europe/Berlin:" . gmdate( 'Ymd', time() + 20 * DAY_IN_SECONDS ) . "T190000\r\nDTEND;TZID=Europe/Berlin:" . gmdate( 'Ymd', time() + 20 * DAY_IN_SECONDS ) . "T220000\r\nSUMMARY:Kompanie\r\n abend\r\nEND:VEVENT\r\n"

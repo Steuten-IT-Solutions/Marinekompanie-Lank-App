@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api, type CatalogItem, type MemberSummary } from '../api';
+import { api, config, type CatalogItem, type CreatedUser, type MemberSummary } from '../api';
 import { formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
@@ -8,7 +8,7 @@ import { PenaltyRow } from './Strafen';
 type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'katalog';
 
 export default function Spiess({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
-  const [sub, arg] = [path[0] as Sub | 'mitglied' | undefined, path[1]];
+  const [sub, arg] = [path[0] as Sub | 'mitglied' | 'neu' | undefined, path[1]];
   const preselect = arg && /^\d+$/.test(arg) ? [Number(arg)] : [];
 
   const tabs: { id: Sub; label: string }[] = [
@@ -17,7 +17,7 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
     { id: 'strafe', label: 'Strafe +' },
     { id: 'katalog', label: 'Katalog' },
   ];
-  const active: Sub = sub === 'mitglied' || !sub ? 'mitglieder' : (sub as Sub);
+  const active: Sub = sub === 'mitglied' || sub === 'neu' || !sub ? 'mitglieder' : (sub as Sub);
 
   return (
     <div>
@@ -35,6 +35,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
       </nav>
       {sub === 'mitglied' && arg ? (
         <MemberDetailView id={Number(arg)} onToast={onToast} />
+      ) : sub === 'neu' && config?.user.canCreateUsers ? (
+        <NewMember />
       ) : active === 'punkte' ? (
         <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
       ) : active === 'strafe' ? (
@@ -66,6 +68,11 @@ function Members() {
   return (
     <div>
       <StatCard label="Offene Strafen gesamt" value={formatEuro(totalOpen)} tone={totalOpen > 0 ? 'warn' : 'good'} />
+      {config?.user.canCreateUsers && (
+        <button className="btn btn-block add-member" onClick={() => navigate('spiess/neu')}>
+          + Mitglied anlegen
+        </button>
+      )}
       <input
         className="search"
         type="search"
@@ -214,6 +221,119 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         </ul>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function NewMember() {
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreatedUser | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    if (!name.trim()) return setFormError('Bitte einen Namen angeben.');
+    setBusy(true);
+    try {
+      setCreated(
+        await api.createUser({
+          name: name.trim(),
+          ...(username.trim() ? { username: username.trim() } : {}),
+          ...(email.trim() ? { email: email.trim() } : {}),
+        }),
+      );
+    } catch (err) {
+      setFormError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (created) {
+    const text = `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${created.username}\nPasswort: ${created.password}`;
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+      } catch {
+        setCopied(false);
+      }
+    };
+    return (
+      <div className="card created">
+        <h2>{created.name} ist angelegt</h2>
+        <p className="muted">
+          Das Startpasswort wird <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und persönlich
+          weitergeben.
+        </p>
+        <dl className="credentials">
+          <dt>App</dt>
+          <dd>{config?.appUrl}</dd>
+          <dt>Benutzername</dt>
+          <dd data-testid="new-username">{created.username}</dd>
+          <dt>Passwort</dt>
+          <dd data-testid="new-password">{created.password}</dd>
+        </dl>
+        <div className="button-row">
+          <button className="btn" onClick={copy}>
+            {copied ? 'Kopiert ✓' : 'Zugangsdaten kopieren'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setCreated(null);
+              setCopied(false);
+              setName('');
+              setUsername('');
+              setEmail('');
+            }}
+          >
+            Weiteres Mitglied
+          </button>
+        </div>
+        <button className="btn btn-link" onClick={() => navigate('spiess/mitglieder')}>
+          ‹ Zur Mitgliederliste
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/mitglieder')}>
+        ‹ Alle Mitglieder
+      </button>
+      <label className="field">
+        <span>Name</span>
+        <input type="text" autoComplete="off" placeholder="Vorname Nachname" value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label className="field">
+        <span>Benutzername (optional)</span>
+        <input
+          type="text"
+          autoComplete="off"
+          autoCapitalize="none"
+          placeholder="wird sonst aus dem Namen gebildet"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>E-Mail (optional)</span>
+        <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <p className="muted small">Das Mitglied bekommt die Rolle „Abonnent“ und ein zufälliges Startpasswort.</p>
+      {formError && <p className="form-error" role="alert">{formError}</p>}
+      <button className="btn btn-block" type="submit" disabled={busy}>
+        {busy ? 'Legt an …' : 'Mitglied anlegen'}
+      </button>
+    </form>
   );
 }
 
