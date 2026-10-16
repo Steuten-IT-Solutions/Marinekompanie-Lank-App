@@ -59,3 +59,9 @@ export function formatEventWhen(ev: { start: string; end: string; all_day: boole
 }
 
 export const formatMonth = (d: Date) => monthFmt.format(d);
+
+/**
+ * Für Texte, die per CSS in Großbuchstaben erscheinen (text-transform: uppercase):
+ * Browser machen daraus sonst „SS“ (Spieß → SPIESS). Mit dem großen ẞ bleibt es „SPIEẞ“.
+ */
+export const caps = (s: string) => s.replace(/ß/g, 'ẞ');
