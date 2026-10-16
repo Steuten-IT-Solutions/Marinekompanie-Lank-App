@@ -3,27 +3,41 @@ import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { navigate, useRoute } from './router';
 import Konto from './views/Konto';
-import Punkte from './views/Punkte';
+import Meins from './views/Meins';
+import News from './views/News';
 import Spiess from './views/Spiess';
-import Strafen from './views/Strafen';
 import Termine from './views/Termine';
+import TermineVerwalten from './views/TermineVerwalten';
 
-type Tab = 'termine' | 'punkte' | 'strafen' | 'spiess';
+type Tab = 'termine' | 'news' | 'meins' | 'spiess';
 type View = Tab | 'konto';
 
 const TITLES: Record<View, string> = {
   termine: 'Termine',
-  punkte: 'Meine Punkte',
-  strafen: 'Meine Strafen',
+  news: 'Neuigkeiten',
+  meins: 'Meins',
   spiess: 'Spieß',
   konto: 'Mein Konto',
+};
+
+const TAB_LABELS: Record<Tab, string> = {
+  termine: 'Termine',
+  news: 'News',
+  meins: 'Meins',
+  spiess: 'Spieß',
+};
+
+/** Alte Links (#punkte, #strafen) aus Version 0.1 weiter unterstützen. */
+const ALIASES: Record<string, string[]> = {
+  punkte: ['meins', 'punkte'],
+  strafen: ['meins', 'strafen'],
 };
 
 function Icon({ name }: { name: Tab }) {
   const paths: Record<Tab, string> = {
     termine: 'M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9z',
-    punkte: 'M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7L12 2z',
-    strafen: 'M3 6h18v12H3V6zm2 2v8h14V8H5zm7 1.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z',
+    news: 'M4 4h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V4zm15 4h1a1 1 0 0 1 1 1v9a2 2 0 0 1-4 0V8h2zM7 7v4h7V7H7zm0 6v1.5h7V13H7zm0 3v1.5h7V16H7z',
+    meins: 'M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7L12 2z',
     spiess: 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm0 5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm-4 9.5c.8-1.6 2.3-2.5 4-2.5s3.2.9 4 2.5',
   };
   return (
@@ -88,10 +102,20 @@ async function logout() {
 }
 
 export default function App() {
-  const path = useRoute();
-  const isSpiess = !!config?.user.isSpiess;
+  const rawPath = useRoute();
+  const path = ALIASES[rawPath[0]] ?? rawPath;
+  const user = config?.user ?? null;
+  const isMember = !!user?.isMember;
+  const isSpiess = !!user?.isSpiess;
+  const allowed: Record<View, boolean> = {
+    termine: true,
+    news: true,
+    meins: isMember,
+    spiess: isSpiess,
+    konto: !!user,
+  };
   const requested = (path[0] as View) || 'termine';
-  const tab: View = requested in TITLES && (requested !== 'spiess' || isSpiess) ? requested : 'termine';
+  const tab: View = requested in TITLES && allowed[requested] ? requested : 'termine';
 
   const [toast, setToast] = useState<string | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
@@ -122,7 +146,8 @@ export default function App() {
     );
   }
 
-  const tabs: Tab[] = isSpiess ? ['termine', 'punkte', 'strafen', 'spiess'] : ['termine', 'punkte', 'strafen'];
+  const tabs = (['termine', 'news', 'meins', 'spiess'] as Tab[]).filter((t) => allowed[t]);
+  const newsId = tab === 'news' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
 
   return (
     <div className="app">
@@ -130,24 +155,31 @@ export default function App() {
         <img src={logoUrl} alt="" className="logo" />
         <div className="topbar-text">
           <div className="topbar-title">{TITLES[tab]}</div>
-          <div className="topbar-sub">Ahoi, {config.user.name}</div>
+          <div className="topbar-sub">{user ? `Ahoi, ${user.name}` : 'Marinekompanie 1973 Lank'}</div>
         </div>
-        <button
-          className={`btn btn-link topbar-account ${tab === 'konto' ? 'active' : ''}`}
-          onClick={() => navigate('konto')}
-          aria-current={tab === 'konto' ? 'page' : undefined}
-        >
-          Konto
-        </button>
+        {user ? (
+          <button
+            className={`btn btn-link topbar-account ${tab === 'konto' ? 'active' : ''}`}
+            onClick={() => navigate('konto')}
+            aria-current={tab === 'konto' ? 'page' : undefined}
+          >
+            Konto
+          </button>
+        ) : (
+          <a className="btn btn-link topbar-account" href={config.loginUrl}>
+            Anmelden
+          </a>
+        )}
       </header>
 
       {!online && <div className="offline">Offline – angezeigt werden die zuletzt geladenen Daten.</div>}
       <InstallHint />
 
       <main className="content">
-        {tab === 'termine' && <Termine />}
-        {tab === 'punkte' && <Punkte />}
-        {tab === 'strafen' && <Strafen />}
+        {tab === 'termine' &&
+          (path[1] === 'verwalten' && user?.canManageEvents ? <TermineVerwalten onToast={showToast} /> : <Termine />)}
+        {tab === 'news' && <News id={newsId} />}
+        {tab === 'meins' && <Meins sub={path[1]} />}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
         {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}
       </main>
@@ -167,7 +199,7 @@ export default function App() {
             aria-current={tab === t ? 'page' : undefined}
           >
             <Icon name={t} />
-            <span>{t === 'spiess' ? 'Spieß' : TITLES[t].replace('Meine ', '')}</span>
+            <span>{TAB_LABELS[t]}</span>
           </button>
         ))}
       </nav>

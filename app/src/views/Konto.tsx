@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { api, config } from '../api';
+import { api, config, LEVEL_LABELS } from '../api';
 
 const MIN_LENGTH = 8;
 
@@ -34,14 +34,14 @@ export default function Konto({ onToast, onLogout }: { onToast: (msg: string) =>
   return (
     <div>
       <div className="card account-card">
-        <h2 className="account-name">{config?.user.name}</h2>
-        <p className="muted small">{config?.user.isSpiess ? 'Spieß' : 'Mitglied'}</p>
+        <h2 className="account-name">{config?.user?.name}</h2>
+        <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'gast']}</p>
       </div>
 
       <form className="form card account-card" onSubmit={submit}>
         <h3>Passwort ändern</h3>
         {/* Verstecktes Benutzerfeld, damit Passwort-Manager (z. B. iCloud-Schlüsselbund) das Konto zuordnen. */}
-        <input type="text" name="username" autoComplete="username" value={config?.user.login ?? ''} readOnly hidden />
+        <input type="text" name="username" autoComplete="username" value={config?.user?.login ?? ''} readOnly hidden />
         <label className="field">
           <span>Aktuelles Passwort</span>
           <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />

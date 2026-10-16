@@ -1,12 +1,24 @@
 # Marinekompanie Lank – App
 
-Mitglieder-App der Marinekompanie 1973 Lank mit drei Funktionen:
+App der Marinekompanie 1973 Lank mit diesen Bereichen:
 
-- **Termine:** kommen aus dem Google Kalender, der auch auf der Webseite angezeigt wird.
-- **Punkte:** mit Punktekatalog (Vorlagen).
-- **Strafen:** Geldbeträge mit Status offen/bezahlt.
+- **Termine:**
+  - Gäste sehen die öffentliche Terminliste, die Admins in der App pflegen. Dieselbe Liste erscheint per Shortcode auf der Startseite.
+  - Mitglieder sehen den Google Kalender mit allen Terminen.
+- **News:** die Blogbeiträge der Webseite.
+- **Meins:** eigene Punkte (mit Punktekatalog) und Strafen (Geldbeträge, offen/bezahlt).
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten.
 
-Benutzer mit der Rolle **Spieß** vergeben Punkte und Strafen. Alle anderen Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen.
+### Rollen
+
+| Rolle | Darf |
+|---|---|
+| **Admin** (WordPress-Administrator) | alles: öffentliche Termine pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen |
+| **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
+| **Gast** | nur öffentliche Termine und News, auch **ohne Anmeldung** |
+
+Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
 
 ## Warum kein Apple Developer Account nötig ist
 
@@ -25,13 +37,15 @@ Alles steckt in einem **WordPress-Plugin** (`plugin/mk-lank-app`). Es läuft auf
 
 ```
 app/                       React + TypeScript (Vite) – Quellcode der PWA
-  src/views/               Termine, Punkte, Strafen, Spieß-Bereich
+  src/views/               Termine, News, Meins (Punkte/Strafen), Spieß-Bereich, Konto
   public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten)
   e2e/                     Playwright-Tests
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
-  includes/class-mkl-roles.php     Rolle „Spieß“ (Checkbox im Benutzerprofil)
+  includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-events.php    Öffentliche Terminliste
+  includes/class-mkl-shortcodes.php Shortcode [mkl_termine] für die Webseite
   includes/class-mkl-calendar.php  Google Kalender / iCal, mit Zwischenspeicher
   includes/class-mkl-app-page.php  liefert die App unter /app/ aus
   includes/class-mkl-settings.php  Einstellungen → Kompanie-App
@@ -40,8 +54,12 @@ plugin/tests/              Integrationstests der REST-API
 scripts/                   Build- und Test-Skripte
 ```
 
-- **Login:** Es gilt der normale WordPress-Login. Wer nicht angemeldet ist, wird von `/app/` zum Login und danach zurück in die App geleitet.
-- **Rechte:** Die `/me`-Endpunkte lesen die Benutzer-ID immer aus der Sitzung, nie aus der Anfrage. Alle Verwaltungs-Endpunkte verlangen die Capability `mkl_manage`. Die haben nur Spieße und Administratoren.
+- **Login:** Es gilt der normale WordPress-Login. Ohne Anmeldung zeigt `/app/` die Gast-Ansicht. Über „Anmelden“ geht es zum WordPress-Login und danach zurück in die App.
+- **Rechte:** Die `/me`-Endpunkte lesen die Benutzer-ID immer aus der Sitzung, nie aus der Anfrage. Die Capabilities sind:
+  - `mkl_member`: Mitglied
+  - `mkl_manage`: Spieß
+  - `mkl_manage_events`: Admin
+  - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden.
 - **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet.
 
 ## Installation auf der Webseite
@@ -52,13 +70,21 @@ scripts/                   Build- und Test-Skripte
 4. **Einstellungen → Kompanie-App** öffnen und **„Kalender jetzt testen“** klicken.
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
-5. **Spieße festlegen:** Unter Benutzer → Profil bearbeiten die Checkbox **„Spieß“** setzen. Die bisherige Rolle, z. B. Redakteur, bleibt dabei erhalten.
-6. Jedes Mitglied braucht ein WordPress-Benutzerkonto. Die Rolle „Abonnent“ reicht. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
-7. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder. Die Daten liegen in der WordPress-Datenbank auf dem eigenen Server.
+5. **Rollen festlegen:**
+   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Gast / Mitglied / Spieß). Mit „Auch Gast-Konten anzeigen“ findest du Konten, die noch keine Rolle haben.
+   - Alternativ im WordPress-Profil unter „Rolle in der App“.
+   - Die bisherige WordPress-Rolle, z. B. Redakteur, bleibt dabei erhalten.
+   - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, wird in der App auf „Gast“ gestellt.
+6. **Öffentliche Termine und Startseite:**
+   - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
+   - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
+   - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
+7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
+8. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder. Die Daten liegen in der WordPress-Datenbank auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
-> Hinweis: Wird die Rolle eines Benutzers später über die **Sammelaktion** in der Benutzerliste geändert, entfernt WordPress dabei auch die Zusatzrolle „Spieß“. Dann einfach die Checkbox im Profil wieder setzen.
+> Hinweis: Wird die Rolle eines Benutzers über die **Sammelaktion** in der WordPress-Benutzerliste geändert, entfernt WordPress dabei auch die Zusatzrollen „Mitglied“ und „Spieß“. Dann die Rolle in der App oder im Profil wieder setzen.
 
 ## Updates
 

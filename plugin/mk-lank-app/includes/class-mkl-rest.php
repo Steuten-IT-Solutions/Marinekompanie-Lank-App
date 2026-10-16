@@ -2,9 +2,12 @@
 /**
  * REST-API unter /wp-json/mk-lank/v1/.
  *
- * Grundsatz: Normale Mitglieder sehen ausschließlich ihre eigenen Daten.
- * Die /me-Routen lesen die Benutzer-ID immer aus der Sitzung und nehmen
- * keinen user_id-Parameter entgegen. Alles andere erfordert mkl_manage.
+ * Grundsätze:
+ * - Öffentlich (auch Gäste ohne Anmeldung): /events (lesen), /news.
+ * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
+ *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
+ * - Punkte/Strafen verwalten erfordert mkl_manage (Spieß), Termine pflegen
+ *   mkl_manage_events (Admin), Benutzer anlegen/Rollen ändern create_users/promote_users.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -18,8 +21,11 @@ class MKL_REST {
 	const MAX_CENTS = 100000;
 
 	public static function register_routes() {
+		$public    = '__return_true';
 		$logged_in = array( __CLASS__, 'can_read' );
+		$member    = array( __CLASS__, 'can_member' );
 		$manage    = array( __CLASS__, 'can_manage' );
+		$events    = array( __CLASS__, 'can_manage_events' );
 		$id_arg    = array(
 			'id' => array(
 				'type'     => 'integer',
@@ -28,10 +34,30 @@ class MKL_REST {
 		);
 
 		register_rest_route( self::NS, '/me', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_me' ), 'permission_callback' => $logged_in ) );
-		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $logged_in ) );
-		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $logged_in ) );
+		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $member ) );
+		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
-		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $logged_in ) );
+		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $member ) );
+
+		register_rest_route(
+			self::NS,
+			'/events',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_events' ), 'permission_callback' => $public ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_event' ), 'permission_callback' => $events ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/events/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_event' ), 'permission_callback' => $events, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_event' ), 'permission_callback' => $events, 'args' => $id_arg ),
+			)
+		);
+
+		register_rest_route( self::NS, '/news', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_news' ), 'permission_callback' => $public ) );
+		register_rest_route( self::NS, '/news/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_news_item' ), 'permission_callback' => $public, 'args' => $id_arg ) );
 
 		register_rest_route(
 			self::NS,
@@ -45,6 +71,7 @@ class MKL_REST {
 
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
 
@@ -69,6 +96,30 @@ class MKL_REST {
 	public static function can_read() {
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error( 'mkl_not_logged_in', 'Bitte melde dich an.', array( 'status' => 401 ) );
+		}
+		return true;
+	}
+
+	/** Mitglied, Spieß oder Admin. */
+	public static function can_member() {
+		return self::require_cap( MKL_CAP_MEMBER, 'Dieser Bereich ist nur für Mitglieder.' );
+	}
+
+	public static function can_manage_events() {
+		return self::require_cap( MKL_CAP_EVENTS, 'Nur Administratoren dürfen öffentliche Termine pflegen.' );
+	}
+
+	public static function can_promote_users() {
+		return self::require_cap( 'promote_users', 'Nur Administratoren dürfen Rollen ändern.' );
+	}
+
+	private static function require_cap( $cap, $message ) {
+		$read = self::can_read();
+		if ( true !== $read ) {
+			return $read;
+		}
+		if ( ! current_user_can( $cap ) ) {
+			return new WP_Error( 'mkl_forbidden', $message, array( 'status' => 403 ) );
 		}
 		return true;
 	}
@@ -106,8 +157,11 @@ class MKL_REST {
 			array(
 				'id'               => $user->ID,
 				'name'             => $user->display_name,
-				'is_spiess'        => MKL_Roles::is_spiess(),
-				'can_create_users' => current_user_can( 'create_users' ),
+				'level'             => MKL_Roles::get_level( $user->ID ),
+				'is_member'         => MKL_Roles::is_member(),
+				'is_spiess'         => MKL_Roles::is_spiess(),
+				'can_create_users'  => current_user_can( 'create_users' ),
+				'can_manage_events' => current_user_can( MKL_CAP_EVENTS ),
 				'points'           => MKL_DB::get_points_total( $user->ID ),
 				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
 			)
@@ -166,6 +220,104 @@ class MKL_REST {
 			return $events;
 		}
 		return rest_ensure_response( $events );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Öffentliche Termine                                                 */
+	/* ------------------------------------------------------------------ */
+
+	public static function get_events() {
+		return rest_ensure_response( MKL_Events::upcoming() );
+	}
+
+	public static function create_event( WP_REST_Request $req ) {
+		$id = MKL_Events::create( self::event_input( $req ), get_current_user_id() );
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		return new WP_REST_Response( MKL_Events::get( $id ), 201 );
+	}
+
+	public static function update_event( WP_REST_Request $req ) {
+		$result = MKL_Events::update( (int) $req['id'], self::event_input( $req ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( MKL_Events::get( (int) $req['id'] ) );
+	}
+
+	public static function delete_event( WP_REST_Request $req ) {
+		if ( ! MKL_Events::delete( (int) $req['id'] ) ) {
+			return self::error( 'Termin nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	private static function event_input( WP_REST_Request $req ) {
+		$out = array();
+		foreach ( array( 'title', 'start_date', 'start_time', 'end_date', 'end_time', 'location', 'description', 'url' ) as $key ) {
+			$value = $req->get_param( $key );
+			if ( null !== $value ) {
+				$out[ $key ] = is_scalar( $value ) ? (string) $value : '';
+			}
+		}
+		return $out;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Neuigkeiten (Blogbeiträge der Webseite)                             */
+	/* ------------------------------------------------------------------ */
+
+	const NEWS_PER_PAGE = 10;
+
+	public static function get_news( WP_REST_Request $req ) {
+		$page  = max( 1, (int) $req->get_param( 'page' ) );
+		$query = new WP_Query(
+			array(
+				'post_type'           => 'post',
+				'post_status'         => 'publish',
+				'has_password'        => false,
+				'posts_per_page'      => self::NEWS_PER_PAGE,
+				'paged'               => $page,
+				'ignore_sticky_posts' => true,
+				'no_found_rows'       => false,
+			)
+		);
+		$items = array_map( array( __CLASS__, 'format_news' ), $query->posts );
+		$res   = rest_ensure_response( $items );
+		$res->header( 'X-WP-TotalPages', (string) (int) $query->max_num_pages );
+		return $res;
+	}
+
+	public static function get_news_item( WP_REST_Request $req ) {
+		$post = get_post( (int) $req['id'] );
+		if ( ! $post || 'post' !== $post->post_type || 'publish' !== $post->post_status || post_password_required( $post ) || '' !== $post->post_password ) {
+			return self::error( 'Beitrag nicht gefunden.', 404 );
+		}
+		$item = self::format_news( $post );
+
+		// the_content-Filter erwarten den globalen Beitrag.
+		$previous        = isset( $GLOBALS['post'] ) ? $GLOBALS['post'] : null;
+		$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride
+		setup_postdata( $post );
+		$item['content'] = apply_filters( 'the_content', $post->post_content );
+		$GLOBALS['post'] = $previous; // phpcs:ignore WordPress.WP.GlobalVariablesOverride
+		wp_reset_postdata();
+
+		return rest_ensure_response( $item );
+	}
+
+	private static function format_news( WP_Post $post ) {
+		$excerpt = has_excerpt( $post ) ? $post->post_excerpt : wp_trim_words( wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 40, ' …' );
+		$image   = get_the_post_thumbnail_url( $post, 'medium_large' );
+		return array(
+			'id'      => $post->ID,
+			'title'   => html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ),
+			'date'    => get_post_time( 'c', true, $post ),
+			'excerpt' => html_entity_decode( wp_strip_all_tags( $excerpt ), ENT_QUOTES, 'UTF-8' ),
+			'image'   => $image ? $image : null,
+			'link'    => get_permalink( $post ),
+		);
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -237,14 +389,23 @@ class MKL_REST {
 		return get_users( $args );
 	}
 
-	public static function get_members() {
+	/**
+	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Gast-Konten
+	 * abrufen, um ihnen eine Rolle zu geben.
+	 */
+	public static function get_members( WP_REST_Request $req ) {
+		$all    = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
 		$totals = MKL_DB::get_totals_by_user();
 		$out    = array();
 		foreach ( self::member_users() as $u ) {
-			$id    = (int) $u->ID;
+			$id = (int) $u->ID;
+			if ( ! $all && ! MKL_Roles::is_member( $id ) ) {
+				continue;
+			}
 			$out[] = array(
 				'id'         => $id,
 				'name'       => $u->display_name,
+				'level'      => MKL_Roles::get_level( $id ),
 				'is_spiess'  => MKL_Roles::is_spiess( $id ),
 				'points'     => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
 				'open_cents' => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
@@ -262,6 +423,7 @@ class MKL_REST {
 			array(
 				'id'         => $user->ID,
 				'name'       => $user->display_name,
+				'level'      => MKL_Roles::get_level( $user->ID ),
 				'is_spiess'  => MKL_Roles::is_spiess( $user->ID ),
 				'points'     => MKL_DB::get_points_total( $user->ID ),
 				'open_cents' => MKL_DB::get_open_penalties_cents( $user->ID ),
@@ -269,6 +431,18 @@ class MKL_REST {
 				'penalties'  => MKL_DB::get_penalties_for_user( $user->ID ),
 			)
 		);
+	}
+
+	public static function set_member_role( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( get_current_user_id() === $id ) {
+			return self::error( 'Die eigene Rolle kann man nicht selbst ändern.' );
+		}
+		$result = MKL_Roles::set_level( $id, (string) $req->get_param( 'level' ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'id' => $id, 'level' => MKL_Roles::get_level( $id ) ) );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -319,7 +493,7 @@ class MKL_REST {
 				'nickname'     => $name,
 				'first_name'   => $parts[0],
 				'last_name'    => isset( $parts[1] ) ? $parts[1] : '',
-				'role'         => 'subscriber',
+				'role'         => MKL_ROLE_MITGLIED,
 			)
 		);
 		if ( is_wp_error( $user_id ) ) {
@@ -481,6 +655,9 @@ class MKL_REST {
 		foreach ( $ids as $id ) {
 			if ( ! $id || ! get_userdata( $id ) ) {
 				return self::error( 'Unbekanntes Mitglied.' );
+			}
+			if ( ! MKL_Roles::is_member( $id ) ) {
+				return self::error( 'Gäste können keine Punkte oder Strafen bekommen.' );
 			}
 		}
 		return $ids;

@@ -39,7 +39,7 @@ $WP plugin activate mk-lank-app
 
 for u in spiess mariner1 mariner2; do
   $WP user get "$u" >/dev/null 2>&1 || \
-    $WP user create "$u" "$u@example.com" --user_pass=test1234 --role=subscriber --display_name="${u^}" >/dev/null
+    $WP user create "$u" "$u@example.com" --user_pass=test1234 --role=mkl_mitglied --display_name="${u^}" >/dev/null
 done
 $WP user add-role spiess mkl_spiess >/dev/null
 

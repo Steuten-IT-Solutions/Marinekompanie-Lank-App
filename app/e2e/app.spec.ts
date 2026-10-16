@@ -6,6 +6,8 @@ const SHOTS = process.env.MKL_SCREENSHOT_DIR;
 async function login(page: Page, user: string, password = PASSWORD) {
   await page.context().clearCookies();
   await page.goto('/app/');
+  // Gäste sehen die öffentliche Ansicht; angemeldet wird über den Knopf in der Kopfleiste.
+  await page.getByRole('link', { name: 'Anmelden' }).click();
   await expect(page).toHaveURL(/wp-login\.php/);
   await page.fill('#user_login', user);
   await page.fill('#user_pass', password);
@@ -109,12 +111,12 @@ test('Spieß ohne Admin-Rechte sieht keine Funktion zum Anlegen', async ({ page 
 
 test('Mitglied 1 sieht eigene Punkte und Strafen', async ({ page }) => {
   await login(page, 'mariner1');
-  await page.getByRole('button', { name: 'Punkte' }).click();
+  await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.locator('.stat-value')).toHaveText('5');
   await expect(page.getByText('Teilnahme Schützenfest')).toBeVisible();
   await shot(page, '2-punkte');
 
-  await page.getByRole('button', { name: 'Strafen' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Strafen' }).click();
   await expect(page.locator('.stat-value')).toContainText('2,50');
   await expect(page.getByText('Zu spät beim Antreten')).toBeVisible();
   await expect(page.getByText('Mütze vergessen')).toBeVisible();
@@ -123,7 +125,8 @@ test('Mitglied 1 sieht eigene Punkte und Strafen', async ({ page }) => {
 
 test('Mitglied 2 sieht keine fremden Strafen und keine Verwaltungsdaten', async ({ page }) => {
   await login(page, 'mariner2');
-  await page.getByRole('button', { name: 'Strafen' }).click();
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Strafen' }).click();
   await expect(page.locator('.stat-value')).toContainText('0,00');
   await expect(page.getByText('Zu spät beim Antreten')).toHaveCount(0);
 
@@ -153,7 +156,7 @@ test('Mitglied ändert sein Passwort und bleibt angemeldet', async ({ page }) =>
   await shot(page, '9-konto');
 
   // Sitzung bleibt gültig: Daten laden weiterhin.
-  await page.getByRole('button', { name: 'Punkte' }).click();
+  await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.locator('.stat-label')).toHaveText('Meine Punkte');
 
   // Neue Anmeldung nur mit dem neuen Passwort.
@@ -166,4 +169,64 @@ test('Mitglied ändert sein Passwort und bleibt angemeldet', async ({ page }) =>
   await page.getByLabel('Neues Passwort wiederholen').fill(PASSWORD);
   await page.getByRole('button', { name: 'Passwort ändern' }).click();
   await expect(page.locator('.toast')).toContainText('Passwort geändert');
+});
+
+test('Admin pflegt öffentliche Termine', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Öffentliche Termine verwalten' }).click();
+  await page.getByRole('button', { name: '+ Öffentlichen Termin anlegen' }).click();
+  const d = new Date(Date.now() + 10 * 86400000);
+  const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await page.getByLabel('Titel').fill('Tag der offenen Tür');
+  await page.getByLabel('Datum').fill(ymd);
+  await page.getByLabel('Beginn (optional)').fill('14:00');
+  await page.getByLabel('Ort').fill('Vereinsheim');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Termin angelegt');
+  await expect(page.locator('.row', { hasText: 'Tag der offenen Tür' })).toBeVisible();
+  await shot(page, '10-termine-verwalten');
+});
+
+test('Gast ohne Anmeldung sieht öffentliche Termine und News', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/app/');
+  await expect(page).toHaveURL(/\/app\/?$/);
+  await expect(page.getByRole('link', { name: 'Anmelden' })).toBeVisible();
+  await expect(page.getByText('Tag der offenen Tür')).toBeVisible();
+  await expect(page.getByText('Kompanieabend')).toHaveCount(0); // interner Google-Termin
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
+  await shot(page, '11-gast-termine');
+
+  await page.getByRole('button', { name: 'News' }).click();
+  await expect(page.locator('.news-card').first()).toBeVisible();
+  await page.locator('.news-card').first().click();
+  await expect(page.getByRole('link', { name: 'Auf der Webseite öffnen' })).toBeVisible();
+  await shot(page, '12-gast-news');
+
+  const status = await page.evaluate(async () => {
+    const res = await fetch(window.MKL_CONFIG!.restUrl + 'me/points', { credentials: 'same-origin' });
+    return res.status;
+  });
+  expect(status).toBe(401);
+});
+
+test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.row', { hasText: 'Mariner2' }).click();
+  await page.locator('.role-control').getByRole('button', { name: 'Gast' }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Gast');
+  await shot(page, '13-rolle');
+
+  await login(page, 'mariner2');
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Konto' })).toBeVisible();
+
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByLabel('Auch Gast-Konten anzeigen').check();
+  await page.locator('.row', { hasText: 'Mariner2' }).click();
+  await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
 });
