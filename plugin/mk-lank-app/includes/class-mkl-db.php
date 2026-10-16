@@ -94,6 +94,42 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$albums = self::table( 'albums' );
+		dbDelta(
+			"CREATE TABLE $albums (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  drive_id varchar(64) NOT NULL,
+  year varchar(20) NOT NULL DEFAULT '',
+  title varchar(191) NOT NULL DEFAULT '',
+  sort_date datetime NOT NULL,
+  synced_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY drive_id (drive_id)
+) $charset;"
+		);
+
+		$photos = self::table( 'photos' );
+		dbDelta(
+			"CREATE TABLE $photos (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  album_id bigint(20) unsigned NOT NULL,
+  drive_file_id varchar(64) NOT NULL,
+  name varchar(255) NOT NULL DEFAULT '',
+  is_intern tinyint(1) NOT NULL DEFAULT 0,
+  width int(11) NOT NULL DEFAULT 0,
+  height int(11) NOT NULL DEFAULT 0,
+  taken_at datetime DEFAULT NULL,
+  md5 varchar(64) NOT NULL DEFAULT '',
+  file_key char(32) NOT NULL,
+  status varchar(10) NOT NULL DEFAULT 'pending',
+  error varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY  (id),
+  UNIQUE KEY drive_file_id (drive_file_id),
+  KEY album_id (album_id),
+  KEY status (status)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 

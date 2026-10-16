@@ -6,6 +6,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
   - Gäste sehen die öffentliche Terminliste, die Admins in der App pflegen. Dieselbe Liste erscheint per Shortcode auf der Startseite.
   - Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
+- **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog) und Strafen (Geldbeträge, offen/bezahlt).
 - **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten.
 
@@ -16,7 +17,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
 | **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen |
 | **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
-| **Gast** | nur öffentliche Termine und News, auch **ohne Anmeldung** |
+| **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
 
 Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
 
@@ -37,7 +38,7 @@ Alles steckt in einem **WordPress-Plugin** (`plugin/mk-lank-app`). Es läuft auf
 
 ```
 app/                       React + TypeScript (Vite) – Quellcode der PWA
-  src/views/               Termine, News, Meins (Punkte/Strafen), Spieß-Bereich, Konto
+  src/views/               Termine, News, Galerie, Meins (Punkte/Strafen), Spieß-Bereich, Konto
   public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten)
   e2e/                     Playwright-Tests
 plugin/mk-lank-app/        WordPress-Plugin
@@ -45,7 +46,9 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
   includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
   includes/class-mkl-events.php    Öffentliche Terminliste
-  includes/class-mkl-shortcodes.php Shortcode [mkl_termine] für die Webseite
+  includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
+  includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
+  includes/class-mkl-gallery.php   Galerie: Abgleich, Bildgrößen, Ablage, Auslieferung
   includes/class-mkl-calendar.php  Google Kalender / iCal, mit Zwischenspeicher
   includes/class-mkl-app-page.php  liefert die App unter /app/ aus
   includes/class-mkl-settings.php  Einstellungen → Kompanie-App
@@ -80,7 +83,24 @@ scripts/                   Build- und Test-Skripte
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
    - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
 7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
-8. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder. Die Daten liegen in der WordPress-Datenbank auf dem eigenen Server.
+8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“):
+   1. In der [Google Cloud Console](https://console.cloud.google.com/) im vorhandenen Projekt die **Google Drive API** aktivieren: [Direktlink](https://console.cloud.google.com/apis/library/drive.googleapis.com).
+   2. Unter [IAM → Dienstkonten](https://console.cloud.google.com/iam-admin/serviceaccounts) ein **Dienstkonto** anlegen. Rollen braucht es keine.
+   3. Beim Dienstkonto unter **Schlüssel → Schlüssel hinzufügen → JSON** einen Schlüssel erzeugen. Die heruntergeladene Datei gut aufbewahren und nicht weitergeben.
+   4. In Google Drive den Galerie-Hauptordner für die **E-Mail-Adresse des Dienstkontos** freigeben (Rolle „Betrachter“).
+   5. In WordPress **Einstellungen → Kompanie-App → Galerie** den Inhalt der JSON-Datei einfügen, den Link zum Galerie-Ordner eintragen, speichern und **„Jetzt synchronisieren“** klicken. Beim ersten Mal lädt die Seite selbstständig weiter, bis alle Bilder aufbereitet sind.
+   6. Auf der Galerie-Seite der Webseite den bisherigen Block durch einen Shortcode-Block mit `[mkl_galerie]` ersetzen. Danach kann „Integrate Google Drive“ deaktiviert werden.
+
+   **Ordnerstruktur:** Galerie-Ordner → Jahr (z. B. `2026`) → Album (z. B. `Schützenfest`) → Bilder.
+   - Bilder im Unterordner **`intern`** eines Albums sehen nur angemeldete Mitglieder. Für sie werden diese Bilder ins Album eingemischt.
+   - Neue Bilder übernimmt die App stündlich automatisch.
+   - Gelöschte oder verschobene Bilder verschwinden beim nächsten Abgleich.
+   - Videos werden nicht angezeigt.
+
+   **Warum es schneller ist:** Jedes Bild wird einmalig in zwei Größen (400 px / 1600 px) auf dem eigenen Server abgelegt.
+   - Öffentliche Bilder liefert der Webserver direkt aus.
+   - Interne Bilder gibt es nur über `/app/foto/…` nach Prüfung der Anmeldung.
+9. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
@@ -125,6 +145,9 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 ```bash
 # REST-API: Rechte, Validierung, Summen, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
+
+# Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)
+php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/gallery-test.php
 
 # Ende-zu-Ende im Browser (Server muss laufen)
 cd app && npx playwright test

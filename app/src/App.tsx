@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { navigate, useRoute } from './router';
+import Galerie from './views/Galerie';
 import Konto from './views/Konto';
 import Meins from './views/Meins';
 import News from './views/News';
@@ -9,12 +10,13 @@ import Spiess from './views/Spiess';
 import Termine from './views/Termine';
 import TermineVerwalten from './views/TermineVerwalten';
 
-type Tab = 'termine' | 'news' | 'meins' | 'spiess';
+type Tab = 'termine' | 'news' | 'galerie' | 'meins' | 'spiess';
 type View = Tab | 'konto';
 
 const TITLES: Record<View, string> = {
   termine: 'Termine',
   news: 'Neuigkeiten',
+  galerie: 'Galerie',
   meins: 'Meins',
   spiess: 'Spieß',
   konto: 'Mein Konto',
@@ -23,6 +25,7 @@ const TITLES: Record<View, string> = {
 const TAB_LABELS: Record<Tab, string> = {
   termine: 'Termine',
   news: 'News',
+  galerie: 'Galerie',
   meins: 'Meins',
   spiess: 'Spieß',
 };
@@ -37,6 +40,7 @@ function Icon({ name }: { name: Tab }) {
   const paths: Record<Tab, string> = {
     termine: 'M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9z',
     news: 'M4 4h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V4zm15 4h1a1 1 0 0 1 1 1v9a2 2 0 0 1-4 0V8h2zM7 7v4h7V7H7zm0 6v1.5h7V13H7zm0 3v1.5h7V16H7z',
+    galerie: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 11.5V17h14v-2.5l-4-4-3.5 3.5-2-2L5 16.5zM8.5 7a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z',
     meins: 'M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7L12 2z',
     spiess: 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm0 5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm-4 9.5c.8-1.6 2.3-2.5 4-2.5s3.2.9 4 2.5',
   };
@@ -110,6 +114,7 @@ export default function App() {
   const allowed: Record<View, boolean> = {
     termine: true,
     news: true,
+    galerie: true,
     meins: isMember,
     spiess: isSpiess,
     konto: !!user,
@@ -146,7 +151,8 @@ export default function App() {
     );
   }
 
-  const tabs = (['termine', 'news', 'meins', 'spiess'] as Tab[]).filter((t) => allowed[t]);
+  const tabs = (['termine', 'news', 'galerie', 'meins', 'spiess'] as Tab[]).filter((t) => allowed[t]);
+  const albumId = tab === 'galerie' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
   const newsId = tab === 'news' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
 
   return (
@@ -179,6 +185,7 @@ export default function App() {
         {tab === 'termine' &&
           (path[1] === 'verwalten' && user?.canManageEvents ? <TermineVerwalten onToast={showToast} /> : <Termine />)}
         {tab === 'news' && <News id={newsId} />}
+        {tab === 'galerie' && <Galerie albumId={albumId} />}
         {tab === 'meins' && <Meins sub={path[1]} />}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
         {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}

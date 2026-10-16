@@ -230,3 +230,38 @@ test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => 
   await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
 });
+
+test('Galerie: Gäste sehen öffentliche Bilder, Mitglieder zusätzlich interne', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/app/#/galerie');
+  await expect(page.locator('.album-card', { hasText: 'Schützenfest' })).toBeVisible();
+  await expect(page.locator('.album-card', { hasText: 'Kameradschaftsabend' })).toHaveCount(0);
+  await page.locator('.album-card', { hasText: 'Schützenfest' }).click();
+  await expect(page.locator('.photo')).toHaveCount(2);
+  await expect(page.locator('.photo-lock')).toHaveCount(0);
+  await page.locator('.photo').first().click();
+  await expect(page.locator('.lb-count')).toHaveText('1 / 2');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.lb-count')).toHaveText('2 / 2');
+  await shot(page, '15-galerie-lightbox');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.lightbox')).toHaveCount(0);
+
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Galerie' }).click();
+  await expect(page.locator('.album-card', { hasText: 'Kameradschaftsabend' })).toBeVisible();
+  await shot(page, '16-galerie-alben');
+  await page.locator('.album-card', { hasText: 'Schützenfest' }).click();
+  await expect(page.locator('.photo')).toHaveCount(3);
+  await expect(page.locator('.photo-lock')).toHaveCount(1);
+  const internSrc = await page.locator('.photo', { has: page.locator('.photo-lock') }).locator('img').getAttribute('src');
+  expect(internSrc).toContain('/app/foto/');
+  const asMember = await page.request.get(internSrc!);
+  expect(asMember.status()).toBe(200);
+  expect(asMember.headers()['content-type']).toBe('image/jpeg');
+  await shot(page, '17-galerie-album');
+
+  await page.context().clearCookies();
+  const asGuest = await page.request.get(internSrc!);
+  expect(asGuest.status()).toBe(401);
+});

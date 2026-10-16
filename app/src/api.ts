@@ -120,6 +120,36 @@ export interface NewsItem {
   content?: string;
 }
 
+export interface GalleryAlbumSummary {
+  id: number;
+  title: string;
+  count: number;
+  intern_count: number;
+  cover: string | null;
+}
+
+export interface GalleryYear {
+  year: string;
+  albums: GalleryAlbumSummary[];
+}
+
+export interface GalleryPhoto {
+  id: number;
+  thumb: string;
+  large: string;
+  width: number;
+  height: number;
+  intern: boolean;
+  name: string;
+}
+
+export interface GalleryAlbum {
+  id: number;
+  title: string;
+  year: string;
+  photos: GalleryPhoto[];
+}
+
 export interface MemberSummary {
   id: number;
   name: string;
@@ -241,6 +271,9 @@ export const api = {
     return { items: data, totalPages: Number(headers.get('X-WP-TotalPages') ?? 1) };
   },
   newsItem: (id: number) => request<NewsItem>('GET', `/news/${id}`),
+
+  gallery: () => request<{ years: GalleryYear[] }>('GET', '/gallery'),
+  galleryAlbum: (id: number) => request<GalleryAlbum>('GET', `/gallery/${id}`),
 
   catalog: (all = false) => request<CatalogItem[]>('GET', '/catalog', undefined, all ? { all: '1' } : undefined),
   createCatalogItem: (title: string, points: number) =>

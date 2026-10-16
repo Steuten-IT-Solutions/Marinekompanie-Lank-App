@@ -74,6 +74,18 @@ END:VCALENDAR
 ICS
 $WP option update mkl_ics_url "$URL/test.ics" >/dev/null
 
+# Beispiel-Galerie über simuliertes Google Drive (nur Test-Instanz).
+mkdir -p "$DIR/wp/wp-content/mu-plugins"
+ln -sfn "$ROOT/plugin/tests/fixtures/drive-mock.php" "$DIR/wp/wp-content/mu-plugins/mkl-drive-mock.php"
+$WP eval '
+$key = openssl_pkey_new( array( "private_key_bits" => 2048, "private_key_type" => OPENSSL_KEYTYPE_RSA ) );
+openssl_pkey_export( $key, $pem );
+MKL_Drive::save_service_account( wp_json_encode( array( "client_email" => "test@example.iam.gserviceaccount.com", "private_key" => $pem ) ) );
+update_option( MKL_Gallery::ROOT_OPTION, "TESTROOT", false );
+MKL_Gallery::sync();
+MKL_Gallery::process_pending( 60 );
+' >/dev/null
+
 cat > "$DIR/router.php" <<'PHP'
 <?php
 // Router für den PHP-Entwicklungsserver: vorhandene Dateien direkt, sonst WordPress.

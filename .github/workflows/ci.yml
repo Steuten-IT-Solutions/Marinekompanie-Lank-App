@@ -22,7 +22,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: sqlite3, pdo_sqlite, mbstring
+          extensions: sqlite3, pdo_sqlite, mbstring, gd, openssl
           tools: none
 
       - name: PHP-Syntax prüfen
@@ -47,6 +47,10 @@ jobs:
           (cd .. && PHP_CLI_SERVER_WORKERS=4 php -S localhost:8888 -t .wp-test/wp .wp-test/router.php > /tmp/php-server.log 2>&1 &)
           for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:8888/wp-login.php && break; sleep 1; done
           npx playwright test --reporter=line
+
+      # Nach den E2E-Tests, weil dieser Test die Beispiel-Galerie der Test-Instanz zurücksetzt.
+      - name: Galerie-Tests (simuliertes Google Drive)
+        run: php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/gallery-test.php
 
       - name: Plugin-ZIP packen
         run: MKL_SKIP_FRONTEND=1 scripts/build-plugin.sh

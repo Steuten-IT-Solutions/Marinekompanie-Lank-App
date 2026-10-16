@@ -5,6 +5,7 @@
  * /app/                      → App (Gäste sehen die öffentliche Ansicht)
  * /app/manifest.webmanifest  → Web-App-Manifest
  * /app/sw.js                 → Service Worker (Scope /app/)
+ * /app/foto/<id>/<größe>     → Galeriebild (interne nur für Mitglieder)
  *
  * Die gebauten JS/CSS-Dateien liegen in app-dist/ und werden direkt vom
  * Webserver als statische Dateien ausgeliefert.
@@ -50,6 +51,8 @@ class MKL_App_Page {
 			self::send_manifest();
 		} elseif ( 'sw.js' === $path ) {
 			self::send_service_worker();
+		} elseif ( preg_match( '#^foto/(\d+)/(thumb|large)$#', $path, $m ) ) {
+			MKL_Gallery::serve( (int) $m[1], $m[2] );
 		} else {
 			self::send_app();
 		}
