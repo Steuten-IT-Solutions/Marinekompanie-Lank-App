@@ -1,0 +1,6 @@
+node_modules/
+plugin/mk-lank-app/app-dist/
+dist/
+.wp-test/
+app/test-results/
+app/playwright-report/

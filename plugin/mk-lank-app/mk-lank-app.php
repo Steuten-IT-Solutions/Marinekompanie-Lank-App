@@ -1,0 +1,51 @@
+<?php
+/**
+ * Plugin Name:       Marinekompanie Lank – App
+ * Description:       Mitglieder-App (PWA) mit Terminen, Punkten und Strafen. Erreichbar unter /app/.
+ * Version:           0.1.0
+ * Requires at least: 6.2
+ * Requires PHP:      7.4
+ * Author:            Marinekompanie 1973 Lank
+ * License:           GPL-2.0-or-later
+ * Text Domain:       mk-lank-app
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+define( 'MKL_VERSION', '0.1.0' );
+define( 'MKL_DB_VERSION', '1' );
+define( 'MKL_FILE', __FILE__ );
+define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
+define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
+
+/** Capability, die zum Vergeben/Verwalten von Punkten und Strafen berechtigt. */
+define( 'MKL_CAP_MANAGE', 'mkl_manage' );
+/** Rolle „Spieß“. Wird Benutzern zusätzlich zu ihrer bisherigen Rolle gegeben. */
+define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
+
+require_once MKL_DIR . 'includes/class-mkl-db.php';
+require_once MKL_DIR . 'includes/class-mkl-roles.php';
+require_once MKL_DIR . 'includes/class-mkl-calendar.php';
+require_once MKL_DIR . 'includes/class-mkl-rest.php';
+require_once MKL_DIR . 'includes/class-mkl-app-page.php';
+require_once MKL_DIR . 'includes/class-mkl-settings.php';
+
+register_activation_hook( __FILE__, 'mkl_activate' );
+register_deactivation_hook( __FILE__, 'mkl_deactivate' );
+
+function mkl_activate() {
+	MKL_DB::install();
+	MKL_Roles::install();
+	MKL_App_Page::add_rewrite_rules();
+	flush_rewrite_rules();
+}
+
+function mkl_deactivate() {
+	flush_rewrite_rules();
+}
+
+add_action( 'plugins_loaded', array( 'MKL_DB', 'maybe_upgrade' ) );
+add_action( 'rest_api_init', array( 'MKL_REST', 'register_routes' ) );
+MKL_Roles::init();
+MKL_App_Page::init();
+MKL_Settings::init();
