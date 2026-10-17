@@ -211,12 +211,12 @@ test('Gast ohne Anmeldung sieht öffentliche Termine und News', async ({ page })
   expect(status).toBe(401);
 });
 
-test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => {
+test('Admin entzieht einem Mitglied die Rolle und gibt sie zurück', async ({ page }) => {
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
-  await page.locator('.role-control').getByRole('button', { name: 'Gast' }).click();
-  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Gast');
+  await page.locator('.role-control').getByRole('button', { name: 'Ohne Rolle' }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle entzogen');
   await shot(page, '13-rolle');
 
   await login(page, 'mariner2');
@@ -225,7 +225,7 @@ test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => 
 
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.getByLabel('Auch Gast-Konten anzeigen').check();
+  await page.getByLabel('Auch Konten ohne Rolle anzeigen').check();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
   await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
