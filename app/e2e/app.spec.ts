@@ -191,7 +191,7 @@ test('Admin pflegt öffentliche Termine', async ({ page }) => {
   await page.getByRole('button', { name: '+ Öffentlichen Termin anlegen' }).click();
   const d = new Date(Date.now() + 10 * 86400000);
   const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  await page.getByLabel('Titel').fill('Tag der offenen Tür');
+  await page.getByLabel('Titel', { exact: true }).fill('Tag der offenen Tür');
   await page.getByLabel('Datum').fill(ymd);
   await page.getByLabel('Beginn (optional)').fill('14:00');
   await page.getByLabel('Ort').fill('Vereinsheim');
@@ -414,50 +414,79 @@ function makePdf(text: string): Buffer {
   return Buffer.from(out, 'latin1');
 }
 
-test('Admin lädt die Satzung hoch, Mitglieder lesen sie – auch offline', async ({ page, context }) => {
+test('Dokumente: Kategorien, Sichtbarkeit, Office-Dateien und Offline-Lesen', async ({ page, context }) => {
+  const tag = Date.now().toString(36);
+  const kategorie = `Satzung & Ordnungen ${tag}`;
+  const protokoll = `Protokoll ${tag}`;
+
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Dokumente' }).click();
   await page.getByRole('button', { name: 'Dokumente verwalten' }).click();
-  await page.getByLabel('PDF-Datei').setInputFiles({ name: 'Satzung.pdf', mimeType: 'application/pdf', buffer: makePdf('Satzung der Marinekompanie') });
+
+  await page.getByPlaceholder('z. B. Protokolle').fill(kategorie);
+  await page.getByRole('button', { name: 'Kategorie hinzufügen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Kategorie angelegt');
+
+  // Satzung als PDF für alle Mitglieder; der Titel kommt aus dem Dateinamen.
+  await page.getByLabel('Datei', { exact: true }).setInputFiles({ name: 'Satzung.pdf', mimeType: 'application/pdf', buffer: makePdf('Satzung der Marinekompanie') });
+  await expect(page.getByLabel('Titel', { exact: true })).toHaveValue('Satzung');
+  await page.getByLabel('Kategorie', { exact: true }).selectOption({ label: kategorie });
   await page.getByLabel('Stand').fill('2026-03-01');
   await page.getByRole('button', { name: 'Hochladen' }).click();
-  await expect(page.locator('.toast')).toContainText('Satzung gespeichert');
-  await expect(page.getByText('Stand: 01.03.2026')).toBeVisible();
+  await expect(page.locator('.toast')).toHaveText('„Satzung“ hochgeladen');
+
+  // Word-Datei nur für Spieße.
+  await page.getByLabel('Datei', { exact: true }).setInputFiles({
+    name: 'protokoll.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    buffer: Buffer.concat([Buffer.from('PK\x03\x04', 'latin1'), Buffer.alloc(64, 0x20)]),
+  });
+  await page.getByLabel('Titel', { exact: true }).fill(protokoll);
+  await page.getByLabel('Sichtbar für').selectOption({ label: 'Nur Spieße' });
+  await page.getByRole('button', { name: 'Hochladen' }).click();
+  await expect(page.locator('.toast')).toHaveText(`„${protokoll}“ hochgeladen`);
+
+  // Umbenannte Datei wird abgelehnt.
+  await page.getByLabel('Datei', { exact: true }).setInputFiles({ name: 'falsch.pdf', mimeType: 'application/pdf', buffer: Buffer.from('keine pdf') });
+  await page.getByLabel('Titel', { exact: true }).fill('Falsch');
+  await page.getByRole('button', { name: 'Hochladen' }).click();
+  await expect(page.locator('.form-error')).toHaveText('Die Datei ist keine gültige .pdf-Datei.');
   await shot(page, '18-dokumente-verwalten');
 
-  // Keine PDF → abgelehnt.
-  await page.getByLabel('PDF-Datei').setInputFiles({ name: 'falsch.pdf', mimeType: 'application/pdf', buffer: Buffer.from('keine pdf') });
-  await page.getByRole('button', { name: 'Hochladen' }).click();
-  await expect(page.locator('.form-error')).toHaveText('Die Datei ist keine PDF.');
-
-  // Spieß ohne Admin-Rechte sieht die Satzung, darf sie aber nicht pflegen.
+  // Spieß ohne Admin-Rechte sieht das Protokoll, darf aber nichts pflegen.
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Dokumente' }).click();
-  await expect(page.locator('.doc-card', { hasText: 'Satzung' })).toBeVisible();
+  const prot = page.locator('.doc-card', { hasText: protokoll });
+  await expect(prot).toContainText('Nur Spieße');
+  await expect(prot.getByRole('button', { name: 'Öffnen' })).toHaveCount(0);
+  const dl = page.waitForEvent('download');
+  await prot.getByRole('button', { name: 'Herunterladen' }).click();
+  expect((await dl).suggestedFilename()).toBe(`${protokoll}.docx`);
   await expect(page.getByRole('button', { name: 'Dokumente verwalten' })).toHaveCount(0);
 
+  // Mitglied: Satzung unter ihrer Kategorie, kein Protokoll.
   await login(page, 'mariner1');
   await page.getByRole('button', { name: 'Dokumente' }).click();
-  const card = page.locator('.doc-card', { hasText: 'Satzung' });
-  await expect(card).toContainText('Stand: 01.03.2026');
-  await expect(card.locator('.doc-offline')).toHaveText('✓ Auch offline verfügbar', { timeout: 20_000 });
+  await expect(page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card', { hasText: 'Satzung' }).first()).toBeVisible();
+  await expect(page.locator('.doc-card', { hasText: protokoll })).toHaveCount(0);
+  const card = page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card').last();
+  await expect(card).toContainText('Stand: 01.03.2026 · PDF');
   await shot(page, '19-dokumente');
 
-  const downloadPromise = page.waitForEvent('download');
-  await card.getByRole('button', { name: 'Herunterladen' }).click();
-  expect((await downloadPromise).suggestedFilename()).toBe('Satzung.pdf');
-
+  // Erst nach dem Öffnen ist die Satzung offline verfügbar.
+  await expect(card.locator('.doc-offline')).toHaveCount(0);
   await card.getByRole('button', { name: 'Öffnen' }).click();
   await expect(page.locator('.pdf-page')).toHaveCount(1);
   await expect(page.locator('.pdf-page')).toHaveAttribute('alt', 'Satzung, Seite 1 von 1');
   await shot(page, '20-satzung');
+  await page.getByRole('button', { name: '‹ Alle Dokumente' }).click();
+  await expect(card.locator('.doc-offline')).toHaveText('✓ Auch offline verfügbar');
 
   // Ohne Netz: App neu laden und die Satzung erneut öffnen.
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('.offline')).toBeVisible();
-  await page.getByRole('button', { name: '‹ Alle Dokumente' }).click();
-  await page.locator('.doc-card', { hasText: 'Satzung' }).getByRole('button', { name: 'Öffnen' }).click();
+  await page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card').last().getByRole('button', { name: 'Öffnen' }).click();
   await expect(page.locator('.pdf-page')).toHaveCount(1);
   await context.setOffline(false);
 
@@ -465,7 +494,7 @@ test('Admin lädt die Satzung hoch, Mitglieder lesen sie – auch offline', asyn
   const docUrl = await page.evaluate(async () => {
     const cfg = window.MKL_CONFIG!;
     const res = await fetch(cfg.restUrl + 'documents', { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' });
-    return ((await res.json()) as { url: string }[])[0].url;
+    return ((await res.json()) as { documents: { url: string }[] }).documents[0].url;
   });
   await page.context().clearCookies();
   await page.goto('/app/');

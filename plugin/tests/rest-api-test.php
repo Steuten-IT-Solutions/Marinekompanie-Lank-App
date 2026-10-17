@@ -294,8 +294,9 @@ $matrix = array(
 	array( 'POST', '/titles', array( 'title' => '' ), array( 401, 403, 403, 400, 400 ) ),
 	array( 'PUT', '/members/' . $m2 . '/titles', array( 'title_ids' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
 	array( 'GET', '/documents', array(), array( 401, 403, 200, 200, 200 ) ),
-	array( 'POST', '/documents/satzung', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
-	array( 'DELETE', '/documents/unbekannt', array(), array( 401, 403, 403, 403, 404 ) ),
+	array( 'POST', '/documents', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'DELETE', '/documents/999999', array(), array( 401, 403, 403, 403, 404 ) ),
+	array( 'POST', '/document-categories', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
 );
 $who = array( 0, $ohne, $m1, $spiess, $admin );
 foreach ( $matrix as $row ) {
@@ -706,79 +707,148 @@ foreach ( array( $acc_admin, $acc, $acc_other ) as $uid ) {
 }
 
 echo "Dokumente (Satzung)\n";
-$doc_admin = mkl_test_user( 'mkltest_docadmin', 'admin' );
-$doc_gast  = mkl_test_user( 'mkltest_docgast', 'ohne' );
-MKL_Documents::delete( 'satzung' );
 
-function mkl_upload( $bytes, $date = '2026-03-01', $type = 'application/pdf' ) {
-	$req = new WP_REST_Request( 'POST', '/mk-lank/v1/documents/satzung' );
-	$req->set_header( 'content-type', $type );
-	$req->set_query_params( array( 'date' => $date ) );
+echo "Dokumente\n";
+$doc_admin = mkl_test_user( 'mkltest_docadmin', 'admin' );
+$doc_ohne  = mkl_test_user( 'mkltest_docohne', 'ohne' );
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Documents::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Documents::categories_table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+
+/** Lädt eine Datei hoch (Body = Datei, Angaben als Query-Parameter). */
+function mkl_upload( $route, $bytes, $query, $type = 'application/octet-stream' ) {
+	$req = new WP_REST_Request( 'POST', '/mk-lank/v1' . $route );
+	if ( '' !== $type ) {
+		$req->set_header( 'content-type', $type );
+	}
+	$req->set_query_params( $query );
 	$req->set_body( $bytes );
 	$res = rest_do_request( $req );
 	return array( $res->get_status(), $res->get_data() );
 }
 $pdf1 = "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n";
 $pdf2 = "%PDF-1.7\n% Neue Fassung\n%%EOF\n";
+$docx = "PK\x03\x04" . str_repeat( 'x', 40 );
+$png  = "\x89PNG\r\n\x1A\n" . str_repeat( 'y', 20 );
+$doc_meta = function ( $title, $filename, $extra = array() ) {
+	return array_merge(
+		array(
+			'title'    => $title,
+			'filename' => $filename,
+			'date'     => '2026-03-01',
+		),
+		$extra
+	);
+};
 
 wp_set_current_user( $m1 );
 list( $s, $d ) = mkl_req( 'GET', '/documents' );
-mkl_assert( 200 === $s && array() === $d, 'Ohne Satzung: leere Liste' );
-list( $s ) = mkl_upload( $pdf1 );
+mkl_assert( 200 === $s && isset( $d['documents'], $d['categories'] ), 'Mitglied ruft Dokumente und Kategorien ab' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest Satzung', 'satzung.pdf' ) );
 mkl_assert( 403 === $s, 'Mitglied darf nicht hochladen → 403' );
 wp_set_current_user( $spiess );
-list( $s ) = mkl_upload( $pdf1 );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest Satzung', 'satzung.pdf' ) );
 mkl_assert( 403 === $s, 'Spieß darf nicht hochladen → 403' );
+list( $s ) = mkl_req( 'POST', '/document-categories', array( 'title' => 'Mkltest X' ) );
+mkl_assert( 403 === $s, 'Spieß darf keine Kategorien anlegen → 403' );
 
 wp_set_current_user( $doc_admin );
-list( $s ) = mkl_upload( 'Hallo Welt', '2026-03-01', 'text/plain' );
-mkl_assert( 400 === $s, 'Falscher Content-Type → 400' );
-list( $s ) = mkl_upload( $pdf1, '2026-03-01', '' );
-mkl_assert( 400 === $s, 'Ohne Content-Type → 400' );
-list( $s, $d ) = mkl_upload( 'Keine PDF, nur umbenannt' );
-mkl_assert( 400 === $s && 'Die Datei ist keine PDF.' === $d['message'], 'Datei ohne %PDF-Signatur → 400' );
-list( $s ) = mkl_upload( '' );
+list( $s, $cat ) = mkl_req( 'POST', '/document-categories', array( 'title' => 'Mkltest Protokolle' ) );
+mkl_assert( 201 === $s && 'Mkltest Protokolle' === $cat['title'], 'Admin legt Kategorie an' );
+list( $s, $d ) = mkl_req( 'PATCH', '/document-categories/' . $cat['id'], array( 'title' => 'Mkltest Protokolle & Berichte' ) );
+mkl_assert( 200 === $s && 'Mkltest Protokolle &amp; Berichte' !== $d['title'] && false !== strpos( $d['title'], 'Berichte' ), 'Kategorie umbenennen' );
+
+list( $s, $d ) = mkl_upload( '/documents', 'Hallo Welt', $doc_meta( 'Mkltest X', 'notiz.txt' ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Erlaubt sind' ), 'Nicht erlaubter Dateityp (.txt) → 400' );
+list( $s, $d ) = mkl_upload( '/documents', 'Keine PDF, nur umbenannt', $doc_meta( 'Mkltest X', 'falsch.pdf' ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'keine gültige .pdf' ), 'Falsche Signatur (umbenannte Datei) → 400' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.exe' ) );
+mkl_assert( 400 === $s, '.exe auch mit PDF-Inhalt → 400' );
+list( $s ) = mkl_upload( '/documents', '', $doc_meta( 'Mkltest X', 'x.pdf' ) );
 mkl_assert( 400 === $s, 'Leere Datei → 400' );
-list( $s ) = mkl_upload( $pdf1, '2026-02-30' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( '', 'x.pdf' ) );
+mkl_assert( 400 === $s, 'Ohne Titel → 400' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.pdf', array( 'date' => '2026-02-30' ) ) );
 mkl_assert( 400 === $s, 'Ungültiger Stand → 400' );
-list( $s, $doc1 ) = mkl_upload( $pdf1 );
-mkl_assert( 201 === $s && 'satzung' === $doc1['key'] && '2026-03-01' === $doc1['date'] && strlen( $pdf1 ) === $doc1['size'], 'Admin lädt Satzung hoch' );
-mkl_assert( false !== strpos( $doc1['url'], '/app/dokument/satzung?v=' . $doc1['version'] ) && false === strpos( $doc1['url'], 'mkl-private' ), 'URL zeigt auf den geschützten Abruf, nicht auf die Datei' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.pdf', array( 'visibility' => 'alle' ) ) );
+mkl_assert( 400 === $s, 'Ungültige Sichtbarkeit → 400' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.pdf', array( 'category_id' => 999999 ) ) );
+mkl_assert( 400 === $s, 'Unbekannte Kategorie → 400' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.pdf' ), 'application/json' );
+mkl_assert( 400 === $s, 'Datei als JSON gesendet → 400' );
+list( $s ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest X', 'x.pdf' ), '' );
+mkl_assert( 400 === $s, 'Ohne Content-Type → 400' );
+
+list( $s, $satzung ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest Satzung', 'Satzung 2026.PDF' ), 'application/pdf' );
+mkl_assert( 201 === $s && 'pdf' === $satzung['ext'] && 'pdf' === $satzung['kind'] && 'mitglieder' === $satzung['visibility'] && null === $satzung['category_id'], 'PDF für alle Mitglieder ohne Kategorie' );
+mkl_assert( false !== strpos( $satzung['url'], '/app/dokument/' . $satzung['id'] . '?v=' . $satzung['version'] ) && false === strpos( $satzung['url'], 'mkl-private' ), 'URL zeigt auf den geschützten Abruf' );
+list( $s, $protokoll ) = mkl_upload( '/documents', $docx, $doc_meta( 'Mkltest Protokoll März', 'protokoll.docx', array( 'category_id' => $cat['id'], 'visibility' => 'spiess' ) ) );
+mkl_assert( 201 === $s && 'docx' === $protokoll['ext'] && 'datei' === $protokoll['kind'] && $cat['id'] === $protokoll['category_id'] && 'spiess' === $protokoll['visibility'], 'Word-Datei nur für Spieße in Kategorie' );
+list( $s, $bild ) = mkl_upload( '/documents', $png, $doc_meta( 'Mkltest Lageplan', 'plan.png' ) );
+mkl_assert( 201 === $s && 'bild' === $bild['kind'] && 'image/png' === $bild['mime'], 'PNG als Bild' );
 $dir = MKL_Documents::dir();
 mkl_assert( file_exists( $dir . '/.htaccess' ) && false !== strpos( file_get_contents( $dir . '/.htaccess' ), 'Require all denied' ) && file_exists( $dir . '/index.php' ), 'Ablage gegen direkten Zugriff gesperrt' );
-list( $s, $doc2 ) = mkl_upload( $pdf2, '2026-04-15' );
-$files = glob( $dir . '/satzung-*.pdf' );
-mkl_assert( 201 === $s && $doc2['version'] !== $doc1['version'] && 1 === count( $files ) && file_get_contents( $files[0] ) === $pdf2, 'Neue Fassung ersetzt die alte (alte Datei gelöscht)' );
-list( $s, $d ) = mkl_req( 'PATCH', '/documents/satzung', array( 'date' => '2026-04-20' ) );
-mkl_assert( 200 === $s && '2026-04-20' === $d['date'] && $doc2['version'] === $d['version'], 'Stand ändern' );
-list( $s ) = mkl_req( 'PATCH', '/documents/satzung', array( 'date' => 'morgen' ) );
-mkl_assert( 400 === $s, 'Ungültiger Stand beim Ändern → 400' );
 
-$serve = function ( $uid ) {
+$old_files = glob( $dir . '/dok-*' );
+list( $s, $neu ) = mkl_upload( '/documents/' . $satzung['id'] . '/file', $pdf2, array( 'filename' => 'neu.pdf' ) );
+$new_files = glob( $dir . '/dok-*' );
+mkl_assert( 200 === $s && $neu['version'] !== $satzung['version'] && 'Mkltest Satzung' === $neu['title'] && count( $old_files ) === count( $new_files ), 'Neue Fassung ersetzt die alte Datei, Angaben bleiben' );
+list( $s ) = mkl_upload( '/documents/' . $satzung['id'] . '/file', $docx, array( 'filename' => 'neu.pdf' ) );
+mkl_assert( 400 === $s, 'Neue Fassung mit falscher Signatur → 400' );
+list( $s, $d ) = mkl_req( 'PATCH', '/documents/' . $satzung['id'], array( 'date' => '2026-04-20', 'category_id' => $cat['id'] ) );
+mkl_assert( 200 === $s && '2026-04-20' === $d['date'] && $cat['id'] === $d['category_id'] && 'Mkltest Satzung' === $d['title'], 'Stand und Kategorie ändern' );
+list( $s, $d ) = mkl_req( 'PATCH', '/documents/' . $satzung['id'], array( 'category_id' => null ) );
+mkl_assert( 200 === $s && null === $d['category_id'], 'Kategorie entfernen' );
+list( $s ) = mkl_req( 'PATCH', '/documents/' . $satzung['id'], array( 'date' => 'morgen' ) );
+mkl_assert( 400 === $s, 'Ungültiger Stand beim Ändern → 400' );
+list( $s, $d ) = mkl_req( 'DELETE', '/document-categories/' . $cat['id'] );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'noch 1 Dokument' ), 'Kategorie mit Dokumenten nicht löschbar' );
+
+$serve = function ( $uid, $id ) {
 	wp_set_current_user( $uid );
 	ob_start();
 	// Auf der Kommandozeile sind schon Ausgaben erfolgt; header() warnt dann nur.
 	set_error_handler( '__return_true', E_WARNING );
-	MKL_Documents::serve( 'satzung' );
+	MKL_Documents::serve( $id );
 	restore_error_handler();
 	return ob_get_clean();
 };
-mkl_assert( $pdf2 === $serve( $m1 ), 'Mitglied bekommt die PDF über /app/dokument/satzung' );
-mkl_assert( '' === $serve( $doc_gast ) && '' === $serve( 0 ), 'Konto ohne Rolle und nicht Angemeldete bekommen keine PDF' );
+mkl_assert( $pdf2 === $serve( $m1, $satzung['id'] ), 'Mitglied bekommt die PDF über /app/dokument/<id>' );
+mkl_assert( '' === $serve( $doc_ohne, $satzung['id'] ) && '' === $serve( 0, $satzung['id'] ), 'Konto ohne Rolle und nicht Angemeldete bekommen keine Datei' );
+mkl_assert( '' === $serve( $m1, $protokoll['id'] ), 'Mitglied bekommt kein Dokument „nur Spieße“' );
+mkl_assert( $docx === $serve( $spiess, $protokoll['id'] ), 'Spieß bekommt das Dokument „nur Spieße“' );
 
 wp_set_current_user( $m1 );
 list( $s, $d ) = mkl_req( 'GET', '/documents' );
-mkl_assert( 200 === $s && 1 === count( $d ) && 'Satzung' === $d[0]['title'] && '2026-04-20' === $d[0]['date'], 'Mitglied sieht die Satzung mit Stand' );
-list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
+$titles = wp_list_pluck( $d['documents'], 'title' );
+mkl_assert( in_array( 'Mkltest Satzung', $titles, true ) && in_array( 'Mkltest Lageplan', $titles, true ) && ! in_array( 'Mkltest Protokoll März', $titles, true ), 'Mitglied sieht nur Dokumente für alle Mitglieder' );
+list( $s ) = mkl_req( 'DELETE', '/documents/' . $satzung['id'] );
 mkl_assert( 403 === $s, 'Mitglied darf nicht löschen → 403' );
+wp_set_current_user( $spiess );
+list( $s, $d ) = mkl_req( 'GET', '/documents' );
+mkl_assert( in_array( 'Mkltest Protokoll März', wp_list_pluck( $d['documents'], 'title' ), true ), 'Spieß sieht auch „nur Spieße“' );
 
 wp_set_current_user( $doc_admin );
-list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
-mkl_assert( 200 === $s && ! glob( $dir . '/satzung-*.pdf' ), 'Admin entfernt die Satzung samt Datei' );
-list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
-mkl_assert( 404 === $s, 'Erneutes Entfernen → 404' );
+foreach ( array( $satzung, $protokoll, $bild ) as $doc ) {
+	mkl_req( 'DELETE', '/documents/' . $doc['id'] );
+}
+mkl_assert( count( glob( $dir . '/dok-*' ) ) === count( $old_files ) - 3, 'Löschen entfernt auch die Dateien' );
+list( $s ) = mkl_req( 'DELETE', '/documents/' . $satzung['id'] );
+mkl_assert( 404 === $s, 'Erneutes Löschen → 404' );
+list( $s ) = mkl_req( 'DELETE', '/document-categories/' . $cat['id'] );
+mkl_assert( 200 === $s && ! MKL_Documents::get_category( $cat['id'] ), 'Leere Kategorie löschen' );
+
+echo "Migration der Satzung aus 0.4\n";
+wp_mkdir_p( $dir );
+file_put_contents( $dir . '/satzung-alt.pdf', $pdf1 );
+update_option( 'mkl_doc_satzung', array( 'file' => 'satzung-alt.pdf', 'date' => '2025-05-01', 'size' => strlen( $pdf1 ), 'version' => 'abc123', 'updated_at' => gmdate( 'c' ) ), false );
+MKL_Documents::migrate_statute();
+$migrated = $wpdb->get_row( 'SELECT * FROM ' . MKL_Documents::table() . " WHERE file = 'satzung-alt.pdf'", ARRAY_A );
+mkl_assert( $migrated && 'Satzung' === $migrated['title'] && '2025-05-01' === $migrated['doc_date'] && 'mitglieder' === $migrated['visibility'] && false === get_option( 'mkl_doc_satzung' ), 'Bisherige Satzung wird als Dokument übernommen' );
+if ( $migrated ) {
+	MKL_Documents::delete( (int) $migrated['id'] );
+}
 wp_delete_user( $doc_admin );
-wp_delete_user( $doc_gast );
+wp_delete_user( $doc_ohne );
 
 // Aufräumen.
 global $wpdb;

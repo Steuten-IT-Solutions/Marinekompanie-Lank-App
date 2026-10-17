@@ -112,16 +112,39 @@ export interface RankHistoryEntry {
   changed_by_name: string | null;
 }
 
+export type DocKind = 'pdf' | 'bild' | 'datei';
+export type DocVisibility = 'mitglieder' | 'spiess';
+
 export interface DocumentInfo {
-  key: string;
+  id: number;
   title: string;
+  category_id: number | null;
   /** Stand (YYYY-MM-DD). */
   date: string;
+  /** mitglieder = alle Mitglieder, spiess = nur Spieße und Admins. */
+  visibility: DocVisibility;
+  ext: string;
+  /** pdf/bild werden in der App angezeigt, datei nur heruntergeladen. */
+  kind: DocKind;
+  mime: string;
   size: number;
   version: string;
   /** Geschützte Adresse unter /app/dokument/ (offline über den Service Worker). */
   url: string;
   updated_at: string;
+}
+
+export interface DocCategory {
+  id: number;
+  title: string;
+  sort: number;
+}
+
+export interface DocumentMeta {
+  title: string;
+  category_id: number | null;
+  date: string;
+  visibility: DocVisibility;
 }
 
 export interface PointEntry {
@@ -435,10 +458,24 @@ export const api = {
       reason,
     }),
 
-  documents: () => request<DocumentInfo[]>('GET', '/documents'),
-  /** Neue Fassung hochladen (PDF als Request-Body). */
-  uploadDocument: (key: string, file: Blob, date: string) =>
-    request<DocumentInfo>('POST', `/documents/${key}`, new Blob([file], { type: 'application/pdf' }), { date }),
-  updateDocument: (key: string, date: string) => request<DocumentInfo>('PATCH', `/documents/${key}`, { date }),
-  deleteDocument: (key: string) => request<{ deleted: boolean }>('DELETE', `/documents/${key}`),
+  documents: () => request<{ categories: DocCategory[]; documents: DocumentInfo[] }>('GET', '/documents'),
+  /** Neues Dokument hochladen (Datei als Request-Body, Angaben als Query-Parameter). */
+  createDocument: (file: File, meta: DocumentMeta) =>
+    request<DocumentInfo>('POST', '/documents', new Blob([file], { type: 'application/octet-stream' }), {
+      filename: file.name,
+      title: meta.title,
+      category_id: meta.category_id ? String(meta.category_id) : '',
+      date: meta.date,
+      visibility: meta.visibility,
+    }),
+  /** Neue Fassung: ersetzt nur die Datei. */
+  replaceDocumentFile: (id: number, file: File) =>
+    request<DocumentInfo>('POST', `/documents/${id}/file`, new Blob([file], { type: 'application/octet-stream' }), {
+      filename: file.name,
+    }),
+  updateDocument: (id: number, data: Partial<DocumentMeta>) => request<DocumentInfo>('PATCH', `/documents/${id}`, data),
+  deleteDocument: (id: number) => request<{ deleted: boolean }>('DELETE', `/documents/${id}`),
+  createDocCategory: (title: string) => request<DocCategory>('POST', '/document-categories', { title }),
+  updateDocCategory: (id: number, title: string) => request<DocCategory>('PATCH', `/document-categories/${id}`, { title }),
+  deleteDocCategory: (id: number) => request<{ deleted: boolean }>('DELETE', `/document-categories/${id}`),
 };

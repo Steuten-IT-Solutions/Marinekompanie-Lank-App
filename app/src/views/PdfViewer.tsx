@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { whenControlled } from '../offline';
 import { Loading } from '../ui';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
@@ -38,8 +39,11 @@ export default function PdfViewer({ url, title }: { url: string; title: string }
     let cancelled = false;
     let task: ReturnType<typeof getDocument> | null = null;
     const created: string[] = [];
+    // Worker in den Cache holen, damit geöffnete PDFs auch offline angezeigt werden.
+    prefetchWorker();
 
     (async () => {
+      await whenControlled();
       let res: Response;
       try {
         res = await fetch(url, { credentials: 'same-origin' });

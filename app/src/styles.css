@@ -444,7 +444,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 
 /* ------------------------------------------------------------------ */
-/* Ränge                                                               */
+/* Dienstgrade                                                         */
 /* ------------------------------------------------------------------ */
 
 .rank-card, .rank-control { padding: 16px 18px; margin-top: 12px; border-left: 4px solid var(--brass); }
@@ -466,7 +466,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .rank-form { margin-top: 12px; }
 .rank-control .section-title { margin-top: 18px; }
 
-/* Titel (z. B. Ehrenkapitän), zusätzlich zum Rang */
+/* Titel (z. B. Ehrenkapitän), zusätzlich zum Dienstgrad */
 .title-badges { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; vertical-align: 2px; }
 .row-title .title-badges { margin-left: 6px; }
 .title-control { padding: 16px 18px; margin: 14px 0; border-left: 4px solid var(--brass); }
@@ -504,3 +504,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 @media (max-width: 380px) {
   .tabbar button { letter-spacing: 0.04em; }
 }
+
+/* Dokumente mit Kategorien und verschiedenen Dateitypen */
+.doc-group + .doc-group { margin-top: 6px; }
+.doc-icon-bild { color: var(--navy); }
+.doc-icon-datei { color: var(--brass-dark); }
+.button-row.single { grid-template-columns: 1fr; }
+.doc-admin-group + .doc-admin-group { margin-top: 10px; }
+.doc-edit { padding: 14px 16px; }

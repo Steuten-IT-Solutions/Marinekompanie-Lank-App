@@ -1,37 +1,127 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { api, type DocumentInfo } from '../api';
+import { api, type DocCategory, type DocumentInfo, type DocumentMeta, type DocVisibility } from '../api';
 import { formatBytes, formatDate, todayYmd } from '../format';
 import { navigate } from '../router';
-import { ErrorBox, Loading, useAsync } from '../ui';
+import { Empty, ErrorBox, Loading, useAsync } from '../ui';
+import { ACCEPT, groupDocuments, typeLabel } from './Dokumente';
 
 /** Höchstgröße wie im Plugin (MKL_Documents::MAX_BYTES). */
 const MAX_BYTES = 20 * 1024 * 1024;
 
-/** Admins pflegen hier die Satzung: neue Fassung hochladen, Stand ändern, entfernen. */
+const VISIBILITY_LABELS: Record<DocVisibility, string> = {
+  mitglieder: 'Alle Mitglieder',
+  spiess: 'Nur Spieße',
+};
+
+/** Felder für Titel, Kategorie, Stand und Sichtbarkeit (Hochladen und Bearbeiten). */
+function MetaFields({
+  meta,
+  categories,
+  onChange,
+}: {
+  meta: DocumentMeta;
+  categories: DocCategory[];
+  onChange: (meta: DocumentMeta) => void;
+}) {
+  return (
+    <>
+      <label className="field">
+        <span>Titel</span>
+        <input type="text" maxLength={191} value={meta.title} onChange={(e) => onChange({ ...meta, title: e.target.value })} />
+      </label>
+      <label className="field">
+        <span>Kategorie</span>
+        <select
+          aria-label="Kategorie"
+          value={meta.category_id ?? ''}
+          onChange={(e) => onChange({ ...meta, category_id: e.target.value ? Number(e.target.value) : null })}
+        >
+          <option value="">Ohne Kategorie</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="field-row">
+        <label className="field">
+          <span>Stand</span>
+          <input type="date" value={meta.date} onChange={(e) => onChange({ ...meta, date: e.target.value })} />
+        </label>
+        <label className="field">
+          <span>Sichtbar für</span>
+          <select aria-label="Sichtbar für" value={meta.visibility} onChange={(e) => onChange({ ...meta, visibility: e.target.value as DocVisibility })}>
+            {(Object.keys(VISIBILITY_LABELS) as DocVisibility[]).map((v) => (
+              <option key={v} value={v}>
+                {VISIBILITY_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function checkFile(file: File): string | null {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (!ACCEPT.split(',').includes(`.${ext}`)) {
+    return 'Erlaubt sind PDF, Word, Excel, PowerPoint, OpenDocument sowie JPG- und PNG-Bilder.';
+  }
+  if (file.size > MAX_BYTES) return 'Die Datei darf höchstens 20 MB groß sein.';
+  return null;
+}
+
+const titleFromFile = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+
+/** Admins pflegen hier alle Dokumente und ihre Kategorien. */
 export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string) => void }) {
   const { data, error, loading, reload } = useAsync(api.documents);
   const fileInput = useRef<HTMLInputElement>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [date, setDate] = useState(todayYmd());
+  const [meta, setMeta] = useState<DocumentMeta>({ title: '', category_id: null, date: todayYmd(), visibility: 'mitglieder' });
+  const [editing, setEditing] = useState<{ id: number; meta: DocumentMeta } | null>(null);
+  const [replacing, setReplacing] = useState<DocumentInfo | null>(null);
+  const [newCategory, setNewCategory] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
-  const current: DocumentInfo | undefined = (data ?? []).find((d) => d.key === 'satzung');
+  const categories = data?.categories ?? [];
+  const docs = data?.documents ?? [];
+
+  async function run(action: () => Promise<unknown>, msg: string) {
+    setBusy(true);
+    try {
+      await action();
+      onToast(msg);
+      reload();
+      return true;
+    } catch (e) {
+      onToast((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function upload(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    if (!file) return setFormError('Bitte eine PDF-Datei auswählen.');
-    if (file.type && file.type !== 'application/pdf') return setFormError('Bitte eine PDF-Datei auswählen.');
-    if (file.size > MAX_BYTES) return setFormError('Die PDF darf höchstens 20 MB groß sein.');
-    if (!date) return setFormError('Bitte den Stand angeben.');
+    if (!file) return setFormError('Bitte eine Datei auswählen.');
+    const problem = checkFile(file);
+    if (problem) return setFormError(problem);
+    if (!meta.title.trim()) return setFormError('Bitte einen Titel angeben.');
+    if (!meta.date) return setFormError('Bitte den Stand angeben.');
     setBusy(true);
     try {
-      await api.uploadDocument('satzung', file, date);
-      onToast(current ? 'Neue Fassung der Satzung gespeichert' : 'Satzung gespeichert');
+      await api.createDocument(file, { ...meta, title: meta.title.trim() });
+      onToast(`„${meta.title.trim()}“ hochgeladen`);
       setFile(null);
+      setMeta((m) => ({ ...m, title: '' }));
       if (fileInput.current) fileInput.current.value = '';
       reload();
     } catch (err) {
@@ -41,32 +131,37 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
     }
   }
 
-  async function changeDate() {
-    if (!current) return;
-    const next = window.prompt('Neuer Stand (TT.MM.JJJJ)', formatDate(current.date));
-    if (next === null) return;
-    const m = next.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (!m) return onToast('Bitte das Datum als TT.MM.JJJJ angeben.');
-    const ymd = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-    try {
-      await api.updateDocument('satzung', ymd);
-      onToast('Stand geändert');
-      reload();
-    } catch (err) {
-      onToast((err as Error).message);
+  function chooseFile(f: File | null) {
+    setFile(f);
+    if (f && !meta.title.trim()) setMeta((m) => ({ ...m, title: titleFromFile(f.name) }));
+  }
+
+  async function replace(f: File | null) {
+    const doc = replacing;
+    setReplacing(null);
+    if (replaceInput.current) replaceInput.current.value = '';
+    if (!doc || !f) return;
+    const problem = checkFile(f);
+    if (problem) return onToast(problem);
+    await run(() => api.replaceDocumentFile(doc.id, f), `Neue Fassung von „${doc.title}“ gespeichert`);
+  }
+
+  async function saveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    if (!editing.meta.title.trim()) return onToast('Bitte einen Titel angeben.');
+    if (await run(() => api.updateDocument(editing.id, { ...editing.meta, title: editing.meta.title.trim() }), 'Gespeichert')) {
+      setEditing(null);
     }
   }
 
-  async function remove() {
-    if (!current || !window.confirm('Satzung wirklich entfernen? Mitglieder sehen sie dann nicht mehr.')) return;
-    try {
-      await api.deleteDocument('satzung');
-      onToast('Satzung entfernt');
-      reload();
-    } catch (err) {
-      onToast((err as Error).message);
-    }
+  async function addCategory(e: FormEvent) {
+    e.preventDefault();
+    if (!newCategory.trim()) return onToast('Bitte einen Namen für die Kategorie angeben.');
+    if (await run(() => api.createDocCategory(newCategory.trim()), 'Kategorie angelegt')) setNewCategory('');
   }
+
+  const categoryTitle = (id: number | null) => categories.find((c) => c.id === id)?.title ?? 'Ohne Kategorie';
 
   return (
     <div>
@@ -74,44 +169,14 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
         ‹ Zu den Dokumenten
       </button>
 
-      <h3 className="section-title">Satzung</h3>
-      {current ? (
-        <div className="card row">
-          <div className="row-main">
-            <div className="row-title">Aktuelle Fassung</div>
-            <div className="row-sub">
-              Stand: {formatDate(current.date)} · {formatBytes(current.size)}
-            </div>
-            <div className="row-actions">
-              <button className="btn btn-small btn-secondary" onClick={changeDate}>
-                Stand ändern
-              </button>
-              <button className="btn btn-small btn-danger" onClick={remove}>
-                Entfernen
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <p className="muted">Es ist noch keine Satzung hinterlegt.</p>
-      )}
-
       <form className="form card" onSubmit={upload}>
-        <h3>{current ? 'Neue Fassung hochladen' : 'Satzung hochladen'}</h3>
+        <h3>Dokument hochladen</h3>
         <label className="field">
-          <span>PDF-Datei</span>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/pdf,.pdf"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
+          <span>Datei</span>
+          <input ref={fileInput} type="file" accept={ACCEPT} onChange={(e) => chooseFile(e.target.files?.[0] ?? null)} />
         </label>
-        <label className="field">
-          <span>Stand</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-        </label>
-        {current && <p className="muted small">Die neue Fassung ersetzt die bisherige. Ältere Fassungen werden nicht aufbewahrt.</p>}
+        <MetaFields meta={meta} categories={categories} onChange={setMeta} />
+        <p className="muted small">PDF, Word, Excel, PowerPoint, OpenDocument, JPG oder PNG, höchstens 20 MB.</p>
         {formError && (
           <p className="form-error" role="alert">
             {formError}
@@ -121,6 +186,126 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
           {busy ? 'Lädt hoch …' : 'Hochladen'}
         </button>
       </form>
+
+      {/* Unsichtbares Dateifeld für „Neue Fassung“. */}
+      <input ref={replaceInput} type="file" accept={ACCEPT} hidden onChange={(e) => replace(e.target.files?.[0] ?? null)} />
+
+      <h3 className="section-title">Dokumente</h3>
+      {docs.length === 0 && <Empty>Noch keine Dokumente.</Empty>}
+      {groupDocuments(docs, categories).map((g) => (
+        <ul key={g.id ?? 'ohne'} className="card-list doc-admin-group">
+          {g.docs.map((doc) =>
+            editing?.id === doc.id ? (
+              <li key={doc.id} className="card">
+                <form className="form doc-edit" onSubmit={saveEdit}>
+                  <MetaFields meta={editing.meta} categories={categories} onChange={(m) => setEditing({ id: doc.id, meta: m })} />
+                  <div className="button-row">
+                    <button className="btn" type="submit" disabled={busy}>
+                      Speichern
+                    </button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)}>
+                      Abbrechen
+                    </button>
+                  </div>
+                </form>
+              </li>
+            ) : (
+              <li key={doc.id} className="card row">
+                <div className="row-main">
+                  <div className="row-title">{doc.title}</div>
+                  <div className="row-sub">
+                    {categoryTitle(doc.category_id)} · Stand {formatDate(doc.date)} · {typeLabel(doc)}, {formatBytes(doc.size)}
+                  </div>
+                  <div className="row-sub">{VISIBILITY_LABELS[doc.visibility]}</div>
+                  <div className="row-actions">
+                    <button
+                      className="btn btn-small btn-secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        setEditing({
+                          id: doc.id,
+                          meta: { title: doc.title, category_id: doc.category_id, date: doc.date, visibility: doc.visibility },
+                        })
+                      }
+                    >
+                      Bearbeiten
+                    </button>
+                    <button
+                      className="btn btn-small btn-secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        setReplacing(doc);
+                        replaceInput.current?.click();
+                      }}
+                    >
+                      Neue Fassung
+                    </button>
+                    <button
+                      className="btn btn-small btn-danger"
+                      disabled={busy}
+                      onClick={() =>
+                        window.confirm(`„${doc.title}“ wirklich löschen?`) && run(() => api.deleteDocument(doc.id), 'Dokument gelöscht')
+                      }
+                    >
+                      Löschen
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ),
+          )}
+        </ul>
+      ))}
+
+      <h3 className="section-title">Kategorien</h3>
+      <form className="form card" onSubmit={addCategory}>
+        <div className="field-row">
+          <label className="field grow">
+            <span>Neue Kategorie</span>
+            <input type="text" maxLength={191} placeholder="z. B. Protokolle" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
+          </label>
+        </div>
+        <button className="btn btn-block" type="submit" disabled={busy}>
+          Kategorie hinzufügen
+        </button>
+      </form>
+      <ul className="card-list">
+        {categories.map((c) => {
+          const count = docs.filter((d) => d.category_id === c.id).length;
+          return (
+            <li key={c.id} className="card row">
+              <div className="row-main">
+                <div className="row-title">{c.title}</div>
+                <div className="row-sub">{count === 1 ? '1 Dokument' : `${count} Dokumente`}</div>
+                <div className="row-actions">
+                  <button
+                    className="btn btn-small btn-secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      const next = window.prompt('Neuer Name der Kategorie', c.title);
+                      if (next !== null && next.trim()) run(() => api.updateDocCategory(c.id, next.trim()), 'Kategorie umbenannt');
+                    }}
+                  >
+                    Umbenennen
+                  </button>
+                  {count === 0 && (
+                    <button
+                      className="btn btn-small btn-danger"
+                      disabled={busy}
+                      onClick={() =>
+                        window.confirm(`Kategorie „${c.title}“ löschen?`) && run(() => api.deleteDocCategory(c.id), 'Kategorie gelöscht')
+                      }
+                    >
+                      Löschen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+        {categories.length === 0 && <Empty>Noch keine Kategorien. Dokumente ohne Kategorie stehen in einer gemeinsamen Liste.</Empty>}
+      </ul>
     </div>
   );
 }
