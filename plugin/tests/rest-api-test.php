@@ -218,6 +218,18 @@ list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'email' => 'keine-
 mkl_assert( 400 === $s, 'Ungültige E-Mail → 400' );
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => '   ' ) );
 mkl_assert( 400 === $s, 'Leerer Name → 400' );
+mkl_assert( 'mitglied' === $u1['level'], 'Ohne Angabe → Rolle Mitglied' );
+
+foreach ( array( 'anwaerter' => array( MKL_ROLE_ANWAERTER ), 'spiess' => array( MKL_ROLE_SPIESS ), 'gast' => array( 'subscriber' ), 'mitglied' => array( MKL_ROLE_MITGLIED ) ) as $lvl => $wp_roles ) {
+	list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Rolle ' . $lvl, 'level' => $lvl ) );
+	$created[]     = isset( $u['id'] ) ? $u['id'] : 0;
+	mkl_assert( 201 === $s && $lvl === $u['level'] && $lvl === MKL_Roles::get_level( $u['id'] ) && $wp_roles === array_values( get_userdata( $u['id'] )->roles ), 'Anlegen mit Rolle ' . $lvl );
+}
+foreach ( array( 'admin', 'egal', array( 'mitglied' ) ) as $bad ) {
+	$before = count_users()['total_users'];
+	list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ungültig', 'level' => $bad ) );
+	mkl_assert( 400 === $s && count_users()['total_users'] === $before, 'Ungültige Rolle ' . wp_json_encode( $bad ) . ' → 400, kein Konto angelegt' );
+}
 
 list( $s, $members ) = mkl_req( 'GET', '/members' );
 mkl_assert( in_array( $u1['id'], wp_list_pluck( $members, 'id' ), true ), 'Neues Mitglied erscheint in der Mitgliederliste' );

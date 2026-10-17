@@ -130,6 +130,23 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
 });
 
+test('Admin legt einen Anwärter an', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
+  await page.getByPlaceholder('Vorname Nachname').fill('Neuer Anwaerter');
+  await expect(page.getByRole('button', { name: 'Mitglied', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Anwärter', exact: true }).click();
+  await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
+  await expect(page.getByTestId('new-level')).toHaveText('Anwärter');
+  const username = (await page.getByTestId('new-username').textContent())!.trim();
+  const password = (await page.getByTestId('new-password').textContent())!.trim();
+
+  await login(page, username, password);
+  await expect(page.getByText('Kompanieabend')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
+});
+
 test('Spieß ohne Admin-Rechte sieht keine Funktion zum Anlegen', async ({ page }) => {
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();

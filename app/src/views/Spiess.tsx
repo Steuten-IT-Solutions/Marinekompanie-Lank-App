@@ -331,6 +331,7 @@ function NewMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [level, setLevel] = useState<Exclude<Level, 'admin'>>('mitglied');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedUser | null>(null);
@@ -347,6 +348,7 @@ function NewMember() {
           name: name.trim(),
           ...(username.trim() ? { username: username.trim() } : {}),
           ...(email.trim() ? { email: email.trim() } : {}),
+          level,
         }),
       );
     } catch (err) {
@@ -376,6 +378,8 @@ function NewMember() {
         <dl className="credentials">
           <dt>App</dt>
           <dd>{config?.appUrl}</dd>
+          <dt>Rolle</dt>
+          <dd data-testid="new-level">{LEVEL_LABELS[created.level]}</dd>
           <dt>Benutzername</dt>
           <dd data-testid="new-username">{created.username}</dd>
           <dt>Passwort</dt>
@@ -393,6 +397,7 @@ function NewMember() {
               setName('');
               setUsername('');
               setEmail('');
+              setLevel('mitglied');
             }}
           >
             Weiteres Mitglied
@@ -429,7 +434,24 @@ function NewMember() {
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
-      <p className="muted small">Das Mitglied bekommt die Rolle „Abonnent“ und ein zufälliges Startpasswort.</p>
+      <div className="field">
+        <span>Rolle in der App</span>
+        <div className="segmented small" role="group" aria-label="Rolle in der App">
+          {(['gast', 'anwaerter', 'mitglied', 'spiess'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={level === l ? 'active' : ''}
+              aria-pressed={level === l}
+              aria-label={LEVEL_LABELS[l]}
+              onClick={() => setLevel(l)}
+            >
+              {caps(LEVEL_LABELS[l])}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="muted small">Das Konto bekommt die gewählte Rolle und ein zufälliges Startpasswort.</p>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Legt an …' : 'Mitglied anlegen'}

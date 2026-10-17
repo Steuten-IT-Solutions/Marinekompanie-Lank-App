@@ -499,7 +499,8 @@ class MKL_REST {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
+	 * Legt ein Konto mit der gewählten App-Rolle (level: gast|anwaerter|mitglied|spiess,
+	 * Standard mitglied) und zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 */
@@ -507,6 +508,19 @@ class MKL_REST {
 		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
 		if ( '' === $name ) {
 			return self::error( 'Bitte einen Namen angeben.' );
+		}
+
+		// Admin-Rechte vergibt man bewusst nur im WordPress-Backend.
+		$roles = array(
+			MKL_Roles::LEVEL_GAST      => 'subscriber',
+			MKL_Roles::LEVEL_ANWAERTER => MKL_ROLE_ANWAERTER,
+			MKL_Roles::LEVEL_MITGLIED  => MKL_ROLE_MITGLIED,
+			MKL_Roles::LEVEL_SPIESS    => MKL_ROLE_SPIESS,
+		);
+		$level = $req->get_param( 'level' );
+		$level = null === $level || '' === $level ? MKL_Roles::LEVEL_MITGLIED : $level;
+		if ( ! is_string( $level ) || ! isset( $roles[ $level ] ) ) {
+			return self::error( 'Ungültige Rolle.' );
 		}
 
 		$login = trim( (string) $req->get_param( 'username' ) );
@@ -542,7 +556,7 @@ class MKL_REST {
 				'nickname'     => $name,
 				'first_name'   => $parts[0],
 				'last_name'    => isset( $parts[1] ) ? $parts[1] : '',
-				'role'         => MKL_ROLE_MITGLIED,
+				'role'         => $roles[ $level ],
 			)
 		);
 		if ( is_wp_error( $user_id ) ) {
@@ -555,6 +569,7 @@ class MKL_REST {
 				'name'     => $name,
 				'username' => $login,
 				'email'    => $email,
+				'level'    => MKL_Roles::get_level( $user_id ),
 				'password' => $password,
 			),
 			201

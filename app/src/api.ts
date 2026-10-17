@@ -172,6 +172,7 @@ export interface CreatedUser {
   name: string;
   username: string;
   email: string;
+  level: Level;
   /** Startpasswort – wird nur in dieser einen Antwort geliefert. */
   password: string;
 }
@@ -299,7 +300,7 @@ export const api = {
     await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
     await refreshNonce();
   },
-  createUser: (data: { name: string; username?: string; email?: string }) =>
+  createUser: (data: { name: string; username?: string; email?: string; level?: Exclude<Level, 'admin'> }) =>
     request<CreatedUser>('POST', '/users', data),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
