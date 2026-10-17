@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, type MemberDetail } from '../api';
-import { navigate } from '../router';
-import { Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
+import { BackToSetup, Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
 
 /* ------------------------------------------------------------------ */
 /* Titelliste pflegen                                                  */
@@ -50,9 +49,7 @@ export function TitleList({ onToast }: { onToast: (msg: string) => void }) {
 
   return (
     <div>
-      <button className="btn btn-link back" onClick={() => navigate('spiess/raenge')}>
-        ‹ Beförderungen
-      </button>
+      <BackToSetup />
       <form className="form card" onSubmit={add}>
         <label className="field">
           <span>Neuer Titel</span>
@@ -63,7 +60,7 @@ export function TitleList({ onToast }: { onToast: (msg: string) => void }) {
         </button>
       </form>
       <p className="muted small">
-        Titel wie Kapitän oder Ehrenmitglied werden zusätzlich zum Rang angezeigt und hängen nicht von Punkten ab. Vergeben
+        Titel wie Kapitän oder Ehrenmitglied werden zusätzlich zum Dienstgrad angezeigt und hängen nicht von Punkten ab. Vergeben
         werden sie in den Mitgliedsdetails.
       </p>
       <ul className="card-list">

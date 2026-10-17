@@ -224,7 +224,7 @@ class MKL_DB {
 	}
 
 	/**
-	 * Alle gültigen Buchungen, chronologisch je Benutzer (für die Rang-Auswertung).
+	 * Alle gültigen Buchungen, chronologisch je Benutzer (für die Dienstgrad-Auswertung).
 	 *
 	 * @return array<int, array<int, array{points:int, date:string}>>
 	 */

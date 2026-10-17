@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Marinekompanie Lank – App
- * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Rängen, Titeln, Strafen und Dokumenten. Erreichbar unter /app/.
+ * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Dienstgraden, Titeln, Strafen und Dokumenten. Erreichbar unter /app/.
  * Version:           0.4.0
  * Requires at least: 6.2
  * Requires PHP:      7.4

@@ -6,8 +6,8 @@ import { Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
 const num = (n: number) => n.toLocaleString('de-DE');
 
 /**
- * Eigener Rang mit Fortschritt zum nächsten Rang und eigene Titel.
- * Ohne angelegte Ränge werden nur die Titel angezeigt, ohne Titel dann gar nichts.
+ * Eigener Dienstgrad mit Fortschritt zum nächsten Dienstgrad und eigene Titel.
+ * Ohne angelegte Dienstgrade werden nur die Titel angezeigt, ohne Titel dann gar nichts.
  */
 export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
   if (!me.rank && !me.next_rank) {
@@ -23,7 +23,7 @@ export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
   let progress = 1;
   let text: string;
   if (!me.next_rank) {
-    text = 'Höchster Rang erreicht.';
+    text = 'Höchster Dienstgrad erreicht.';
   } else if ((me.points_to_next ?? 0) <= 0) {
     text = `Punkte für ${me.next_rank.title} erreicht – die Beförderung erfolgt durch die Spieße.`;
   } else {
@@ -33,8 +33,8 @@ export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
   }
   return (
     <div className={`card rank-card ${link ? 'clickable' : ''}`} onClick={link ? () => navigate('meins/rang') : undefined}>
-      <div className="rank-label">Mein Rang</div>
-      <div className="rank-title">{me.rank ? me.rank.title : 'Noch kein Rang'}</div>
+      <div className="rank-label">Mein Dienstgrad</div>
+      <div className="rank-title">{me.rank ? me.rank.title : 'Noch kein Dienstgrad'}</div>
       <TitleBadges titles={me.titles} />
       {me.next_rank && (
         <div
@@ -49,7 +49,7 @@ export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
         </div>
       )}
       <div className="rank-next">{text}</div>
-      {link && <div className="rank-more">Rangliste und Verlauf ›</div>}
+      {link && <div className="rank-more">Dienstgrade und Verlauf ›</div>}
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function RankHistoryList({ entries, showBy = false }: { entries: RankHist
         <li key={h.id} className={`card row rank-history-${h.kind}`}>
           <div className="row-main">
             <div className="row-title">
-              {h.kind === 'befoerderung' ? 'Befördert' : 'Degradiert'} {h.to_title ? `zum Rang ${h.to_title}` : 'auf „kein Rang“'}
+              {h.kind === 'befoerderung' ? 'Befördert' : 'Degradiert'} {h.to_title ? `zum Dienstgrad ${h.to_title}` : 'auf „kein Dienstgrad“'}
             </div>
             <div className="row-sub">
               {formatDate(h.changed_at.slice(0, 10))}
@@ -78,7 +78,7 @@ export function RankHistoryList({ entries, showBy = false }: { entries: RankHist
   );
 }
 
-/** „Meins → Rang“: eigener Rang, Rangliste mit Schwellen und eigener Verlauf. */
+/** „Meins → Dienstgrad“: eigener Dienstgrad, Dienstgrade mit Schwellen und eigener Verlauf. */
 export default function Rang() {
   const { data, error, loading, reload } = useAsync(() => Promise.all([api.me(), api.ranks(), api.myRankHistory()]));
 
@@ -89,16 +89,16 @@ export default function Rang() {
   return (
     <div>
       <RankProgress me={me} />
-      <h2 className="section-title">Rangliste</h2>
+      <h2 className="section-title">Dienstgrade</h2>
       {ranks.length === 0 ? (
-        <Empty>Es sind noch keine Ränge angelegt.</Empty>
+        <Empty>Es sind noch keine Dienstgrade angelegt.</Empty>
       ) : (
         <ul className="card-list rank-list">
           {ranks.map((r) => (
             <li key={r.id} className={`card row ${me.rank?.id === r.id ? 'rank-mine' : ''}`}>
               <div className="row-main">
                 <div className="row-title">{r.title}</div>
-                {me.rank?.id === r.id && <div className="row-sub">Dein Rang</div>}
+                {me.rank?.id === r.id && <div className="row-sub">Dein Dienstgrad</div>}
               </div>
               <div className="row-value">ab {num(r.min_points)}</div>
             </li>

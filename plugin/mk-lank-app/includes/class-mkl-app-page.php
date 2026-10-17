@@ -140,6 +140,7 @@ class MKL_App_Page {
 				'canManageEvents' => current_user_can( MKL_CAP_EVENTS ),
 				'canManageDocs'   => current_user_can( MKL_CAP_DOCS ),
 				'canPromoteUsers' => current_user_can( 'promote_users' ),
+				'canEditUsers'    => current_user_can( 'edit_users' ),
 			),
 		);
 

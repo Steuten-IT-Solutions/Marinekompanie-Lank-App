@@ -7,10 +7,10 @@
  *   (Gäste nur öffentliche Bilder).
  * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
  *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
- * - Punkte/Strafen/Ränge verwalten erfordert mkl_manage (Spieß), Termine pflegen
+ * - Punkte/Strafen/Dienstgrade verwalten erfordert mkl_manage (Spieß), Termine pflegen
  *   mkl_manage_events (Admin), Dokumente pflegen mkl_manage_documents (Admin),
  *   Benutzer anlegen/Rollen ändern create_users/promote_users.
- * - Mitglieder sehen nur den eigenen Rang und Verlauf (/me…), nie den anderer.
+ * - Mitglieder sehen nur den eigenen Dienstgrad und Verlauf (/me…), nie den anderer.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -138,6 +138,9 @@ class MKL_REST {
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
+		register_rest_route( self::NS, '/accounts', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_accounts' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ) ) );
+		register_rest_route( self::NS, '/accounts/(?P<id>\d+)', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_account' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/accounts/(?P<id>\d+)/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'reset_account_password' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/points', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_points' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/points/(?P<id>\d+)', array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_points' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
@@ -179,6 +182,10 @@ class MKL_REST {
 
 	public static function can_promote_users() {
 		return self::require_cap( 'promote_users', 'Nur Administratoren dürfen Rollen ändern.' );
+	}
+
+	public static function can_edit_users() {
+		return self::require_cap( 'edit_users', 'Nur Administratoren dürfen Konten verwalten.' );
 	}
 
 	private static function require_cap( $cap, $message ) {
@@ -229,6 +236,7 @@ class MKL_REST {
 				'is_member'         => MKL_Roles::is_member(),
 				'is_spiess'         => MKL_Roles::is_spiess(),
 				'can_create_users'  => current_user_can( 'create_users' ),
+				'can_edit_users'    => current_user_can( 'edit_users' ),
 				'can_manage_events' => current_user_can( MKL_CAP_EVENTS ),
 				'can_manage_docs'   => current_user_can( MKL_CAP_DOCS ),
 				'points'           => MKL_DB::get_points_total( $user->ID ),
@@ -239,8 +247,8 @@ class MKL_REST {
 	}
 
 	/**
-	 * Rang-Angaben für das Mitglied selbst: zugewiesener Rang, nächster Rang und
-	 * fehlende Punkte. Gäste haben keinen Rang.
+	 * Dienstgrad-Angaben für das Mitglied selbst: zugewiesener Dienstgrad, nächster Dienstgrad und
+	 * fehlende Punkte. Gäste haben keinen Dienstgrad.
 	 */
 	private static function own_rank( $user_id ) {
 		if ( ! MKL_Roles::is_member( $user_id ) ) {
@@ -595,11 +603,11 @@ class MKL_REST {
 			return self::error( 'Mitglied nicht gefunden.', 404 );
 		}
 		if ( ! MKL_Roles::is_member( $id ) ) {
-			return self::error( 'Nur Mitglieder können einen Rang bekommen.' );
+			return self::error( 'Nur Mitglieder können einen Dienstgrad bekommen.' );
 		}
 		$raw = $req->get_param( 'rank_id' );
 		if ( null !== $raw && '' !== $raw && ( ! is_numeric( $raw ) || (int) $raw <= 0 ) ) {
-			return self::error( 'Ungültiger Rang.' );
+			return self::error( 'Ungültiger Dienstgrad.' );
 		}
 		$target_id = $raw ? (int) $raw : null;
 		$points    = MKL_DB::get_points_total( $id );
@@ -618,10 +626,10 @@ class MKL_REST {
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Ränge                                                               */
+	/* Dienstgrade                                                               */
 	/* ------------------------------------------------------------------ */
 
-	/** Aktive Ränge für alle Mitglieder; Spieße bekommen mit ?all=1 auch inaktive und die Anzahl Zugewiesener. */
+	/** Aktive Dienstgrade für alle Mitglieder; Spieße bekommen mit ?all=1 auch inaktive und die Anzahl Zugewiesener. */
 	public static function get_ranks( WP_REST_Request $req ) {
 		$all = $req->get_param( 'all' ) && current_user_can( MKL_CAP_MANAGE );
 		$out = MKL_Ranks::all( ! $all );
@@ -828,7 +836,7 @@ class MKL_REST {
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 *
 	 * Optional für die Übernahme bestehender Mitglieder: initial_points (Anfangsbestand,
-	 * wird als normale Buchung angelegt), initial_points_date und rank_id. Der Rang muss
+	 * wird als normale Buchung angelegt), initial_points_date und rank_id. Der Dienstgrad muss
 	 * mit dem Anfangsbestand erreichbar sein; das wird geprüft, bevor das Konto entsteht.
 	 */
 	public static function create_user( WP_REST_Request $req ) {
@@ -876,10 +884,10 @@ class MKL_REST {
 		if ( null !== $raw_rank && '' !== $raw_rank && 0 !== (int) $raw_rank ) {
 			$rank = MKL_Ranks::get( (int) $raw_rank );
 			if ( ! $rank ) {
-				return self::error( 'Rang nicht gefunden.' );
+				return self::error( 'Dienstgrad nicht gefunden.' );
 			}
 			if ( ! $rank['active'] ) {
-				return self::error( sprintf( 'Der Rang „%s“ ist deaktiviert.', $rank['title'] ) );
+				return self::error( sprintf( 'Der Dienstgrad „%s“ ist deaktiviert.', $rank['title'] ) );
 			}
 			if ( $initial < $rank['min_points'] ) {
 				return self::error( sprintf( 'Für „%s“ sind mindestens %s Punkte nötig.', $rank['title'], number_format_i18n( $rank['min_points'] ) ) );
@@ -913,7 +921,7 @@ class MKL_REST {
 		}
 		if ( $rank && ! MKL_Ranks::set_rank( $user_id, null, $rank, MKL_Ranks::KIND_PROMOTION, $initial, 'Ersteinstufung bei Anlage', get_current_user_id() ) ) {
 			self::rollback_user( $user_id );
-			return self::error( 'Der Rang konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
+			return self::error( 'Der Dienstgrad konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
 		}
 
 		return new WP_REST_Response(
@@ -927,6 +935,152 @@ class MKL_REST {
 				'rank'     => MKL_Ranks::ref( $rank ),
 			),
 			201
+		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Konten verwalten (Admin)                                            */
+	/* ------------------------------------------------------------------ */
+
+	/** Alle Konten (auch ohne Rolle) mit Benutzername und E-Mail. */
+	public static function get_accounts() {
+		$users = get_users(
+			array(
+				'orderby' => 'display_name',
+				'order'   => 'ASC',
+				'fields'  => array( 'ID', 'display_name', 'user_login', 'user_email' ),
+			)
+		);
+		$out = array();
+		foreach ( $users as $u ) {
+			$out[] = self::format_account( (int) $u->ID, $u->display_name, $u->user_login, $u->user_email );
+		}
+		return rest_ensure_response( $out );
+	}
+
+	private static function format_account( $id, $name, $login, $email ) {
+		return array(
+			'id'       => $id,
+			'name'     => $name,
+			'username' => $login,
+			'email'    => $email,
+			'level'    => MKL_Roles::get_level( $id ),
+			'is_self'  => get_current_user_id() === $id,
+			'editable' => current_user_can( 'edit_user', $id ),
+		);
+	}
+
+	/** @return WP_User|WP_Error */
+	private static function editable_account( $id ) {
+		$user = get_userdata( $id );
+		if ( ! $user ) {
+			return self::error( 'Konto nicht gefunden.', 404 );
+		}
+		if ( ! current_user_can( 'edit_user', $id ) ) {
+			return new WP_Error( 'mkl_forbidden', 'Dieses Konto darfst du nicht bearbeiten.', array( 'status' => 403 ) );
+		}
+		return $user;
+	}
+
+	/**
+	 * Name, Benutzername und/oder E-Mail eines Kontos ändern.
+	 *
+	 * WordPress sieht keine Änderung des Benutzernamens vor; er wird deshalb direkt
+	 * in der Datenbank geändert. Das Anmelde-Cookie enthält den Benutzernamen, daher
+	 * werden dabei alle Sitzungen des Kontos beendet. Den eigenen Benutzernamen kann
+	 * man so nicht ändern, um sich nicht selbst abzumelden.
+	 */
+	public static function update_account( WP_REST_Request $req ) {
+		global $wpdb;
+		$id   = (int) $req['id'];
+		$user = self::editable_account( $id );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+
+		$data = array( 'ID' => $id );
+		if ( null !== $req->get_param( 'name' ) ) {
+			$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
+			if ( '' === $name ) {
+				return self::error( 'Bitte einen Namen angeben.' );
+			}
+			$parts                = preg_split( '/\s+/', $name, 2 );
+			$data['display_name'] = $name;
+			$data['nickname']     = $name;
+			$data['first_name']   = $parts[0];
+			$data['last_name']    = isset( $parts[1] ) ? $parts[1] : '';
+		}
+		if ( null !== $req->get_param( 'email' ) ) {
+			$email = trim( (string) $req->get_param( 'email' ) );
+			if ( '' !== $email ) {
+				if ( ! is_email( $email ) ) {
+					return self::error( 'Die E-Mail-Adresse ist ungültig.' );
+				}
+				$owner = email_exists( $email );
+				if ( $owner && (int) $owner !== $id ) {
+					return self::error( 'Diese E-Mail-Adresse wird schon verwendet.' );
+				}
+			}
+			$data['user_email'] = $email;
+		}
+
+		$login = null;
+		if ( null !== $req->get_param( 'username' ) ) {
+			$login = trim( (string) $req->get_param( 'username' ) );
+			if ( $login === $user->user_login ) {
+				$login = null;
+			} elseif ( get_current_user_id() === $id ) {
+				return self::error( 'Den eigenen Benutzernamen kann man hier nicht ändern, weil man dabei abgemeldet würde.' );
+			} elseif ( '' === $login || sanitize_user( $login, true ) !== $login || strlen( $login ) > 60 ) {
+				return self::error( 'Der Benutzername darf nur Buchstaben (a–z), Ziffern sowie . _ - @ enthalten.' );
+			} elseif ( username_exists( $login ) ) {
+				return self::error( 'Dieser Benutzername ist schon vergeben.' );
+			}
+		}
+
+		if ( count( $data ) > 1 ) {
+			// Wie beim Anlegen: keine automatischen E-Mails an das Mitglied.
+			add_filter( 'send_email_change_email', '__return_false' );
+			$result = wp_update_user( $data );
+			remove_filter( 'send_email_change_email', '__return_false' );
+			if ( is_wp_error( $result ) ) {
+				return self::error( $result->get_error_message() );
+			}
+		}
+		if ( null !== $login ) {
+			$wpdb->update( $wpdb->users, array( 'user_login' => $login ), array( 'ID' => $id ), array( '%s' ), array( '%d' ) );
+			clean_user_cache( $id );
+			WP_Session_Tokens::get_instance( $id )->destroy_all();
+		}
+
+		$fresh = get_userdata( $id );
+		return rest_ensure_response( self::format_account( $id, $fresh->display_name, $fresh->user_login, $fresh->user_email ) );
+	}
+
+	/**
+	 * Setzt ein neues zufälliges Startpasswort und beendet alle Sitzungen des Kontos.
+	 * Das Passwort wird nur in dieser Antwort zurückgegeben. Das eigene Passwort
+	 * ändert man unter „Konto“.
+	 */
+	public static function reset_account_password( WP_REST_Request $req ) {
+		$id   = (int) $req['id'];
+		$user = self::editable_account( $id );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+		if ( get_current_user_id() === $id ) {
+			return self::error( 'Das eigene Passwort bitte unter „Konto“ ändern.' );
+		}
+		$password = self::readable_password( 12 );
+		wp_set_password( $password, $id );
+		WP_Session_Tokens::get_instance( $id )->destroy_all();
+		return rest_ensure_response(
+			array(
+				'id'       => $id,
+				'name'     => $user->display_name,
+				'username' => $user->user_login,
+				'password' => $password,
+			)
 		);
 	}
 

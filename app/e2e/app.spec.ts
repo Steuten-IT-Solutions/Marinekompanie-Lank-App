@@ -16,6 +16,12 @@ async function login(page: Page, user: string, password = PASSWORD) {
   await expect(page.locator('.topbar')).toBeVisible();
 }
 
+/** Öffnet „Spieß → Einrichtung → <Unterseite>“ (der Spieß-Bereich muss offen sein). */
+async function openSetup(page: Page, title: string) {
+  await page.locator('.segmented').getByRole('button', { name: 'Einrichtung' }).click();
+  await page.locator('.setup-list .row-title').getByText(title, { exact: true }).click();
+}
+
 async function shot(page: Page, name: string) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
@@ -47,7 +53,7 @@ test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await page.getByRole('button', { name: 'Spieß' }).click();
   await shot(page, '5-spiess-mitglieder');
 
-  await page.getByRole('button', { name: 'Katalog' }).click();
+  await openSetup(page, 'Punktekatalog');
   await page.getByPlaceholder('z. B. Teilnahme Schützenfest').fill('Teilnahme Schützenfest');
   await page.locator('.field.narrow input').fill('5');
   await page.getByRole('button', { name: 'Hinzufügen' }).click();
@@ -62,7 +68,7 @@ test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await expect(page.locator('.toast')).toHaveText('+5 Punkte an 2 Mitglieder vergeben');
 
   // Eine Vorlage lässt sich löschen; die vergebenen Punkte bleiben (siehe Test „Mitglied 1“).
-  await page.getByRole('button', { name: 'Katalog' }).click();
+  await openSetup(page, 'Punktekatalog');
   page.once('dialog', (d) => d.accept());
   await page.locator('.row', { hasText: 'Teilnahme Schützenfest' }).getByRole('button', { name: 'Löschen' }).click();
   await expect(page.locator('.toast')).toHaveText('Vorlage gelöscht');
@@ -94,6 +100,7 @@ test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
 test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann', async ({ page }) => {
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill('Neuer Mariner');
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
@@ -221,6 +228,7 @@ test('Gast ohne Anmeldung sieht öffentliche Termine und News', async ({ page })
 test('Admin entzieht einem Mitglied die Rolle und gibt sie zurück', async ({ page }) => {
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
   await page.locator('.row', { hasText: 'Mariner2' }).click();
   await page.locator('.role-control').getByRole('button', { name: 'Ohne Rolle' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle entzogen');
@@ -232,7 +240,7 @@ test('Admin entzieht einem Mitglied die Rolle und gibt sie zurück', async ({ pa
 
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.getByLabel('Auch Konten ohne Rolle anzeigen').check();
+  await openSetup(page, 'Mitglieder verwalten');
   await page.locator('.row', { hasText: 'Mariner2' }).click();
   await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
@@ -465,14 +473,14 @@ test('Admin lädt die Satzung hoch, Mitglieder lesen sie – auch offline', asyn
   expect((await page.request.get(docUrl)).status()).toBe(401);
 });
 
-test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den Spieß', async ({ page }) => {
+test('Dienstgrade: Anlage mit Dienstgrad, Beförderungsübersicht, Beförderung durch den Spieß', async ({ page }) => {
   const tag = Date.now().toString(36);
   const gefreiter = `Gefreiter ${tag}`;
   const maat = `Maat ${tag}`;
-  const name = `Rang Tester ${tag}`;
+  const name = `Dienstgrad Tester ${tag}`;
 
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
-  // Ränge früherer Testläufe abschalten, damit die Schwellen frei sind.
+  // Dienstgrade früherer Testläufe abschalten, damit die Schwellen frei sind.
   await page.evaluate(async () => {
     const cfg = window.MKL_CONFIG!;
     const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
@@ -483,8 +491,7 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
   });
 
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
-  await page.getByRole('button', { name: 'Rangliste bearbeiten' }).click();
+  await openSetup(page, 'Dienstgrade');
   for (const [title, min] of [
     [gefreiter, '10'],
     [maat, '30'],
@@ -492,21 +499,21 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
     await page.getByPlaceholder('z. B. Maat').fill(title);
     await page.getByLabel('Ab Punkten').fill(min);
     await page.getByRole('button', { name: 'Hinzufügen' }).click();
-    await expect(page.locator('.toast')).toHaveText('Rang angelegt');
+    await expect(page.locator('.toast')).toHaveText('Dienstgrad angelegt');
   }
   await expect(page.locator('.row', { hasText: maat })).toContainText('ab 30');
   await shot(page, '21-raenge-pflegen');
 
   // Übernahme eines bestehenden Mitglieds mit 12 Punkten als Gefreiter.
-  await page.locator('.segmented').getByRole('button', { name: 'Mitglieder' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill(name);
   await page.getByLabel('Punkte (Anfangsbestand)').fill('12');
-  await expect(page.getByLabel('Rang').locator('option')).toHaveText(['Kein Rang', `${gefreiter} (ab 10)`]);
-  await page.getByLabel('Rang').selectOption({ label: `${gefreiter} (ab 10)` });
+  await expect(page.getByLabel('Dienstgrad').locator('option')).toHaveText(['Kein Dienstgrad', `${gefreiter} (ab 10)`]);
+  await page.getByLabel('Dienstgrad').selectOption({ label: `${gefreiter} (ab 10)` });
   await shot(page, '22-mitglied-mit-rang');
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
-  await expect(page.getByTestId('new-rank')).toHaveText(`Übernommen: 12 Punkte · Rang: ${gefreiter}`);
+  await expect(page.getByTestId('new-rank')).toHaveText(`Übernommen: 12 Punkte · Dienstgrad: ${gefreiter}`);
   const username = (await page.getByTestId('new-username').textContent())!.trim();
   const password = (await page.getByTestId('new-password').textContent())!.trim();
 
@@ -520,7 +527,7 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
   await page.getByRole('button', { name: 'Punkte vergeben' }).click();
   await expect(page.locator('.toast')).toContainText('+20 Punkte');
 
-  // Das Mitglied behält seinen Rang, sieht aber, dass die Beförderung ansteht.
+  // Das Mitglied behält seinen Dienstgrad, sieht aber, dass die Beförderung ansteht.
   await login(page, username, password);
   await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.locator('.rank-title')).toHaveText(gefreiter);
@@ -529,7 +536,7 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
 
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Dienstgrade' }).click();
   const due = page.locator('.promo-list').first().locator('.row', { hasText: name });
   await expect(due).toContainText(`Schwelle für ${maat} erreicht seit`);
   await shot(page, '24-befoerderungen');
@@ -547,13 +554,13 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
   await login(page, username, password);
   await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.locator('.rank-title')).toHaveText(maat);
-  await page.locator('.segmented').getByRole('button', { name: 'Rang' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Dienstgrad' }).click();
   await expect(page.locator('.rank-mine')).toContainText(maat);
   await expect(page.locator('.rank-history-befoerderung')).toHaveCount(2);
   await expect(page.getByText('Generalversammlung')).toBeVisible();
   await shot(page, '26-meins-rangliste');
 
-  // Fremde Ränge bleiben verborgen.
+  // Fremde Dienstgrade bleiben verborgen.
   const status = await page.evaluate(async () => {
     const cfg = window.MKL_CONFIG!;
     return (await fetch(cfg.restUrl + 'promotions', { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })).status;
@@ -561,13 +568,12 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
   expect(status).toBe(403);
 });
 
-test('Titel: Spieß legt Titel an und vergibt ihn, Mitglied sieht ihn zusätzlich zum Rang', async ({ page }) => {
+test('Titel: Spieß legt Titel an und vergibt ihn, Mitglied sieht ihn zusätzlich zum Dienstgrad', async ({ page }) => {
   const title = `Ehrenkapitän ${Date.now().toString(36)}`;
 
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
-  await page.getByRole('button', { name: 'Titel bearbeiten' }).click();
+  await openSetup(page, 'Titel');
   // Die Standardtitel sind vorhanden.
   for (const t of ['Kapitän', 'Ehrenkapitän', 'Ehrenspieß', 'Ehrenmitglied']) {
     await expect(page.locator('.row-title', { hasText: new RegExp(`^${t}$`) })).toHaveCount(1);
@@ -608,4 +614,61 @@ test('Titel: Spieß legt Titel an und vergibt ihn, Mitglied sieht ihn zusätzlic
     return (await fetch(cfg.restUrl + `titles/${t.id}`, { method: 'DELETE', headers, credentials: 'same-origin' })).ok;
   }, title);
   expect(ok).toBe(true);
+});
+
+test('Einrichtung: Spieß sieht keine Kontenverwaltung, Admin ändert Namen, Benutzername und Passwort', async ({ page }) => {
+  const tag = Date.now().toString(36);
+
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Einrichtung' }).click();
+  await expect(page.locator('.setup-list .row-title')).toHaveText(['Punktekatalog', 'Dienstgrade', 'Titel']);
+  await page.goto('/app/#/spiess/einrichtung/mitglieder');
+  await expect(page.locator('.setup-list .row-title')).toHaveText(['Punktekatalog', 'Dienstgrade', 'Titel']);
+
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  // Testkonto über die API anlegen.
+  const created = await page.evaluate(async (t) => {
+    const cfg = window.MKL_CONFIG!;
+    const res = await fetch(cfg.restUrl + 'users', {
+      method: 'POST',
+      headers: { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ name: `Konto ${t}`, username: `konto.${t}` }),
+    });
+    return (await res.json()) as { id: number; username: string; password: string };
+  }, tag);
+
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
+  await shot(page, '30-mitglieder-verwalten');
+  await page.locator('.search').fill(`konto.${tag}`);
+  await page.locator('.row', { hasText: `Konto ${tag}` }).click();
+  await expect(page.locator('.member-name')).toHaveText(`Konto ${tag}`);
+
+  await page.getByLabel('Name', { exact: true }).fill(`Umbenannt ${tag}`);
+  await page.getByLabel('Benutzername').fill(`neu.${tag}`);
+  await page.getByLabel('E-Mail (optional)').fill(`neu.${tag}@example.com`);
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Änderungen speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Gespeichert');
+  await expect(page.locator('.member-name')).toHaveText(`Umbenannt ${tag}`);
+
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Passwort zurücksetzen' }).click();
+  const password = (await page.getByTestId('reset-password').textContent())!.trim();
+  expect(password).toHaveLength(12);
+  expect(password).not.toBe(created.password);
+  await shot(page, '31-konto-verwalten');
+
+  // Das eigene Konto: Benutzername gesperrt, kein Passwort-Zurücksetzen.
+  await page.goto('/app/#/spiess/einrichtung/mitglieder');
+  await page.locator('.search').fill('admin');
+  await page.locator('.row', { hasText: 'admin@example.com' }).click();
+  await expect(page.getByLabel('Benutzername')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Passwort zurücksetzen' })).toHaveCount(0);
+
+  // Anmelden nur noch mit neuem Benutzernamen und neuem Passwort.
+  await login(page, `neu.${tag}`, password);
+  await expect(page.locator('.topbar-sub')).toHaveText(`Ahoi, Umbenannt ${tag}`);
 });

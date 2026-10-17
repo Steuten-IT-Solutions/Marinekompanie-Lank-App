@@ -3,8 +3,8 @@
  * Titel: Ehrentitel und Ämter wie Kapitän, Ehrenkapitän, Ehrenspieß oder Ehrenmitglied.
  *
  * Grundsätze:
- * - Titel sind unabhängig vom Rang (Dienstgrad) und von Punkten. Sie werden zusätzlich
- *   zum Rang angezeigt.
+ * - Titel sind unabhängig vom Dienstgrad und von Punkten. Sie werden zusätzlich
+ *   zum Dienstgrad angezeigt.
  * - Die Titelliste pflegen und Titel zuweisen dürfen Spieße und Admins (mkl_manage).
  * - Ein Mitglied kann mehrere Titel haben. Zugewiesene Titel werden als User-Meta
  *   gespeichert (ein Eintrag je Titel).
