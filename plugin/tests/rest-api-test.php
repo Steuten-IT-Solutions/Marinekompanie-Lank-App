@@ -268,6 +268,9 @@ $matrix = array(
 	array( 'GET', '/promotions', array(), array( 401, 403, 403, 200, 200 ) ),
 	array( 'GET', '/me/rank-history', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'PUT', '/members/' . $m2 . '/rank', array( 'rank_id' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'GET', '/titles', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'POST', '/titles', array( 'title' => '' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'PUT', '/members/' . $m2 . '/titles', array( 'title_ids' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
 	array( 'GET', '/documents', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'POST', '/documents/satzung', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'DELETE', '/documents/unbekannt', array(), array( 401, 403, 403, 403, 404 ) ),
@@ -570,6 +573,63 @@ foreach ( array( $r1, $r2, $r3, $gast, $boss ) as $uid ) {
 	wp_delete_user( $uid );
 }
 $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Ranks::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+
+echo "Titel\n";
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Titles::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+$defaults = wp_list_pluck( MKL_Titles::all(), 'title' );
+mkl_assert( ! array_diff( MKL_Titles::DEFAULTS, $defaults ), 'Standardtitel Kapitän, Ehrenkapitän, Ehrenspieß, Ehrenmitglied sind angelegt' );
+$t1    = mkl_test_user( 'mkltest_titel1' );
+$tgast = mkl_test_user( 'mkltest_titelgast', 'ohne' );
+$tboss = mkl_test_user( 'mkltest_titeladmin', 'admin' );
+
+wp_set_current_user( $spiess );
+list( $s, $kap ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Kapitän' ) );
+mkl_assert( 201 === $s && 'Mkltest Kapitän' === $kap['title'], 'Spieß legt Titel an' );
+list( $s, $ehr ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Ehrenmitglied' ) );
+mkl_assert( 201 === $s && $ehr['sort'] > $kap['sort'], 'Neuer Titel wird hinten angehängt' );
+list( $s ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Kapitän' ) );
+mkl_assert( 400 === $s, 'Doppelter Titel → 400' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( $ehr['id'], $kap['id'], $kap['id'] ) ) );
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $t1 );
+mkl_assert( 200 === $s && array( 'Mkltest Kapitän', 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $d['titles'], 'title' ), 'Mehrere Titel zuweisen, Reihenfolge der Titelliste, ohne Doppelte' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( 999999 ) ) );
+mkl_assert( 400 === $s && 2 === count( MKL_Titles::for_user( $t1 ) ), 'Unbekannter Titel → 400, bisherige Titel bleiben' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $tgast . '/titles', array( 'title_ids' => array( $kap['id'] ) ) );
+mkl_assert( 400 === $s, 'Konto ohne Rolle bekommt keine Titel → 400' );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+$titles_by_user = wp_list_pluck( $members, 'titles', 'id' );
+mkl_assert( 2 === count( $titles_by_user[ $t1 ] ) && array() === $titles_by_user[ $m2 ], 'Mitgliederliste zeigt die Titel' );
+list( $s, $promo ) = mkl_req( 'GET', '/promotions' );
+$titles_by_user = wp_list_pluck( $promo, 'titles', 'user_id' );
+mkl_assert( 2 === count( $titles_by_user[ $t1 ] ), 'Beförderungsübersicht zeigt die Titel' );
+list( $s, $list ) = mkl_req( 'GET', '/titles' );
+$counts = wp_list_pluck( $list, 'member_count', 'id' );
+mkl_assert( 1 === $counts[ $kap['id'] ] && 1 === $counts[ $ehr['id'] ], 'Titelliste mit Anzahl der Mitglieder' );
+list( $s ) = mkl_req( 'DELETE', '/titles/' . $kap['id'] );
+mkl_assert( 400 === $s && MKL_Titles::get( $kap['id'] ), 'Zugewiesenen Titel löschen → 400' );
+list( $s, $d ) = mkl_req( 'PATCH', '/titles/' . $kap['id'], array( 'title' => 'Mkltest Ehrenkapitän' ) );
+mkl_assert( 200 === $s && 'Mkltest Ehrenkapitän' === $d['title'], 'Titel umbenennen' );
+list( $s ) = mkl_req( 'PATCH', '/titles/' . $kap['id'], array( 'title' => 'Mkltest Ehrenmitglied' ) );
+mkl_assert( 400 === $s, 'Umbenennen auf vorhandenen Titel → 400' );
+
+wp_set_current_user( $t1 );
+list( $s, $me ) = mkl_req( 'GET', '/me' );
+mkl_assert( array( 'Mkltest Ehrenkapitän', 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $me['titles'], 'title' ), 'Mitglied sieht eigene Titel in /me' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array() ) );
+mkl_assert( 403 === $s, 'Mitglied darf sich keine Titel geben → 403' );
+
+wp_set_current_user( $tboss );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( $ehr['id'] ) ) );
+mkl_assert( 200 === $s && array( 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $d['titles'], 'title' ), 'Admin ändert Titel' );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array() ) );
+mkl_assert( 200 === $s && array() === $d['titles'] && ! get_user_meta( $t1, MKL_Titles::META, false ), 'Alle Titel entfernen' );
+list( $s ) = mkl_req( 'DELETE', '/titles/' . $kap['id'] );
+mkl_assert( 200 === $s && ! MKL_Titles::get( $kap['id'] ), 'Nicht zugewiesenen Titel löschen' );
+
+foreach ( array( $t1, $tgast, $tboss ) as $uid ) {
+	wp_delete_user( $uid );
+}
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Titles::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
 
 echo "Dokumente (Satzung)\n";
 $doc_admin = mkl_test_user( 'mkltest_docadmin', 'admin' );

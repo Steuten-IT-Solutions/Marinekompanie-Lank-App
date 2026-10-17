@@ -1,13 +1,24 @@
 import { api, type Me, type RankHistoryEntry } from '../api';
 import { formatDate } from '../format';
 import { navigate } from '../router';
-import { Empty, ErrorBox, Loading, useAsync } from '../ui';
+import { Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
 
 const num = (n: number) => n.toLocaleString('de-DE');
 
-/** Eigener Rang mit Fortschritt zum nächsten Rang. Ohne angelegte Ränge wird nichts angezeigt. */
+/**
+ * Eigener Rang mit Fortschritt zum nächsten Rang und eigene Titel.
+ * Ohne angelegte Ränge werden nur die Titel angezeigt, ohne Titel dann gar nichts.
+ */
 export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
-  if (!me.rank && !me.next_rank) return null;
+  if (!me.rank && !me.next_rank) {
+    if (me.titles.length === 0) return null;
+    return (
+      <div className="card rank-card">
+        <div className="rank-label">{me.titles.length === 1 ? 'Mein Titel' : 'Meine Titel'}</div>
+        <TitleBadges titles={me.titles} />
+      </div>
+    );
+  }
   const base = me.rank?.min_points ?? 0;
   let progress = 1;
   let text: string;
@@ -24,6 +35,7 @@ export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
     <div className={`card rank-card ${link ? 'clickable' : ''}`} onClick={link ? () => navigate('meins/rang') : undefined}>
       <div className="rank-label">Mein Rang</div>
       <div className="rank-title">{me.rank ? me.rank.title : 'Noch kein Rang'}</div>
+      <TitleBadges titles={me.titles} />
       {me.next_rank && (
         <div
           className="progress"

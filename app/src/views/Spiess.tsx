@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
 import { caps, formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
-import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
+import { Empty, ErrorBox, Loading, MemberPicker, StatCard, TitleBadges, useAsync } from '../ui';
 import { Promotions, RankControl, RankList } from './SpiessRaenge';
+import { TitleControl, TitleList } from './SpiessTitel';
 import { PenaltyRow } from './Strafen';
 
 type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'raenge' | 'katalog';
@@ -44,7 +45,7 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
       ) : active === 'strafe' ? (
         <GivePenalty key={path.join('/')} preselect={preselect} onToast={onToast} />
       ) : active === 'raenge' ? (
-        arg === 'liste' ? <RankList onToast={onToast} /> : <Promotions />
+        arg === 'liste' ? <RankList onToast={onToast} /> : arg === 'titel' ? <TitleList onToast={onToast} /> : <Promotions />
       ) : active === 'katalog' ? (
         <Catalog onToast={onToast} />
       ) : (
@@ -100,6 +101,7 @@ function Members() {
               <div className="row-title">
                 {m.name}{' '}
                 {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{caps(LEVEL_LABELS[m.level])}</span>}
+                <TitleBadges titles={m.titles} />
               </div>
               <div className="row-sub">
                 {m.rank && <>{m.rank.title} · </>}
@@ -177,6 +179,7 @@ function MemberDetailView({
           onToast={onToast}
         />
       )}
+      {m.level !== 'ohne' && <TitleControl member={m} onChanged={reload} onToast={onToast} />}
 
       <h3 className="section-title">Strafen</h3>
       {m.penalties.length === 0 ? (

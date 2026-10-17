@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, type MemberDetail, type Promotion, type Rank } from '../api';
 import { formatDate } from '../format';
 import { navigate } from '../router';
-import { Empty, ErrorBox, Loading, useAsync } from '../ui';
+import { Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
 import { RankHistoryList } from './Rang';
 
 const num = (n: number) => n.toLocaleString('de-DE');
@@ -24,9 +24,14 @@ export function Promotions() {
   const [list, ranks] = data!;
 
   const editButton = (
-    <button className="btn btn-secondary btn-block manage-events" onClick={() => navigate('spiess/raenge/liste')}>
-      Rangliste bearbeiten
-    </button>
+    <div className="button-row manage-events">
+      <button className="btn btn-secondary" onClick={() => navigate('spiess/raenge/liste')}>
+        Rangliste bearbeiten
+      </button>
+      <button className="btn btn-secondary" onClick={() => navigate('spiess/raenge/titel')}>
+        Titel bearbeiten
+      </button>
+    </div>
   );
   if (ranks.length === 0) {
     return (
@@ -45,7 +50,9 @@ export function Promotions() {
   const row = (p: Promotion) => (
     <li key={p.user_id} className="card row clickable" onClick={() => navigate(`spiess/mitglied/${p.user_id}`)}>
       <div className="row-main">
-        <div className="row-title">{p.name}</div>
+        <div className="row-title">
+          {p.name} <TitleBadges titles={p.titles} />
+        </div>
         <div className="row-sub">
           {p.rank ? p.rank.title : 'Kein Rang'} · {num(p.points)} Punkte
         </div>

@@ -553,3 +553,52 @@ test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den S
   });
   expect(status).toBe(403);
 });
+
+test('Titel: Spieß legt Titel an und vergibt ihn, Mitglied sieht ihn zusätzlich zum Rang', async ({ page }) => {
+  const title = `Ehrenkapitän ${Date.now().toString(36)}`;
+
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
+  await page.getByRole('button', { name: 'Titel bearbeiten' }).click();
+  // Die Standardtitel sind vorhanden.
+  for (const t of ['Kapitän', 'Ehrenkapitän', 'Ehrenspieß', 'Ehrenmitglied']) {
+    await expect(page.locator('.row-title', { hasText: new RegExp(`^${t}$`) })).toHaveCount(1);
+  }
+  await page.getByLabel('Neuer Titel').fill(title);
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Titel angelegt');
+  await expect(page.locator('.row', { hasText: title })).toContainText('0 Mitglieder');
+  await shot(page, '27-titel-pflegen');
+
+  await page.locator('.segmented').getByRole('button', { name: 'Mitglieder' }).click();
+  await page.locator('.row', { hasText: 'Mariner2' }).click();
+  await page.getByRole('button', { name: 'Titel ändern' }).click();
+  await page.locator('.title-picker').getByLabel(title).check();
+  await page.locator('.title-control').getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText(`Titel gespeichert: ${title}`);
+  await expect(page.locator('.title-control .badge-title')).toHaveText(title);
+  await shot(page, '28-mitglied-titel');
+
+  await page.getByRole('button', { name: '‹ Alle Mitglieder' }).click();
+  await expect(page.locator('.row', { hasText: 'Mariner2' }).locator('.badge-title')).toHaveText(title);
+
+  await login(page, 'mariner2');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.rank-card .badge-title')).toHaveText(title);
+  await shot(page, '29-meins-titel');
+
+  // Aufräumen: Titel wieder entfernen und löschen.
+  await login(page, 'spiess');
+  const ok = await page.evaluate(async (name) => {
+    const cfg = window.MKL_CONFIG!;
+    const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
+    const get = async (path: string) => (await fetch(cfg.restUrl + path, { headers, credentials: 'same-origin' })).json();
+    const members = (await get('members')) as { id: number; name: string }[];
+    const m = members.find((x) => x.name === 'Mariner2')!;
+    await fetch(cfg.restUrl + `members/${m.id}/titles`, { method: 'PUT', headers, credentials: 'same-origin', body: JSON.stringify({ title_ids: [] }) });
+    const t = ((await get('titles')) as { id: number; title: string }[]).find((x) => x.title === name)!;
+    return (await fetch(cfg.restUrl + `titles/${t.id}`, { method: 'DELETE', headers, credentials: 'same-origin' })).ok;
+  }, title);
+  expect(ok).toBe(true);
+});

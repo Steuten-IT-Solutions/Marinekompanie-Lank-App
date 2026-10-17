@@ -7,16 +7,16 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
   - Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
-- **Meins:** eigene Punkte (mit Punktekatalog), eigener Rang mit Rangliste und Verlauf, Strafen (Geldbeträge, offen/bezahlt).
+- **Meins:** eigene Punkte (mit Punktekatalog), eigener Rang mit Rangliste und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt).
 - **Dokumente:** die Satzung als PDF, nur für Mitglieder, auch offline lesbar.
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Ränge pflegen, Mitglieder befördern und degradieren.
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Ränge pflegen, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben.
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog und Rangliste pflegen, befördern und degradieren |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog, Rangliste und Titel pflegen, befördern und degradieren, Titel vergeben |
 | **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Satzung |
 
 **Gäste** sind Besucher **ohne Anmeldung** und haben keine Rolle. Sie sehen nur öffentliche Termine, News und öffentliche Galeriebilder.
@@ -56,6 +56,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
   includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
   includes/class-mkl-ranks.php     Rangliste, zugewiesene Ränge, Beförderungsregeln, Verlauf
+  includes/class-mkl-titles.php    Titel (Kapitän, Ehrenkapitän, …) und ihre Zuweisung
   includes/class-mkl-documents.php Dokumente (Satzung): geschützte Ablage und Auslieferung
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
@@ -125,6 +126,8 @@ scripts/                   Build- und Test-Skripte
    - Die Regeln gelten auch für Admins.
    - **Spieß → Ränge** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
    - Mitglieder sehen unter **Meins** ihren eigenen Rang, die fehlenden Punkte bis zum nächsten Rang, die Rangliste und ihren Verlauf, aber nicht die Ränge anderer.
+
+   **Titel:** Kapitän, Ehrenkapitän, Ehrenspieß und Ehrenmitglied sind schon angelegt. Weitere Titel, Umbenennen und Löschen unter **Spieß → Ränge → „Titel bearbeiten“**. Vergeben werden Titel in den Mitgliedsdetails unter **„Titel ändern“**; ein Mitglied kann mehrere Titel haben. Titel hängen nicht von Punkten ab und werden zusätzlich zum Rang angezeigt: in der Mitgliederliste, in der Beförderungsübersicht und beim Mitglied selbst unter **Meins**. Das dürfen Spieße und Admins. Zugewiesene Titel lassen sich erst löschen, wenn sie niemand mehr hat.
 10. **Satzung hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“** die PDF hochladen und den Stand angeben (höchstens 20 MB). Eine neue Fassung ersetzt die alte.
     - Die PDF liegt in `wp-content/uploads/mkl-private/` mit zufälligem Dateinamen und wird nur über `/app/dokument/satzung` an angemeldete Mitglieder ausgeliefert.
     - Der direkte Abruf der Datei ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
@@ -173,7 +176,7 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 ### Tests
 
 ```bash
-# REST-API: Rechte, Validierung, Summen, Ränge, Dokumente, ICS-Parser
+# REST-API: Rechte, Validierung, Summen, Ränge, Titel, Dokumente, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
 # Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)

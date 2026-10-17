@@ -56,6 +56,19 @@ export interface Me {
   next_rank: RankRef | null;
   /** Fehlende Punkte bis zum nächsten Rang; ≤ 0 = Schwelle erreicht, null = höchster Rang. */
   points_to_next: number | null;
+  /** Ehrentitel und Ämter, z. B. Kapitän (vergeben die Spieße, zusätzlich zum Rang). */
+  titles: TitleRef[];
+}
+
+export interface TitleRef {
+  id: number;
+  title: string;
+}
+
+export interface Title extends TitleRef {
+  sort: number;
+  /** Anzahl der Mitglieder mit diesem Titel. */
+  member_count: number;
 }
 
 export interface RankRef {
@@ -83,6 +96,7 @@ export interface Promotion extends RankStatus {
   user_id: number;
   name: string;
   points: number;
+  titles: TitleRef[];
 }
 
 export interface RankHistoryEntry {
@@ -215,6 +229,7 @@ export interface MemberSummary {
   points: number;
   open_cents: number;
   rank: RankRef | null;
+  titles: TitleRef[];
 }
 
 export interface MemberDetail extends Omit<MemberSummary, 'rank'> {
@@ -384,6 +399,14 @@ export const api = {
     request<Rank>('PATCH', `/ranks/${id}`, data),
   deleteRank: (id: number) => request<{ deleted: boolean }>('DELETE', `/ranks/${id}`),
   promotions: () => request<Promotion[]>('GET', '/promotions'),
+
+  titles: () => request<Title[]>('GET', '/titles'),
+  createTitle: (title: string) => request<Title>('POST', '/titles', { title }),
+  renameTitle: (id: number, title: string) => request<Title>('PATCH', `/titles/${id}`, { title }),
+  deleteTitle: (id: number) => request<{ deleted: boolean }>('DELETE', `/titles/${id}`),
+  /** Ersetzt die Titel eines Mitglieds; [] entfernt alle. */
+  setTitles: (id: number, title_ids: number[]) =>
+    request<{ titles: TitleRef[] }>('PUT', `/members/${id}/titles`, { title_ids }),
   /** Befördern/Degradieren; rank_id null = kein Rang. */
   setRank: (id: number, rank_id: number | null, reason: string) =>
     request<{ rank_status: RankStatus; rank_history: RankHistoryEntry[] }>('PUT', `/members/${id}/rank`, {

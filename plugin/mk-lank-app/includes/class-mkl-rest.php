@@ -95,6 +95,22 @@ class MKL_REST {
 				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ),
 			)
 		);
+		register_rest_route(
+			self::NS,
+			'/titles',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_titles' ), 'permission_callback' => $manage ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_title' ), 'permission_callback' => $manage ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/titles/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_title' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_title' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
 		register_rest_route( self::NS, '/promotions', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_promotions' ), 'permission_callback' => $manage ) );
 
 		register_rest_route( self::NS, '/documents', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_documents' ), 'permission_callback' => $member ) );
@@ -111,6 +127,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/rank', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/titles', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_titles' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
@@ -209,6 +226,7 @@ class MKL_REST {
 				'can_manage_docs'   => current_user_can( MKL_CAP_DOCS ),
 				'points'           => MKL_DB::get_points_total( $user->ID ),
 				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
+				'titles'           => MKL_Titles::for_user( $user->ID ),
 			) + self::own_rank( $user->ID )
 		);
 	}
@@ -486,8 +504,10 @@ class MKL_REST {
 		foreach ( MKL_Ranks::all( false ) as $r ) {
 			$ranks[ $r['id'] ] = $r;
 		}
-		$assigned = MKL_Ranks::rank_ids_by_user();
-		$out      = array();
+		$assigned  = MKL_Ranks::rank_ids_by_user();
+		$titles    = MKL_Titles::all();
+		$title_ids = MKL_Titles::title_ids_by_user();
+		$out       = array();
 		foreach ( self::member_users() as $u ) {
 			$id = (int) $u->ID;
 			if ( ! $all && ! MKL_Roles::is_member( $id ) ) {
@@ -501,6 +521,7 @@ class MKL_REST {
 				'points'     => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
 				'open_cents' => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
 				'rank'       => isset( $assigned[ $id ], $ranks[ $assigned[ $id ] ] ) ? MKL_Ranks::ref( $ranks[ $assigned[ $id ] ] ) : null,
+				'titles'     => MKL_Titles::for_user( $id, isset( $title_ids[ $id ] ) ? $title_ids[ $id ] : array(), $titles ),
 			);
 		}
 		return rest_ensure_response( $out );
@@ -523,8 +544,31 @@ class MKL_REST {
 				'penalties'    => MKL_DB::get_penalties_for_user( $user->ID ),
 				'rank_status'  => MKL_Ranks::status_for_user( $user->ID ),
 				'rank_history' => MKL_Ranks::history( $user->ID ),
+				'titles'       => MKL_Titles::for_user( $user->ID ),
 			)
 		);
+	}
+
+	/**
+	 * Ersetzt die Titel eines Mitglieds (Spieße und Admins). title_ids = [] entfernt alle.
+	 */
+	public static function set_member_titles( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( ! MKL_Roles::is_member( $id ) ) {
+			return self::error( 'Nur Mitglieder können Titel bekommen.' );
+		}
+		$raw = $req->get_param( 'title_ids' );
+		if ( ! is_array( $raw ) ) {
+			return self::error( 'Ungültige Titel.' );
+		}
+		$result = MKL_Titles::set_for_user( $id, $raw );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'titles' => MKL_Titles::for_user( $id ) ) );
 	}
 
 	/**
@@ -618,6 +662,51 @@ class MKL_REST {
 		return rest_ensure_response( array( 'deleted' => true ) );
 	}
 
+	/* ------------------------------------------------------------------ */
+	/* Titel                                                               */
+	/* ------------------------------------------------------------------ */
+
+	/** Titelliste mit Anzahl der Mitglieder, denen der Titel zugewiesen ist. */
+	public static function get_titles() {
+		$by_user = MKL_Titles::title_ids_by_user();
+		$out     = MKL_Titles::all();
+		foreach ( $out as &$t ) {
+			$count = 0;
+			foreach ( $by_user as $ids ) {
+				if ( in_array( $t['id'], $ids, true ) ) {
+					$count++;
+				}
+			}
+			$t['member_count'] = $count;
+		}
+		unset( $t );
+		return rest_ensure_response( $out );
+	}
+
+	public static function create_title( WP_REST_Request $req ) {
+		$id = MKL_Titles::insert( sanitize_text_field( (string) $req->get_param( 'title' ) ) );
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		return new WP_REST_Response( MKL_Titles::get( $id ), 201 );
+	}
+
+	public static function update_title( WP_REST_Request $req ) {
+		$result = MKL_Titles::rename( (int) $req['id'], sanitize_text_field( (string) $req->get_param( 'title' ) ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( MKL_Titles::get( (int) $req['id'] ) );
+	}
+
+	public static function delete_title( WP_REST_Request $req ) {
+		$result = MKL_Titles::delete( (int) $req['id'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
 	/** Beförderungsübersicht für die Spieße (Mitglieder, Spieße und Admins, keine Gäste). */
 	public static function get_promotions() {
 		$users = array_values(
@@ -628,7 +717,14 @@ class MKL_REST {
 				}
 			)
 		);
-		return rest_ensure_response( MKL_Ranks::promotions( $users ) );
+		$titles    = MKL_Titles::all();
+		$title_ids = MKL_Titles::title_ids_by_user();
+		$out       = MKL_Ranks::promotions( $users );
+		foreach ( $out as &$p ) {
+			$p['titles'] = MKL_Titles::for_user( $p['user_id'], isset( $title_ids[ $p['user_id'] ] ) ? $title_ids[ $p['user_id'] ] : array(), $titles );
+		}
+		unset( $p );
+		return rest_ensure_response( $out );
 	}
 
 	private static function parse_min_points( $raw ) {

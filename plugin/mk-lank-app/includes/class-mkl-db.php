@@ -160,6 +160,16 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$titles = self::table( 'titles' );
+		dbDelta(
+			"CREATE TABLE $titles (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  sort int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
@@ -177,6 +187,10 @@ class MKL_DB {
 		MKL_Roles::install();
 		if ( $installed && version_compare( $installed, '2', '<' ) ) {
 			MKL_Roles::migrate_subscribers_to_members();
+		}
+		// Standardtitel nur einmal anlegen, damit gelöschte Titel nicht wiederkommen.
+		if ( ! $installed || version_compare( $installed, '5', '<' ) ) {
+			MKL_Titles::seed_defaults();
 		}
 	}
 

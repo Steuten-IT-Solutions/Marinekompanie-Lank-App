@@ -465,6 +465,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .promo-missing small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.75rem; color: var(--muted); }
 .rank-form { margin-top: 12px; }
 .rank-control .section-title { margin-top: 18px; }
+.button-row.manage-events { margin-top: 0; }
+
+/* Titel (z. B. Ehrenkapitän), zusätzlich zum Rang */
+.title-badges { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; vertical-align: 2px; }
+.row-title .title-badges { margin-left: 6px; }
+.title-control { padding: 16px 18px; margin: 14px 0; border-left: 4px solid var(--brass); }
+.rank-card .title-badges, .title-control .title-badges { display: flex; margin: 2px 0 8px; }
+.badge-title { background: transparent; color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--brass); }
+.title-picker { border: 1.5px solid var(--line-strong); border-radius: 12px; margin-bottom: 4px; }
+.title-edit { margin-top: 8px; }
 .fieldset { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .fieldset legend { padding: 0 6px; font-family: var(--font-head); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85rem; color: var(--accent-text); }
 
