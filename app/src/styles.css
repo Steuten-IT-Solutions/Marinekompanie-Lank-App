@@ -352,6 +352,9 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 .role-control { margin: -4px 0 16px; }
 .field-label { display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .segmented.small { margin-bottom: 0; }
+.segmented button.pending { animation: pending-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes pending-pulse { from { opacity: 1; } to { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .segmented button.pending { animation: none; opacity: 0.8; } }
 .member-level { margin: -8px 0 14px; }
 .manage-events, .add-event { margin-bottom: 16px; }
 .event-form { margin-top: 12px; }
