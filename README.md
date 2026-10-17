@@ -31,6 +31,14 @@ Die App ist eine **Progressive Web App (PWA)**. Sie wird über den Browser insta
 | iPhone/iPad | In **Safari** `https://marinekompanie-lank.de/app/` öffnen → **Teilen** → **Zum Home-Bildschirm** |
 | Android | In **Chrome** die Adresse öffnen → Menü **⋮** → **App installieren** |
 
+Die App hilft beim Installieren selbst, damit es auch ohne Smartphone-Erfahrung klappt:
+
+- Oben in der App erscheint ein Hinweis **„Die App aufs Handy holen“**. Er verschwindet, sobald die App installiert ist oder jemand ihn wegklickt.
+- **Android (Chrome, Edge, Samsung Internet):** Bietet der Browser die Installation an, reicht ein Tipp auf **„Installieren“**. Danach muss man nur noch bestätigen.
+- **iPhone/iPad:** Apple erlaubt Webseiten keinen Installationsknopf. Deshalb führt **„So geht's“** zu einer bebilderten Schritt-für-Schritt-Anleitung (`/app/#/installieren`). Sie zeigt auch die neuere Safari-Leiste mit „•••“ (iOS 26).
+- Die Anleitung hat eine eigene Adresse zum Weitergeben: **`https://marinekompanie-lank.de/app/installieren/`**. Diesen Link kann man per WhatsApp, E-Mail oder Rundschreiben verschicken. Auf der Anleitung selbst gibt es dafür den Knopf **„Link teilen“**, außerdem erreicht man sie über **Konto → App installieren**.
+- Wurde der Link in Facebook oder Instagram geöffnet, wo man nicht installieren kann, erscheint ein Hinweis mit einem Knopf zum Kopieren der Adresse.
+
 Hinweis für das iPhone: Die installierte App hat ihren eigenen Speicher, getrennt von Safari. Man meldet sich also einmal direkt in der App an. Mit „Angemeldet bleiben“ hält die Anmeldung 14 Tage.
 
 ## Aufbau

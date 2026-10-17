@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS } from '../api';
+import { isStandalone } from '../install';
+import { navigate } from '../router';
 
 const MIN_LENGTH = 8;
 
@@ -37,6 +39,16 @@ export default function Konto({ onToast, onLogout }: { onToast: (msg: string) =>
         <h2 className="account-name">{config?.user?.name}</h2>
         <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'ohne']}</p>
       </div>
+
+      {!isStandalone() && (
+        <div className="card account-card">
+          <h3>App aufs Handy holen</h3>
+          <p className="muted small">Mit dem Wappen auf dem Startbildschirm – Schritt für Schritt erklärt.</p>
+          <button className="btn btn-secondary btn-block install-konto" onClick={() => navigate('installieren')}>
+            App installieren
+          </button>
+        </div>
+      )}
 
       <form className="form card account-card" onSubmit={submit}>
         <h3>Passwort ändern</h3>
