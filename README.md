@@ -8,7 +8,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog), eigener Rang mit Rangliste und Verlauf, Strafen (Geldbeträge, offen/bezahlt).
-- **Dokumente:** die Satzung als PDF, nur für Mitglieder, auch offline lesbar.
+- **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
 - **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Ränge pflegen, Mitglieder befördern und degradieren.
 
 ### Rollen
@@ -17,7 +17,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 |---|---|
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
 | **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog und Rangliste pflegen, befördern und degradieren |
-| **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Satzung |
+| **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
 
 **Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
 
@@ -64,7 +64,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
   includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
   includes/class-mkl-ranks.php     Rangliste, zugewiesene Ränge, Beförderungsregeln, Verlauf
-  includes/class-mkl-documents.php Dokumente (Satzung): geschützte Ablage und Auslieferung
+  includes/class-mkl-documents.php Dokumente und Kategorien: Prüfung, geschützte Ablage, Auslieferung
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
   includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
@@ -133,11 +133,16 @@ scripts/                   Build- und Test-Skripte
    - Die Regeln gelten auch für Admins.
    - **Spieß → Ränge** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
    - Mitglieder sehen unter **Meins** ihren eigenen Rang, die fehlenden Punkte bis zum nächsten Rang, die Rangliste und ihren Verlauf, aber nicht die Ränge anderer.
-10. **Satzung hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“** die PDF hochladen und den Stand angeben (höchstens 20 MB). Eine neue Fassung ersetzt die alte.
-    - Die PDF liegt in `wp-content/uploads/mkl-private/` mit zufälligem Dateinamen und wird nur über `/app/dokument/satzung` an angemeldete Mitglieder ausgeliefert.
-    - Der direkte Abruf der Datei ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
-    - Ist die PDF größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
-    - Die App speichert die Satzung beim Öffnen von „Dokumente“ auf dem Gerät, damit sie offline lesbar ist. Beim Abmelden wird sie dort wieder gelöscht.
+10. **Dokumente hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“**.
+    - Zuerst bei Bedarf **Kategorien** anlegen, z. B. „Satzung & Ordnungen“, „Protokolle“, „Formulare“. Dokumente ohne Kategorie stehen unter „Weitere Dokumente“.
+    - Dann Dokumente **hochladen**: Datei, Titel, Kategorie, Stand und **Sichtbarkeit** („Alle Mitglieder“ oder „Nur Spieße“; Admins sehen alles).
+    - Erlaubt sind PDF, Word (`.doc`, `.docx`), Excel (`.xls`, `.xlsx`), PowerPoint (`.ppt`, `.pptx`), OpenDocument (`.odt`, `.ods`, `.odp`) sowie JPG- und PNG-Bilder, höchstens 20 MB. Der Server prüft Dateiendung und Dateiinhalt. PDFs und Bilder zeigt die App direkt an, Office-Dateien lassen sich herunterladen.
+    - **„Neue Fassung“** ersetzt die Datei eines Dokuments; Titel, Kategorie und Sichtbarkeit bleiben. Ältere Fassungen werden nicht aufbewahrt.
+    - Eine Satzung aus Version 0.4 wird beim Update automatisch als Dokument „Satzung“ übernommen.
+    - Die Dateien liegen in `wp-content/uploads/mkl-private/` mit zufälligem Dateinamen und werden nur über `/app/dokument/<Nummer>` an berechtigte, angemeldete Mitglieder ausgeliefert.
+    - Der direkte Abruf der Dateien ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
+    - Ist eine Datei größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
+    - **Offline:** Was ein Mitglied einmal geöffnet oder heruntergeladen hat, speichert die App auf dem Gerät; es ist danach auch ohne Netz lesbar. Vorab wird nichts geladen. Beim Abmelden wird alles wieder gelöscht.
 11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Ränge und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.

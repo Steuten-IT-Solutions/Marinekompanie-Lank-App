@@ -228,7 +228,7 @@ export default function App() {
           (path[1] === 'verwalten' && user?.canManageDocs ? (
             <DokumenteVerwalten onToast={showToast} />
           ) : (
-            <Dokumente docKey={path[1] === 'verwalten' ? undefined : path[1]} onToast={showToast} />
+            <Dokumente docId={/^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined} onToast={showToast} />
           ))}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
         {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}

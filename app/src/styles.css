@@ -488,3 +488,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   .segmented button { white-space: nowrap; padding: 9px 2px; font-size: 0.74rem; letter-spacing: 0.02em; }
   .tabbar button { letter-spacing: 0.04em; }
 }
+
+/* Dokumente mit Kategorien und verschiedenen Dateitypen */
+.doc-group + .doc-group { margin-top: 6px; }
+.doc-icon-bild { color: var(--navy); }
+.doc-icon-datei { color: var(--brass-dark); }
+.button-row.single { grid-template-columns: 1fr; }
+.doc-admin-group + .doc-admin-group { margin-top: 10px; }
+.doc-edit { padding: 14px 16px; }

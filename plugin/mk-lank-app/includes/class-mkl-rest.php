@@ -104,14 +104,30 @@ class MKL_REST {
 		);
 		register_rest_route( self::NS, '/promotions', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_promotions' ), 'permission_callback' => $manage ) );
 
-		register_rest_route( self::NS, '/documents', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_documents' ), 'permission_callback' => $member ) );
 		register_rest_route(
 			self::NS,
-			'/documents/(?P<key>[a-z]+)',
+			'/documents',
 			array(
-				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'upload_document' ), 'permission_callback' => $docs ),
-				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_document' ), 'permission_callback' => $docs ),
-				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_document' ), 'permission_callback' => $docs ),
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_documents' ), 'permission_callback' => $member ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_document' ), 'permission_callback' => $docs ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/documents/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_document' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_document' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+			)
+		);
+		register_rest_route( self::NS, '/documents/(?P<id>\d+)/file', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'replace_document_file' ), 'permission_callback' => $docs, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/document-categories', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_document_category' ), 'permission_callback' => $docs ) );
+		register_rest_route(
+			self::NS,
+			'/document-categories/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_document_category' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_document_category' ), 'permission_callback' => $docs, 'args' => $id_arg ),
 			)
 		);
 
@@ -681,57 +697,90 @@ class MKL_REST {
 	/* Dokumente                                                           */
 	/* ------------------------------------------------------------------ */
 
+	/** Dokumente, die das Konto sehen darf, und alle Kategorien. */
 	public static function get_documents() {
-		return rest_ensure_response( MKL_Documents::all() );
+		return rest_ensure_response(
+			array(
+				'categories' => MKL_Documents::categories(),
+				'documents'  => MKL_Documents::visible(),
+			)
+		);
 	}
 
 	/**
-	 * Neue Fassung hochladen: Der Inhalt der PDF kommt direkt als Request-Body
-	 * (Content-Type: application/pdf), der Stand als ?date=JJJJ-MM-TT.
+	 * Neues Dokument: Die Datei kommt direkt als Request-Body, die Angaben als
+	 * Query-Parameter: filename, title, category_id, date (JJJJ-MM-TT), visibility.
 	 */
-	public static function upload_document( WP_REST_Request $req ) {
-		$key = (string) $req['key'];
-		if ( ! MKL_Documents::exists( $key ) ) {
-			return self::error( 'Unbekanntes Dokument.', 404 );
+	public static function create_document( WP_REST_Request $req ) {
+		$body = self::upload_body( $req );
+		if ( is_wp_error( $body ) ) {
+			return $body;
 		}
-		$type = $req->get_content_type();
-		if ( ! $type || 'application/pdf' !== strtolower( $type['value'] ) ) {
-			return self::error( 'Bitte eine PDF-Datei hochladen.' );
-		}
-		$date = self::parse_date( $req->get_param( 'date' ) );
-		if ( is_wp_error( $date ) ) {
-			return $date;
-		}
-		$doc = MKL_Documents::store( $key, $req->get_body(), $date );
-		if ( is_wp_error( $doc ) ) {
-			return $doc;
-		}
-		return new WP_REST_Response( $doc, 201 );
+		$doc = MKL_Documents::create(
+			array(
+				'title'       => $req->get_param( 'title' ),
+				'category_id' => $req->get_param( 'category_id' ),
+				'date'        => $req->get_param( 'date' ),
+				'visibility'  => $req->get_param( 'visibility' ),
+			),
+			$body,
+			(string) $req->get_param( 'filename' ),
+			get_current_user_id()
+		);
+		return is_wp_error( $doc ) ? $doc : new WP_REST_Response( $doc, 201 );
 	}
 
-	/** Nur den Stand ändern. */
+	/** Neue Fassung: ersetzt die Datei, die Angaben bleiben. */
+	public static function replace_document_file( WP_REST_Request $req ) {
+		$body = self::upload_body( $req );
+		if ( is_wp_error( $body ) ) {
+			return $body;
+		}
+		$doc = MKL_Documents::replace_file( (int) $req['id'], $body, (string) $req->get_param( 'filename' ), get_current_user_id() );
+		return is_wp_error( $doc ) ? $doc : rest_ensure_response( $doc );
+	}
+
+	/** Der Request-Body ist die Datei; JSON und Formulare würde WordPress als Parameter lesen. */
+	private static function upload_body( WP_REST_Request $req ) {
+		$type = $req->get_content_type();
+		if ( ! $type || in_array( strtolower( $type['value'] ), array( 'application/json', 'application/x-www-form-urlencoded', 'multipart/form-data' ), true ) ) {
+			return self::error( 'Bitte die Datei direkt als Inhalt der Anfrage senden.' );
+		}
+		return $req->get_body();
+	}
+
+	/** Titel, Kategorie, Stand und Sichtbarkeit ändern (nur übergebene Felder). */
 	public static function update_document( WP_REST_Request $req ) {
-		$key = (string) $req['key'];
-		if ( ! MKL_Documents::exists( $key ) ) {
-			return self::error( 'Unbekanntes Dokument.', 404 );
+		$meta = array();
+		foreach ( array( 'title', 'category_id', 'date', 'visibility' ) as $key ) {
+			if ( $req->has_param( $key ) ) {
+				$meta[ $key ] = $req->get_param( $key );
+			}
 		}
-		if ( null === $req->get_param( 'date' ) || '' === $req->get_param( 'date' ) ) {
-			return self::error( 'Bitte einen Stand angeben.' );
-		}
-		$date = self::parse_date( $req->get_param( 'date' ) );
-		if ( is_wp_error( $date ) ) {
-			return $date;
-		}
-		$doc = MKL_Documents::set_date( $key, $date );
+		$doc = MKL_Documents::update( (int) $req['id'], $meta );
 		return is_wp_error( $doc ) ? $doc : rest_ensure_response( $doc );
 	}
 
 	public static function delete_document( WP_REST_Request $req ) {
-		$key = (string) $req['key'];
-		if ( ! MKL_Documents::exists( $key ) || ! MKL_Documents::delete( $key ) ) {
+		if ( ! MKL_Documents::delete( (int) $req['id'] ) ) {
 			return self::error( 'Dokument nicht gefunden.', 404 );
 		}
 		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	public static function create_document_category( WP_REST_Request $req ) {
+		$cat = MKL_Documents::save_category( 0, $req->get_param( 'title' ), (int) $req->get_param( 'sort' ) );
+		return is_wp_error( $cat ) ? $cat : new WP_REST_Response( $cat, 201 );
+	}
+
+	public static function update_document_category( WP_REST_Request $req ) {
+		$cat = MKL_Documents::save_category( (int) $req['id'], $req->get_param( 'title' ), $req->get_param( 'sort' ) );
+		return is_wp_error( $cat ) ? $cat : rest_ensure_response( $cat );
+	}
+
+	public static function delete_document_category( WP_REST_Request $req ) {
+		$result = MKL_Documents::delete_category( (int) $req['id'] );
+		return is_wp_error( $result ) ? $result : rest_ensure_response( array( 'deleted' => true ) );
 	}
 
 	public static function set_member_role( WP_REST_Request $req ) {
