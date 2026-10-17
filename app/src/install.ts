@@ -5,6 +5,11 @@
 // deshalb wird es hier beim Laden des Moduls abgefangen und aufbewahrt.
 // iPhone/iPad bieten diese Möglichkeit nicht: Dort geht es nur über „Teilen →
 // Zum Home-Bildschirm“, wofür die App eine bebilderte Anleitung zeigt.
+//
+// Samsung Internet: Die dort erzeugte App-Hülle (WebAPK) ist für eine veraltete
+// Android-Version gebaut; Google Play Protect blockiert sie auf Android 14+ als
+// „Unsichere App“. Daran lässt sich von der Webseite aus nichts ändern – deshalb
+// wird dort keine Installation angeboten, sondern auf Chrome verwiesen.
 
 import { useEffect, useState } from 'react';
 
@@ -28,6 +33,7 @@ const notify = () => listeners.forEach((l) => l());
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault(); // eigenen Knopf statt der kleinen Browser-Leiste zeigen
+  if (isSamsungInternet()) return;
   deferred = e as BeforeInstallPromptEvent;
   notify();
 });
@@ -56,6 +62,16 @@ export function installDoneText(): string {
 /** Links aus Facebook/Instagram öffnen sich in deren eigenem Browser – dort kann man nicht installieren. */
 export function isInAppBrowser(ua = navigator.userAgent): boolean {
   return /FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|TikTok/i.test(ua);
+}
+
+export function isSamsungInternet(ua = navigator.userAgent): boolean {
+  return /SamsungBrowser/i.test(ua);
+}
+
+/** Link, der die Seite unter Android direkt in Chrome öffnet (fehlt Chrome, bietet Android den Play Store an). */
+export function chromeUrl(url: string): string {
+  const u = new URL(url, window.location.href);
+  return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${u.protocol.replace(':', '')};package=com.android.chrome;end`;
 }
 
 export function isStandalone(): boolean {
