@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'MKL_VERSION', '0.5.0' );
-define( 'MKL_DB_VERSION', '6' );
+define( 'MKL_DB_VERSION', '7' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
@@ -30,6 +30,8 @@ define( 'MKL_CAP_DOCS', 'mkl_manage_documents' );
 define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
 /** Rolle „Mitglied“. Ohne sie (und ohne Spieß/Admin) hat ein Konto in der App keine Rolle. */
 define( 'MKL_ROLE_MITGLIED', 'mkl_mitglied' );
+/** Benutzer-Meta „Jungmariner“: erhält laut Satzung nur die halbe Punktzahl. */
+define( 'MKL_META_JUNGMARINER', 'mkl_jungmariner' );
 
 require_once MKL_DIR . 'includes/class-mkl-db.php';
 require_once MKL_DIR . 'includes/class-mkl-roles.php';

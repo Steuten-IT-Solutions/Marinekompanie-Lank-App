@@ -435,6 +435,7 @@ function NewMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [jungmariner, setJungmariner] = useState(false);
   const [points, setPoints] = useState('');
   const [pointsDate, setPointsDate] = useState(todayYmd());
   const [chosenRank, setRankId] = useState('');
@@ -463,6 +464,7 @@ function NewMember() {
           ...(email.trim() ? { email: email.trim() } : {}),
           ...(initialPoints > 0 ? { initial_points: initialPoints, initial_points_date: pointsDate } : {}),
           ...(rankId ? { rank_id: Number(rankId) } : {}),
+          ...(jungmariner ? { jungmariner: true } : {}),
         }),
       );
     } catch (err) {
@@ -485,6 +487,7 @@ function NewMember() {
     return (
       <div className="card created">
         <h2>{created.name} ist angelegt</h2>
+        {created.is_jungmariner && <p className="muted">Als Jungmariner markiert: erhält die halbe Punktzahl.</p>}
         <p className="muted">
           Das Startpasswort wird <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und persönlich
           weitergeben.
@@ -516,6 +519,7 @@ function NewMember() {
               setEmail('');
               setPoints('');
               setRankId('');
+              setJungmariner(false);
             }}
           >
             Weiteres Mitglied
@@ -551,6 +555,10 @@ function NewMember() {
       <label className="field">
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label className="toggle">
+        <input type="checkbox" checked={jungmariner} onChange={(e) => setJungmariner(e.target.checked)} />
+        Jungmariner (erhält die halbe Punktzahl, Abzüge zählen voll)
       </label>
       <fieldset className="fieldset">
         <legend>Übernahme (optional)</legend>
