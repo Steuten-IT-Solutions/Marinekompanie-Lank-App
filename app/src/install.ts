@@ -13,7 +13,16 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+/**
+ * Ablauf nach dem Tipp auf „Installieren“: Erst läuft die Installation („installing“),
+ * dann meldet der Browser über „appinstalled“, dass sie fertig ist („installed“).
+ * Öffnen kann die Webseite die installierte App nicht – das muss man selbst über das
+ * neue Symbol auf dem Startbildschirm tun. Darauf weist die App dann hin.
+ */
+export type InstallState = 'idle' | 'installing' | 'installed';
+
 let deferred: BeforeInstallPromptEvent | null = null;
+let state: InstallState = 'idle';
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -24,6 +33,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 window.addEventListener('appinstalled', () => {
   deferred = null;
+  state = 'installed';
   notify();
 });
 
@@ -34,6 +44,13 @@ export function detectPlatform(ua = navigator.userAgent): Platform {
   if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
   if (/android/i.test(ua)) return 'android';
   return 'other';
+}
+
+/** Was nach der Installation zu tun ist – öffnen kann die Webseite die App nicht selbst. */
+export function installDoneText(): string {
+  return detectPlatform() === 'other'
+    ? 'Du findest sie ab jetzt bei deinen Programmen.'
+    : 'Jetzt auf dem Startbildschirm auf das Wappen „Marinekompanie“ tippen.';
 }
 
 /** Links aus Facebook/Instagram öffnen sich in deren eigenem Browser – dort kann man nicht installieren. */
@@ -62,6 +79,20 @@ export function useCanPrompt(): boolean {
   return can;
 }
 
+/** Stand der Installation in dieser Sitzung. */
+export function useInstallState(): InstallState {
+  const [current, setCurrent] = useState(state);
+  useEffect(() => {
+    const update = () => setCurrent(state);
+    listeners.add(update);
+    update();
+    return () => {
+      listeners.delete(update);
+    };
+  }, []);
+  return current;
+}
+
 /** Öffnet den Installationsdialog des Browsers. */
 export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   if (!deferred) return 'unavailable';
@@ -70,5 +101,10 @@ export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unava
   notify();
   await ev.prompt();
   const { outcome } = await ev.userChoice;
+  // „appinstalled“ kann schon vorher gekommen sein – dann nicht zurückstufen.
+  if (outcome === 'accepted' && state === 'idle') {
+    state = 'installing';
+    notify();
+  }
   return outcome;
 }
