@@ -2,9 +2,9 @@
  *
  * - JS/CSS/Icons aus app-dist/ haben Hash-Dateinamen → cache-first.
  * - Seite /app/ und API-Antworten → network-first; ohne Netz die letzte Version.
- * - Dokumente (/app/dokument/<key>?v=<version>) → cache-first: Die Adresse ändert sich
- *   mit jeder neuen Fassung. So ist z. B. die Satzung offline verfügbar und wird nicht
- *   bei jedem Öffnen neu geladen. Gespeichert wird nur die aktuelle Fassung.
+ * - Dokumente (/app/dokument/<id>?v=<version>) → cache-first: Die Adresse ändert sich
+ *   mit jeder neuen Fassung. Was einmal geöffnet wurde, ist so offline verfügbar und
+ *   wird nicht bei jedem Öffnen neu geladen. Gespeichert wird nur die aktuelle Fassung.
  * Beim Abmelden löscht die App alle Caches.
  */
 const STATIC_CACHE = 'mkl-static-v1';

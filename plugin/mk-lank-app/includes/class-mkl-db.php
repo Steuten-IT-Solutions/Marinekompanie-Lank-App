@@ -160,6 +160,36 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$docs = self::table( 'documents' );
+		dbDelta(
+			"CREATE TABLE $docs (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  category_id bigint(20) unsigned DEFAULT NULL,
+  doc_date date NOT NULL,
+  visibility varchar(15) NOT NULL DEFAULT 'mitglieder',
+  file varchar(64) NOT NULL,
+  ext varchar(10) NOT NULL,
+  size int(11) NOT NULL DEFAULT 0,
+  version varchar(32) NOT NULL DEFAULT '',
+  uploaded_by bigint(20) unsigned NOT NULL DEFAULT 0,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY category_id (category_id)
+) $charset;"
+		);
+
+		$doc_cats = self::table( 'doc_categories' );
+		dbDelta(
+			"CREATE TABLE $doc_cats (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  sort int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
@@ -177,6 +207,9 @@ class MKL_DB {
 		MKL_Roles::install();
 		if ( $installed && version_compare( $installed, '2', '<' ) ) {
 			MKL_Roles::migrate_subscribers_to_members();
+		}
+		if ( $installed && version_compare( $installed, '5', '<' ) ) {
+			MKL_Documents::migrate_statute();
 		}
 	}
 

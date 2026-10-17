@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Marinekompanie Lank – App
  * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Rängen, Strafen und Dokumenten. Erreichbar unter /app/.
- * Version:           0.4.0
+ * Version:           0.5.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marinekompanie 1973 Lank
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MKL_VERSION', '0.4.0' );
-define( 'MKL_DB_VERSION', '4' );
+define( 'MKL_VERSION', '0.5.0' );
+define( 'MKL_DB_VERSION', '5' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
@@ -24,7 +24,7 @@ define( 'MKL_CAP_MANAGE', 'mkl_manage' );
 define( 'MKL_CAP_MEMBER', 'mkl_member' );
 /** Capability zum Pflegen der öffentlichen Terminliste (Admin). */
 define( 'MKL_CAP_EVENTS', 'mkl_manage_events' );
-/** Capability zum Pflegen der Dokumente, z. B. der Satzung (Admin). */
+/** Capability zum Pflegen der Dokumente und ihrer Kategorien (Admin). */
 define( 'MKL_CAP_DOCS', 'mkl_manage_documents' );
 /** Rolle „Spieß“. Wird Benutzern zusätzlich zu ihrer bisherigen Rolle gegeben. */
 define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
