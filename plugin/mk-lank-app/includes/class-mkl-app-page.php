@@ -7,6 +7,7 @@
  * /app/manifest.webmanifest  → Web-App-Manifest
  * /app/sw.js                 → Service Worker (Scope /app/)
  * /app/foto/<id>/<größe>     → Galeriebild (interne nur für Mitglieder)
+ * /app/dokument/<key>        → Dokument als PDF, z. B. die Satzung (nur Mitglieder)
  *
  * Die gebauten JS/CSS-Dateien liegen in app-dist/ und werden direkt vom
  * Webserver als statische Dateien ausgeliefert.
@@ -54,6 +55,8 @@ class MKL_App_Page {
 			self::send_service_worker();
 		} elseif ( preg_match( '#^foto/(\d+)/(thumb|large)$#', $path, $m ) ) {
 			MKL_Gallery::serve( (int) $m[1], $m[2] );
+		} elseif ( preg_match( '#^dokument/([a-z]+)$#', $path, $m ) ) {
+			MKL_Documents::serve( $m[1] );
 		} else {
 			self::send_app();
 		}
@@ -62,7 +65,7 @@ class MKL_App_Page {
 
 	private static function send_manifest() {
 		header( 'Content-Type: application/manifest+json; charset=utf-8' );
-		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Cache-Control: no-cache' );
 		$icons = MKL_URL . 'app-dist/icons/';
 		echo wp_json_encode(
 			array(
@@ -135,6 +138,7 @@ class MKL_App_Page {
 				'isSpiess'        => MKL_Roles::is_spiess(),
 				'canCreateUsers'  => current_user_can( 'create_users' ),
 				'canManageEvents' => current_user_can( MKL_CAP_EVENTS ),
+				'canManageDocs'   => current_user_can( MKL_CAP_DOCS ),
 				'canPromoteUsers' => current_user_can( 'promote_users' ),
 			),
 		);

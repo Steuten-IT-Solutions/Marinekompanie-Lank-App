@@ -7,25 +7,29 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
   - Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
-- **Meins:** eigene Punkte (mit Punktekatalog) und Strafen (Geldbeträge, offen/bezahlt).
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten.
+- **Meins:** eigene Punkte (mit Punktekatalog), eigener Rang mit Rangliste und Verlauf, Strafen (Geldbeträge, offen/bezahlt).
+- **Dokumente:** die Satzung als PDF, nur für Mitglieder, auch offline lesbar.
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Ränge pflegen, Mitglieder befördern und degradieren.
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
-| **Admin** (WordPress-Administrator) | alles: öffentliche Termine pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen |
-| **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
-| **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
+| **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog und Rangliste pflegen, befördern und degradieren |
+| **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Satzung |
 
 **Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
 
 - Bei jeder Punktevergabe wird für Jungmariner automatisch nur die Hälfte gutgeschrieben, z. B. 5 → 2,5. Dafür sind halbe Punkte möglich.
 - Abzüge (negative Punkte) zählen auch für Jungmariner voll.
+- Der Anfangsbestand beim Anlegen wird nicht halbiert, weil er ein bereits erreichter Punktestand ist.
+- Für Ränge und die Beförderungsübersicht zählen die gutgeschriebenen (halbierten) Punkte.
 - Ob ein Eintrag halbiert wurde, wird bei der Vergabe gespeichert und im Verlauf angezeigt („Jungmariner: halbe Punktzahl von +5“). Wird der Haken später entfernt, gelten nur künftige Vergaben wieder voll. Bereits vergebene Punkte bleiben unverändert.
 
-Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
+**Gäste** sind Besucher **ohne Anmeldung** und haben keine Rolle. Sie sehen nur öffentliche Termine, News und öffentliche Galeriebilder.
+
+Mitglieder sehen **ausschließlich ihre eigenen** Punkte, Ränge und Strafen. Ein angemeldetes WordPress-Konto ohne App-Rolle (z. B. ein reines Webseiten-Konto) steht in der App als **„Ohne Rolle“** und sieht dasselbe wie ein Gast.
 
 ## Warum kein Apple Developer Account nötig ist
 
@@ -39,7 +43,7 @@ Die App ist eine **Progressive Web App (PWA)**. Sie wird über den Browser insta
 Die App hilft beim Installieren selbst, damit es auch ohne Smartphone-Erfahrung klappt:
 
 - Oben in der App erscheint ein Hinweis **„Die App aufs Handy holen“**. Er verschwindet, sobald die App installiert ist oder jemand ihn wegklickt.
-- **Android (Chrome, Edge, Samsung Internet):** Bietet der Browser die Installation an, reicht ein Tipp auf **„Installieren“**. Danach muss man nur noch bestätigen.
+- **Android (Chrome, Edge, Samsung Internet):** Bietet der Browser die Installation an, reicht ein Tipp auf **„Installieren“**. Danach muss man nur noch bestätigen. Während der Installation und danach zeigt die App, wie es weitergeht: Das Wappen auf dem Startbildschirm antippen. Von selbst öffnen kann sich die App nach der Installation nicht, das lässt der Browser einer Webseite nicht zu.
 - **iPhone/iPad:** Apple erlaubt Webseiten keinen Installationsknopf. Deshalb führt **„So geht's“** zu einer bebilderten Schritt-für-Schritt-Anleitung (`/app/#/installieren`). Sie zeigt auch die neuere Safari-Leiste mit „•••“ (iOS 26).
 - Die Anleitung hat eine eigene Adresse zum Weitergeben: **`https://marinekompanie-lank.de/app/installieren/`**. Diesen Link kann man per WhatsApp, E-Mail oder Rundschreiben verschicken. Auf der Anleitung selbst gibt es dafür den Knopf **„Link teilen“**, außerdem erreicht man sie über **Konto → App installieren**.
 - Wurde der Link in Facebook oder Instagram geöffnet, wo man nicht installieren kann, erscheint ein Hinweis mit einem Knopf zum Kopieren der Adresse.
@@ -58,7 +62,9 @@ app/                       React + TypeScript (Vite) – Quellcode der PWA
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
-  includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-ranks.php     Rangliste, zugewiesene Ränge, Beförderungsregeln, Verlauf
+  includes/class-mkl-documents.php Dokumente (Satzung): geschützte Ablage und Auslieferung
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
   includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
@@ -75,7 +81,8 @@ scripts/                   Build- und Test-Skripte
 - **Rechte:** Die `/me`-Endpunkte lesen die Benutzer-ID immer aus der Sitzung, nie aus der Anfrage. Die Capabilities sind:
   - `mkl_member`: Mitglied
   - `mkl_manage`: Spieß
-  - `mkl_manage_events`: Admin
+  - `mkl_manage_events`: Admin (öffentliche Termine)
+  - `mkl_manage_documents`: Admin (Dokumente)
   - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden.
 - **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet.
 
@@ -88,10 +95,10 @@ scripts/                   Build- und Test-Skripte
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
 5. **Rollen festlegen:**
-   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Gast / Mitglied / Spieß). Mit „Auch Gast-Konten anzeigen“ findest du Konten, die noch keine Rolle haben.
+   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Ohne Rolle / Mitglied / Spieß). Mit „Auch Konten ohne Rolle anzeigen“ findest du Konten, die noch keine Rolle haben.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
    - Die bisherige WordPress-Rolle, z. B. Redakteur, bleibt dabei erhalten.
-   - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, wird in der App auf „Gast“ gestellt.
+   - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, bekommt in der App „Ohne Rolle“.
 6. **Öffentliche Termine und Startseite:**
    - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
@@ -114,7 +121,24 @@ scripts/                   Build- und Test-Skripte
    **Warum es schneller ist:** Jedes Bild wird einmalig in zwei Größen (400 px / 1600 px) auf dem eigenen Server abgelegt.
    - Öffentliche Bilder liefert der Webserver direkt aus.
    - Interne Bilder gibt es nur über `/app/foto/…` nach Prüfung der Anmeldung.
-9. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
+9. **Rangliste anlegen und bestehende Mitglieder übernehmen:**
+   1. In der App unter **Spieß → Ränge → „Rangliste bearbeiten“** alle Ränge mit ihrer Mindestpunktzahl eintragen. Das dürfen Spieße und Admins.
+   2. Erst danach die Mitglieder übernehmen. Wer neu angelegt wird, bekommt unter **„+ Mitglied anlegen“ → „Übernahme“** gleich den heutigen Punktestand und seinen Rang. Der Rang muss mit diesen Punkten erreichbar sein. Die Punkte erscheinen als Buchung „Anfangsbestand bei Übernahme“.
+   3. Mitglieder, die schon ein Konto haben, bekommen ihre Punkte über **„Punkte +“**, z. B. mit dem Grund „Anfangsbestand bei Übernahme“. Danach befördert sie ein Spieß.
+
+   **Regeln:**
+   - Den Rang legen die Spieße fest. Punkte allein ändern den Rang nie.
+   - Befördern geht nur, wenn die Punkte die Schwelle des Zielrangs erreichen. Mehrere Ränge auf einmal überspringen ist erlaubt.
+   - Degradieren geht nur, wenn die Punkte unter der Schwelle des aktuellen Rangs liegen.
+   - Die Regeln gelten auch für Admins.
+   - **Spieß → Ränge** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
+   - Mitglieder sehen unter **Meins** ihren eigenen Rang, die fehlenden Punkte bis zum nächsten Rang, die Rangliste und ihren Verlauf, aber nicht die Ränge anderer.
+10. **Satzung hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“** die PDF hochladen und den Stand angeben (höchstens 20 MB). Eine neue Fassung ersetzt die alte.
+    - Die PDF liegt in `wp-content/uploads/mkl-private/` mit zufälligem Dateinamen und wird nur über `/app/dokument/satzung` an angemeldete Mitglieder ausgeliefert.
+    - Der direkte Abruf der Datei ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
+    - Ist die PDF größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
+    - Die App speichert die Satzung beim Öffnen von „Dokumente“ auf dem Gerät, damit sie offline lesbar ist. Beim Abmelden wird sie dort wieder gelöscht.
+11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Ränge und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
@@ -138,7 +162,7 @@ Versionsnummern:
 
 ## Entwicklung
 
-Voraussetzungen: PHP ≥ 7.4 mit SQLite-Erweiterung, Node.js ≥ 20. Docker und MySQL sind nicht nötig.
+Voraussetzungen: PHP ≥ 7.4 mit SQLite-Erweiterung, Node.js ≥ 22.13 (wegen pdf.js). Docker und MySQL sind nicht nötig.
 
 ```bash
 # Frontend bauen (landet direkt in plugin/mk-lank-app/app-dist)
@@ -157,7 +181,7 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 ### Tests
 
 ```bash
-# REST-API: Rechte, Validierung, Summen, ICS-Parser
+# REST-API: Rechte, Validierung, Summen, Ränge, Dokumente, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
 # Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)

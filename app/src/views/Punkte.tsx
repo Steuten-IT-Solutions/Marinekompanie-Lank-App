@@ -1,6 +1,7 @@
 import { api } from '../api';
 import { formatDate, formatPoints, halvedNote } from '../format';
 import { Empty, ErrorBox, Loading, StatCard, useAsync } from '../ui';
+import { RankProgress } from './Rang';
 
 export default function Punkte() {
   const { data, error, loading, reload } = useAsync(() => Promise.all([api.me(), api.myPoints()]));
@@ -12,6 +13,7 @@ export default function Punkte() {
   return (
     <div>
       <StatCard label="Meine Punkte" value={me.points.toLocaleString('de-DE')} tone="good" />
+      <RankProgress me={me} link />
       {me.is_jungmariner && (
         <p className="muted small">Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.</p>
       )}

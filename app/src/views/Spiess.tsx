@@ -1,11 +1,12 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
 import { caps, formatDate, formatEuro, formatPoints, halvedNote, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
+import { Promotions, RankControl, RankList } from './SpiessRaenge';
 import { PenaltyRow } from './Strafen';
 
-type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'katalog';
+type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'raenge' | 'katalog';
 
 export default function Spiess({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
   const [sub, arg] = [path[0] as Sub | 'mitglied' | 'neu' | undefined, path[1]];
@@ -15,6 +16,7 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
     { id: 'mitglieder', label: 'Mitglieder' },
     { id: 'punkte', label: 'Punkte +' },
     { id: 'strafe', label: 'Strafe +' },
+    { id: 'raenge', label: 'Ränge' },
     { id: 'katalog', label: 'Katalog' },
   ];
   const active: Sub = sub === 'mitglied' || sub === 'neu' || !sub ? 'mitglieder' : (sub as Sub);
@@ -34,13 +36,15 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
         ))}
       </nav>
       {sub === 'mitglied' && arg ? (
-        <MemberDetailView id={Number(arg)} onToast={onToast} />
+        <MemberDetailView id={Number(arg)} startPromote={path[2] === 'befoerdern'} onToast={onToast} />
       ) : sub === 'neu' && config?.user?.canCreateUsers ? (
         <NewMember />
       ) : active === 'punkte' ? (
         <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
       ) : active === 'strafe' ? (
         <GivePenalty key={path.join('/')} preselect={preselect} onToast={onToast} />
+      ) : active === 'raenge' ? (
+        arg === 'liste' ? <RankList onToast={onToast} /> : <Promotions />
       ) : active === 'katalog' ? (
         <Catalog onToast={onToast} />
       ) : (
@@ -54,8 +58,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 
 function Members() {
   const canPromote = !!config?.user?.canPromoteUsers;
-  const [showGuests, setShowGuests] = useState(false);
-  const { data, error, loading, reload } = useAsync(() => api.members(showGuests), [showGuests]);
+  const [showWithoutRole, setShowWithoutRole] = useState(false);
+  const { data, error, loading, reload } = useAsync(() => api.members(showWithoutRole), [showWithoutRole]);
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -65,7 +69,7 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).filter((m) => m.level !== 'gast').reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => m.level !== 'ohne').reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
@@ -85,8 +89,8 @@ function Members() {
       />
       {canPromote && (
         <label className="toggle">
-          <input type="checkbox" checked={showGuests} onChange={(e) => setShowGuests(e.target.checked)} />
-          Auch Gast-Konten anzeigen (um ihnen eine Rolle zu geben)
+          <input type="checkbox" checked={showWithoutRole} onChange={(e) => setShowWithoutRole(e.target.checked)} />
+          Auch Konten ohne Rolle anzeigen (um ihnen eine Rolle zu geben)
         </label>
       )}
       <ul className="card-list">
@@ -99,6 +103,7 @@ function Members() {
                 {m.is_jungmariner && <span className="badge badge-jungmariner">Jungmariner</span>}
               </div>
               <div className="row-sub">
+                {m.rank && <>{m.rank.title} · </>}
                 {m.points.toLocaleString('de-DE')} Punkte
                 {m.open_cents > 0 && <> · <span className="neg">{formatEuro(m.open_cents)} offen</span></>}
               </div>
@@ -114,7 +119,15 @@ function Members() {
 
 /* ------------------------------------------------------------------ */
 
-function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) => void }) {
+function MemberDetailView({
+  id,
+  startPromote,
+  onToast,
+}: {
+  id: number;
+  startPromote: boolean;
+  onToast: (msg: string) => void;
+}) {
   const { data, error, loading, reload } = useAsync(() => api.member(id), [id]);
   const [busy, setBusy] = useState(false);
 
@@ -142,14 +155,14 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
       </button>
       <h2 className="member-name">{m.name}</h2>
       <RoleControl id={m.id} level={m.level} onChanged={reload} onToast={onToast} />
-      {m.level !== 'gast' && (
+      {m.level !== 'ohne' && (
         <JungmarinerToggle key={m.id} id={m.id} initial={m.is_jungmariner} onChanged={reload} onToast={onToast} />
       )}
       <div className="stats">
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      {m.level !== 'gast' && (
+      {m.level !== 'ohne' && (
         <div className="button-row">
           <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
             Punkte vergeben
@@ -158,6 +171,15 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
             Strafe vergeben
           </button>
         </div>
+      )}
+      {m.level !== 'ohne' && (
+        <RankControl
+          key={`${m.id}-${m.rank_status.rank?.id ?? 0}-${m.points}`}
+          member={m}
+          startPromote={startPromote}
+          onChanged={reload}
+          onToast={onToast}
+        />
       )}
 
       <h3 className="section-title">Strafen</h3>
@@ -280,7 +302,7 @@ function JungmarinerToggle({
   );
 }
 
-/** Admins legen hier die Rolle in der App fest (Gast / Mitglied / Spieß). */
+/** Admins legen hier die Rolle in der App fest (ohne Rolle / Mitglied / Spieß). */
 function RoleControl({
   id,
   level,
@@ -292,7 +314,11 @@ function RoleControl({
   onChanged: () => void;
   onToast: (msg: string) => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  // Die gewählte Rolle wird sofort angezeigt (optimistisch); schlägt das Speichern fehl,
+  // springt die Auswahl auf den vorherigen Stand zurück.
+  const [shown, setShown] = useState(level);
+  const [pending, setPending] = useState<Level | null>(null);
+  useEffect(() => setShown(level), [level]);
   if (!config?.user?.canPromoteUsers) {
     return <p className="muted small member-level">Rolle: {LEVEL_LABELS[level]}</p>;
   }
@@ -305,28 +331,30 @@ function RoleControl({
     );
   }
   async function change(next: Exclude<Level, 'admin'>) {
-    if (next === level) return;
-    setBusy(true);
+    if (next === shown || pending) return;
+    const previous = shown;
+    setShown(next);
+    setPending(next);
     try {
       await api.setRole(id, next);
-      onToast(`Rolle geändert: ${LEVEL_LABELS[next]}`);
+      onToast(next === 'ohne' ? 'Rolle entzogen' : `Rolle geändert: ${LEVEL_LABELS[next]}`);
       onChanged();
     } catch (e) {
+      setShown(previous);
       onToast((e as Error).message);
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
   return (
     <div className="role-control">
       <span className="field-label">Rolle in der App</span>
-      <div className="segmented small" role="group" aria-label="Rolle in der App">
-        {(['gast', 'mitglied', 'spiess'] as const).map((l) => (
+      <div className="segmented small" role="group" aria-label="Rolle in der App" aria-busy={!!pending}>
+        {(['ohne', 'mitglied', 'spiess'] as const).map((l) => (
           <button
             key={l}
-            className={level === l ? 'active' : ''}
-            disabled={busy}
-            aria-pressed={level === l}
+            className={[shown === l ? 'active' : '', pending === l ? 'pending' : ''].join(' ').trim()}
+            aria-pressed={shown === l}
             aria-label={LEVEL_LABELS[l]}
             onClick={() => change(l)}
           >
@@ -341,19 +369,30 @@ function RoleControl({
 /* ------------------------------------------------------------------ */
 
 function NewMember() {
+  const ranks = useAsync(api.ranks);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [jungmariner, setJungmariner] = useState(false);
+  const [points, setPoints] = useState('');
+  const [pointsDate, setPointsDate] = useState(todayYmd());
+  const [chosenRank, setRankId] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedUser | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const initialPoints = points.trim() === '' ? 0 : Number(points);
+  // Nur Ränge, deren Schwelle der Anfangsbestand erreicht (prüft auch der Server).
+  const reachable = (ranks.data ?? []).filter((r) => Number.isInteger(initialPoints) && r.min_points <= initialPoints);
+  const rankId = reachable.some((r) => String(r.id) === chosenRank) ? chosenRank : '';
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!name.trim()) return setFormError('Bitte einen Namen angeben.');
+    if (points.trim() !== '' && (!Number.isInteger(initialPoints) || initialPoints < 0))
+      return setFormError('Bitte als Anfangsbestand eine ganze Punktzahl ab 0 angeben.');
     setBusy(true);
     try {
       setCreated(
@@ -361,6 +400,8 @@ function NewMember() {
           name: name.trim(),
           ...(username.trim() ? { username: username.trim() } : {}),
           ...(email.trim() ? { email: email.trim() } : {}),
+          ...(initialPoints > 0 ? { initial_points: initialPoints, initial_points_date: pointsDate } : {}),
+          ...(rankId ? { rank_id: Number(rankId) } : {}),
           ...(jungmariner ? { jungmariner: true } : {}),
         }),
       );
@@ -397,6 +438,11 @@ function NewMember() {
           <dt>Passwort</dt>
           <dd data-testid="new-password">{created.password}</dd>
         </dl>
+        {(created.points > 0 || created.rank) && (
+          <p className="muted small" data-testid="new-rank">
+            Übernommen: {created.points.toLocaleString('de-DE')} Punkte · Rang: {created.rank ? created.rank.title : 'keiner'}
+          </p>
+        )}
         <div className="button-row">
           <button className="btn" onClick={copy}>
             {copied ? 'Kopiert ✓' : 'Zugangsdaten kopieren'}
@@ -409,6 +455,8 @@ function NewMember() {
               setName('');
               setUsername('');
               setEmail('');
+              setPoints('');
+              setRankId('');
               setJungmariner(false);
             }}
           >
@@ -450,7 +498,35 @@ function NewMember() {
         <input type="checkbox" checked={jungmariner} onChange={(e) => setJungmariner(e.target.checked)} />
         Jungmariner (erhält die halbe Punktzahl, Abzüge zählen voll)
       </label>
-      <p className="muted small">Das Mitglied bekommt die Rolle „Abonnent“ und ein zufälliges Startpasswort.</p>
+      <fieldset className="fieldset">
+        <legend>Übernahme (optional)</legend>
+        <p className="muted small">Für bestehende Mitglieder: aktuellen Punktestand und Rang eintragen. Neue Mitglieder starten ohne Rang bei 0 Punkten.</p>
+        <div className="field-row">
+          <label className="field">
+            <span>Punkte (Anfangsbestand)</span>
+            <input type="number" inputMode="numeric" min="0" step="1" placeholder="0" value={points} onChange={(e) => setPoints(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Stand vom</span>
+            <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
+          </label>
+        </div>
+        <label className="field">
+          <span>Rang</span>
+          <select value={rankId} onChange={(e) => setRankId(e.target.value)} disabled={reachable.length === 0}>
+            <option value="">Kein Rang</option>
+            {reachable.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title} (ab {r.min_points.toLocaleString('de-DE')})
+              </option>
+            ))}
+          </select>
+        </label>
+        {(ranks.data ?? []).length > reachable.length && (
+          <p className="muted small">Zur Auswahl stehen nur Ränge, deren Schwelle die eingetragenen Punkte erreichen.</p>
+        )}
+      </fieldset>
+      <p className="muted small">Das Konto bekommt die Rolle „Mitglied“ und ein zufälliges Startpasswort.</p>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Legt an …' : 'Mitglied anlegen'}
@@ -703,6 +779,16 @@ function Catalog({ onToast }: { onToast: (msg: string) => void }) {
                   onClick={() => run(() => api.updateCatalogItem(c.id, { active: !c.active }), c.active ? 'Deaktiviert' : 'Aktiviert')}
                 >
                   {c.active ? 'Deaktivieren' : 'Aktivieren'}
+                </button>
+                <button
+                  className="btn btn-small btn-danger"
+                  disabled={busy}
+                  onClick={() =>
+                    window.confirm(`Vorlage „${c.title}“ wirklich löschen? Bereits vergebene Punkte bleiben erhalten.`) &&
+                    run(() => api.deleteCatalogItem(c.id), 'Vorlage gelöscht')
+                  }
+                >
+                  Löschen
                 </button>
               </div>
             </div>

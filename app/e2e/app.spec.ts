@@ -61,6 +61,13 @@ test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await page.getByRole('button', { name: 'Punkte vergeben' }).click();
   await expect(page.locator('.toast')).toHaveText('+5 Punkte an 2 Mitglieder vergeben');
 
+  // Eine Vorlage lässt sich löschen; die vergebenen Punkte bleiben (siehe Test „Mitglied 1“).
+  await page.getByRole('button', { name: 'Katalog' }).click();
+  page.once('dialog', (d) => d.accept());
+  await page.locator('.row', { hasText: 'Teilnahme Schützenfest' }).getByRole('button', { name: 'Löschen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Vorlage gelöscht');
+  await expect(page.locator('.row', { hasText: 'Teilnahme Schützenfest' })).toHaveCount(0);
+
   await page.getByRole('button', { name: 'Strafe +' }).click();
   await page.getByPlaceholder('2,50').fill('2,50');
   await page.getByPlaceholder('z. B. Zu spät beim Antreten').fill('Zu spät beim Antreten');
@@ -247,12 +254,12 @@ test('Gast ohne Anmeldung sieht öffentliche Termine und News', async ({ page })
   expect(status).toBe(401);
 });
 
-test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => {
+test('Admin entzieht einem Mitglied die Rolle und gibt sie zurück', async ({ page }) => {
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
-  await page.locator('.role-control').getByRole('button', { name: 'Gast' }).click();
-  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Gast');
+  await page.locator('.role-control').getByRole('button', { name: 'Ohne Rolle' }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle entzogen');
   await shot(page, '13-rolle');
 
   await login(page, 'mariner2');
@@ -261,7 +268,7 @@ test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => 
 
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.getByLabel('Auch Gast-Konten anzeigen').check();
+  await page.getByLabel('Auch Konten ohne Rolle anzeigen').check();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
   await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
@@ -363,8 +370,35 @@ test.describe('Android', () => {
     await expect(button).toBeVisible();
     await shot(page, '14-install-android');
     await button.click();
-    await expect(page.locator('.toast')).toContainText('Die App wird installiert');
     expect(await page.evaluate(() => (window as unknown as { __prompted: number }).__prompted)).toBe(1);
+    // Während der Installation keine Anleitung zeigen, sondern wie es weitergeht.
+    const banner = page.locator('.install-hint');
+    await expect(banner).toContainText('Die App wird installiert');
+    await expect(banner.getByRole('button', { name: "So geht's" })).toHaveCount(0);
+    // Ohne Neuladen wechseln, sonst wäre der Installationsstand weg.
+    await page.evaluate(() => (window.location.hash = '/installieren'));
+    await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+    await expect(page.locator('.install-intro h2')).toHaveText('Die App wird installiert …');
+    await expect(page.locator('.segmented')).toHaveCount(0);
+    await expect(page.locator('.install-step')).toHaveCount(1);
+    // Chrome meldet das Ende der Installation über „appinstalled“.
+    await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+    await expect(page.locator('.install-intro h2')).toHaveText('Fertig! Die App ist installiert');
+    await expect(page.locator('.install-intro')).toContainText('auf das Wappen „Marinekompanie“ tippen');
+    await shot(page, '15-install-android-fertig');
+  });
+
+  test('Abgebrochene Installation führt wieder zur Anleitung', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/app/');
+    await expect(page.locator('.topbar')).toBeVisible();
+    await page.evaluate(() => {
+      const ev = new Event('beforeinstallprompt', { cancelable: true }) as Event & Record<string, unknown>;
+      ev.prompt = () => Promise.resolve();
+      ev.userChoice = Promise.resolve({ outcome: 'dismissed' });
+      window.dispatchEvent(ev);
+    });
+    await page.locator('.install-hint').getByRole('button', { name: 'Installieren' }).click();
     // Das Angebot gilt nur einmal: danach wieder die Anleitung.
     await expect(page.locator('.install-hint').getByRole('button', { name: "So geht's" })).toBeVisible();
   });
@@ -383,4 +417,182 @@ test('Angemeldet bleiben ist vorausgewählt und hält rund 400 Tage', async ({ p
   expect(cookie).toBeDefined();
   const days = (cookie!.expires - Date.now() / 1000) / 86400;
   expect(days).toBeGreaterThan(390);
+});
+
+/** Kleine, gültige PDF mit einer Textzeile (für Upload und Anzeige). */
+function makePdf(text: string): Buffer {
+  const stream = `BT /F1 24 Tf 72 760 Td (${text}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  out += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+
+test('Admin lädt die Satzung hoch, Mitglieder lesen sie – auch offline', async ({ page, context }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Dokumente' }).click();
+  await page.getByRole('button', { name: 'Dokumente verwalten' }).click();
+  await page.getByLabel('PDF-Datei').setInputFiles({ name: 'Satzung.pdf', mimeType: 'application/pdf', buffer: makePdf('Satzung der Marinekompanie') });
+  await page.getByLabel('Stand').fill('2026-03-01');
+  await page.getByRole('button', { name: 'Hochladen' }).click();
+  await expect(page.locator('.toast')).toContainText('Satzung gespeichert');
+  await expect(page.getByText('Stand: 01.03.2026')).toBeVisible();
+  await shot(page, '18-dokumente-verwalten');
+
+  // Keine PDF → abgelehnt.
+  await page.getByLabel('PDF-Datei').setInputFiles({ name: 'falsch.pdf', mimeType: 'application/pdf', buffer: Buffer.from('keine pdf') });
+  await page.getByRole('button', { name: 'Hochladen' }).click();
+  await expect(page.locator('.form-error')).toHaveText('Die Datei ist keine PDF.');
+
+  // Spieß ohne Admin-Rechte sieht die Satzung, darf sie aber nicht pflegen.
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Dokumente' }).click();
+  await expect(page.locator('.doc-card', { hasText: 'Satzung' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dokumente verwalten' })).toHaveCount(0);
+
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Dokumente' }).click();
+  const card = page.locator('.doc-card', { hasText: 'Satzung' });
+  await expect(card).toContainText('Stand: 01.03.2026');
+  await expect(card.locator('.doc-offline')).toHaveText('✓ Auch offline verfügbar', { timeout: 20_000 });
+  await shot(page, '19-dokumente');
+
+  const downloadPromise = page.waitForEvent('download');
+  await card.getByRole('button', { name: 'Herunterladen' }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('Satzung.pdf');
+
+  await card.getByRole('button', { name: 'Öffnen' }).click();
+  await expect(page.locator('.pdf-page')).toHaveCount(1);
+  await expect(page.locator('.pdf-page')).toHaveAttribute('alt', 'Satzung, Seite 1 von 1');
+  await shot(page, '20-satzung');
+
+  // Ohne Netz: App neu laden und die Satzung erneut öffnen.
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.locator('.offline')).toBeVisible();
+  await page.getByRole('button', { name: '‹ Alle Dokumente' }).click();
+  await page.locator('.doc-card', { hasText: 'Satzung' }).getByRole('button', { name: 'Öffnen' }).click();
+  await expect(page.locator('.pdf-page')).toHaveCount(1);
+  await context.setOffline(false);
+
+  // Gäste sehen keinen Bereich „Dokumente“ und bekommen die Datei nicht.
+  const docUrl = await page.evaluate(async () => {
+    const cfg = window.MKL_CONFIG!;
+    const res = await fetch(cfg.restUrl + 'documents', { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' });
+    return ((await res.json()) as { url: string }[])[0].url;
+  });
+  await page.context().clearCookies();
+  await page.goto('/app/');
+  await expect(page.getByRole('button', { name: 'Dokumente' })).toHaveCount(0);
+  expect((await page.request.get(docUrl)).status()).toBe(401);
+});
+
+test('Ränge: Anlage mit Rang, Beförderungsübersicht, Beförderung durch den Spieß', async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const gefreiter = `Gefreiter ${tag}`;
+  const maat = `Maat ${tag}`;
+  const name = `Rang Tester ${tag}`;
+
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  // Ränge früherer Testläufe abschalten, damit die Schwellen frei sind.
+  await page.evaluate(async () => {
+    const cfg = window.MKL_CONFIG!;
+    const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
+    const ranks = (await (await fetch(cfg.restUrl + 'ranks?all=1', { headers, credentials: 'same-origin' })).json()) as { id: number }[];
+    for (const r of ranks) {
+      await fetch(cfg.restUrl + 'ranks/' + r.id, { method: 'PATCH', headers, credentials: 'same-origin', body: JSON.stringify({ active: false }) });
+    }
+  });
+
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
+  await page.getByRole('button', { name: 'Rangliste bearbeiten' }).click();
+  for (const [title, min] of [
+    [gefreiter, '10'],
+    [maat, '30'],
+  ]) {
+    await page.getByPlaceholder('z. B. Maat').fill(title);
+    await page.getByLabel('Ab Punkten').fill(min);
+    await page.getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(page.locator('.toast')).toHaveText('Rang angelegt');
+  }
+  await expect(page.locator('.row', { hasText: maat })).toContainText('ab 30');
+  await shot(page, '21-raenge-pflegen');
+
+  // Übernahme eines bestehenden Mitglieds mit 12 Punkten als Gefreiter.
+  await page.locator('.segmented').getByRole('button', { name: 'Mitglieder' }).click();
+  await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
+  await page.getByPlaceholder('Vorname Nachname').fill(name);
+  await page.getByLabel('Punkte (Anfangsbestand)').fill('12');
+  await expect(page.getByLabel('Rang').locator('option')).toHaveText(['Kein Rang', `${gefreiter} (ab 10)`]);
+  await page.getByLabel('Rang').selectOption({ label: `${gefreiter} (ab 10)` });
+  await shot(page, '22-mitglied-mit-rang');
+  await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
+  await expect(page.getByTestId('new-rank')).toHaveText(`Übernommen: 12 Punkte · Rang: ${gefreiter}`);
+  const username = (await page.getByTestId('new-username').textContent())!.trim();
+  const password = (await page.getByTestId('new-password').textContent())!.trim();
+
+  // Spieß bucht 20 Punkte → 32, Schwelle für Maat erreicht.
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByRole('button', { name: 'Punkte +' }).click();
+  await page.getByLabel('Punkte', { exact: true }).fill('20');
+  await page.getByLabel('Grund').fill('Schützenfest');
+  await page.getByLabel(name).check();
+  await page.getByRole('button', { name: 'Punkte vergeben' }).click();
+  await expect(page.locator('.toast')).toContainText('+20 Punkte');
+
+  // Das Mitglied behält seinen Rang, sieht aber, dass die Beförderung ansteht.
+  await login(page, username, password);
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.rank-title')).toHaveText(gefreiter);
+  await expect(page.locator('.rank-next')).toHaveText(`Punkte für ${maat} erreicht – die Beförderung erfolgt durch die Spieße.`);
+  await shot(page, '23-meins-rang');
+
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Ränge' }).click();
+  const due = page.locator('.promo-list').first().locator('.row', { hasText: name });
+  await expect(due).toContainText(`Schwelle für ${maat} erreicht seit`);
+  await shot(page, '24-befoerderungen');
+  await due.getByRole('button', { name: 'Befördern' }).click();
+  await expect(page.locator('.member-name')).toHaveText(name);
+  await expect(page.locator('.rank-form select')).toHaveValue(/\d+/);
+  await page.getByLabel('Begründung (optional)').fill('Generalversammlung');
+  await page.locator('.rank-form').getByRole('button', { name: 'Befördern' }).click();
+  await expect(page.locator('.toast')).toHaveText(`Befördert: ${maat}`);
+  await expect(page.locator('.rank-control .rank-title')).toHaveText(maat);
+  // Degradieren ist bei ausreichenden Punkten nicht möglich.
+  await expect(page.locator('.rank-control').getByRole('button', { name: 'Degradieren' })).toBeDisabled();
+  await shot(page, '25-mitglied-rang');
+
+  await login(page, username, password);
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.rank-title')).toHaveText(maat);
+  await page.locator('.segmented').getByRole('button', { name: 'Rang' }).click();
+  await expect(page.locator('.rank-mine')).toContainText(maat);
+  await expect(page.locator('.rank-history-befoerderung')).toHaveCount(2);
+  await expect(page.getByText('Generalversammlung')).toBeVisible();
+  await shot(page, '26-meins-rangliste');
+
+  // Fremde Ränge bleiben verborgen.
+  const status = await page.evaluate(async () => {
+    const cfg = window.MKL_CONFIG!;
+    return (await fetch(cfg.restUrl + 'promotions', { headers: { 'X-WP-Nonce': cfg.nonce }, credentials: 'same-origin' })).status;
+  });
+  expect(status).toBe(403);
 });
