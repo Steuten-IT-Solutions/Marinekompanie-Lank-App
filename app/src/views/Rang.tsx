@@ -1,23 +1,29 @@
-import { api, type Me, type RankHistoryEntry } from '../api';
+import { api, type Me, type RankHistoryEntry, type TitleRef } from '../api';
 import { formatDate } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, TitleBadges, useAsync } from '../ui';
 
 const num = (n: number) => n.toLocaleString('de-DE');
 
+/** Eigene Titel als eigene Karte; ohne Titel wird nichts angezeigt. */
+export function MyTitles({ titles }: { titles: TitleRef[] }) {
+  if (titles.length === 0) return null;
+  return (
+    <div className="card rank-card my-titles">
+      <div className="rank-label">{titles.length === 1 ? 'Mein Titel' : 'Meine Titel'}</div>
+      <TitleBadges titles={titles} />
+    </div>
+  );
+}
+
 /**
  * Eigener Dienstgrad mit Fortschritt zum nächsten Dienstgrad und eigene Titel.
  * Ohne angelegte Dienstgrade werden nur die Titel angezeigt, ohne Titel dann gar nichts.
+ * Mit `showTitles={false}` bleiben die Titel weg (wenn die Seite sie schon anderswo zeigt).
  */
-export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
+export function RankProgress({ me, link = false, showTitles = true }: { me: Me; link?: boolean; showTitles?: boolean }) {
   if (!me.rank && !me.next_rank) {
-    if (me.titles.length === 0) return null;
-    return (
-      <div className="card rank-card">
-        <div className="rank-label">{me.titles.length === 1 ? 'Mein Titel' : 'Meine Titel'}</div>
-        <TitleBadges titles={me.titles} />
-      </div>
-    );
+    return showTitles ? <MyTitles titles={me.titles} /> : null;
   }
   const base = me.rank?.min_points ?? 0;
   let progress = 1;
@@ -35,7 +41,7 @@ export function RankProgress({ me, link = false }: { me: Me; link?: boolean }) {
     <div className={`card rank-card ${link ? 'clickable' : ''}`} onClick={link ? () => navigate('meins/rang') : undefined}>
       <div className="rank-label">Mein Dienstgrad</div>
       <div className="rank-title">{me.rank ? me.rank.title : 'Noch kein Dienstgrad'}</div>
-      <TitleBadges titles={me.titles} />
+      {showTitles && <TitleBadges titles={me.titles} />}
       {me.next_rank && (
         <div
           className="progress"
