@@ -471,7 +471,7 @@ class MKL_REST {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
+	 * Legt ein Mitglied (Rolle Mitglied) mit zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 */
