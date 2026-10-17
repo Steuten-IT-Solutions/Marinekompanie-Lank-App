@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { config } from '../api';
 import logoUrl from '../assets/logo.png';
-import { detectPlatform, isInAppBrowser, isStandalone, promptInstall, useCanPrompt, type Platform } from '../install';
+import { chromeUrl, detectPlatform, isInAppBrowser, isSamsungInternet, isStandalone, promptInstall, useCanPrompt, type Platform } from '../install';
 
 /*
  * Schritt-für-Schritt-Anleitung „App aufs Handy holen“ – mit großen Bildern,
@@ -284,6 +284,7 @@ export default function Installieren({ onToast }: { onToast: (msg: string) => vo
   const [platform, setPlatform] = useState<Platform>(detected === 'other' ? 'ios' : detected);
   const canPrompt = useCanPrompt();
   const inApp = isInAppBrowser();
+  const samsung = isSamsungInternet();
   const iosOtherBrowser = detected === 'ios' && /CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent);
 
   async function install() {
@@ -319,6 +320,18 @@ export default function Installieren({ onToast }: { onToast: (msg: string) => vo
         <div className="install-warn" role="alert">
           <strong>Achtung:</strong> Diese Seite ist gerade in Facebook, Instagram o. Ä. geöffnet. Von dort aus lässt sich die
           App nicht installieren. Bitte die Adresse kopieren und in {detected === 'ios' ? 'Safari' : 'Chrome'} öffnen:
+          <CopyLink />
+        </div>
+      )}
+      {samsung && !inApp && (
+        <div className="install-warn" role="alert">
+          <strong>Bitte nicht im Samsung-Browser installieren.</strong> Dort meldet Google Play Protect die App fälschlich als
+          „Unsichere App“ und blockiert sie – das ist ein bekannter Fehler des Samsung-Browsers, nicht der Kompanie-App. Mit{' '}
+          <strong>Chrome</strong> klappt es:
+          <a className="btn btn-block install-chrome" href={chromeUrl(installUrl())}>
+            In Chrome öffnen
+          </a>
+          Falls das nicht funktioniert: Adresse kopieren und in Chrome einfügen.
           <CopyLink />
         </div>
       )}

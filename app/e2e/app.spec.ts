@@ -334,6 +334,29 @@ test.describe('Android', () => {
   });
 });
 
+test.describe('Samsung Internet', () => {
+  const { defaultBrowserType: _ignored, ...pixel } = devices['Pixel 7'];
+  test.use({ ...pixel, userAgent: pixel.userAgent.replace(/Chrome\/[\d.]+/, 'SamsungBrowser/29.0 Chrome/136.0.0.0') });
+
+  test('bietet keine Installation an, sondern verweist auf Chrome', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/app/installieren/');
+    await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+    await page.evaluate(() => {
+      const ev = new Event('beforeinstallprompt', { cancelable: true }) as Event & Record<string, unknown>;
+      ev.prompt = () => Promise.resolve();
+      ev.userChoice = Promise.resolve({ outcome: 'accepted' });
+      window.dispatchEvent(ev);
+    });
+    await expect(page.locator('.install-warn')).toContainText('Samsung-Browser');
+    await expect(page.getByRole('link', { name: 'In Chrome öffnen' })).toHaveAttribute(
+      'href',
+      /^intent:\/\/[^#]+\/app\/installieren\/#Intent;scheme=https?;package=com\.android\.chrome;end$/,
+    );
+    await expect(page.locator('.install-intro').getByRole('button', { name: 'App installieren' })).toHaveCount(0);
+  });
+});
+
 test('Angemeldet bleiben ist vorausgewählt und hält rund 400 Tage', async ({ page }) => {
   await page.context().clearCookies();
   await page.goto('/app/');
