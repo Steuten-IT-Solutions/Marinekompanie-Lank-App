@@ -1,12 +1,13 @@
 // Zugriff auf die REST-API des WordPress-Plugins (Cookie-Login + REST-Nonce).
 
-export type Level = 'admin' | 'spiess' | 'mitglied' | 'gast';
+/** Rolle eines angemeldeten Kontos. Gäste (ohne Anmeldung) haben keine Rolle und kein Konto. */
+export type Level = 'admin' | 'spiess' | 'mitglied' | 'ohne';
 
 export const LEVEL_LABELS: Record<Level, string> = {
   admin: 'Admin',
   spiess: 'Spieß',
   mitglied: 'Mitglied',
-  gast: 'Gast',
+  ohne: 'Ohne Rolle',
 };
 
 export interface AppUser {

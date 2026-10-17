@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { caps } from './format';
-import { detectPlatform, isStandalone, promptInstall, useCanPrompt } from './install';
+import { detectPlatform, installDoneText, isStandalone, promptInstall, useCanPrompt, useInstallState } from './install';
 import { navigate, useRoute } from './router';
 import Dokumente from './views/Dokumente';
 import DokumenteVerwalten from './views/DokumenteVerwalten';
@@ -61,9 +61,10 @@ function Icon({ name }: { name: Tab }) {
 }
 
 /** Banner „App aufs Handy holen“: auf Android ein Knopf, sonst Link zur bebilderten Anleitung. */
-function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
+function InstallBanner() {
   const key = 'mkl-install-hint-dismissed';
   const canPrompt = useCanPrompt();
+  const installState = useInstallState();
   const [hidden, setHidden] = useState(() => {
     try {
       return isStandalone() || localStorage.getItem(key) === '1';
@@ -71,6 +72,30 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
       return isStandalone();
     }
   });
+  const [statusHidden, setStatusHidden] = useState(false);
+
+  // Während und nach der Installation sagen, wie es weitergeht – auch wenn über das Browser-Menü installiert wurde.
+  if (installState !== 'idle') {
+    if (statusHidden || isStandalone()) return null;
+    const installing = installState === 'installing';
+    return (
+      <div className="install-hint" role="status" aria-live="polite">
+        <img src={logoUrl} alt="" className="install-hint-logo" />
+        <div className="install-hint-text">
+          <strong>{installing ? 'Die App wird installiert …' : 'Fertig! Die App ist installiert'}</strong>
+          <span>
+            {installing
+              ? 'Gleich erscheint das Wappen auf dem Startbildschirm. Dort antippen, um die App zu öffnen.'
+              : installDoneText()}
+          </span>
+        </div>
+        <button className="btn btn-link install-hint-close" onClick={() => setStatusHidden(true)} aria-label="Hinweis schließen">
+          ✕
+        </button>
+      </div>
+    );
+  }
+
   // Am Computer nur anzeigen, wenn der Browser die Installation direkt anbietet.
   if (hidden || (!canPrompt && detectPlatform() === 'other')) return null;
   const dismiss = () => {
@@ -81,10 +106,6 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
     }
     setHidden(true);
   };
-  async function install() {
-    const result = await promptInstall();
-    if (result === 'accepted') onToast('Die App wird installiert – gleich ist sie auf dem Startbildschirm');
-  }
   return (
     <div className="install-hint" role="note">
       <img src={logoUrl} alt="" className="install-hint-logo" />
@@ -93,7 +114,7 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
         <span>Mit dem Wappen auf dem Startbildschirm – wie jede andere App.</span>
       </div>
       {canPrompt ? (
-        <button className="btn btn-small install-hint-btn" onClick={install}>
+        <button className="btn btn-small install-hint-btn" onClick={() => void promptInstall()}>
           Installieren
         </button>
       ) : (
@@ -195,7 +216,7 @@ export default function App() {
       </header>
 
       {!online && <div className="offline">Offline – angezeigt werden die zuletzt geladenen Daten.</div>}
-      {tab !== 'installieren' && <InstallBanner onToast={showToast} />}
+      {tab !== 'installieren' && <InstallBanner />}
 
       <main className="content">
         {tab === 'termine' &&

@@ -201,7 +201,7 @@ button, input, select { font: inherit; color: inherit; }
 .badge-open { background: #f6d9cf; color: #7a2412; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
-.badge-level-gast { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-level-ohne { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -352,6 +352,9 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 .role-control { margin: -4px 0 16px; }
 .field-label { display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .segmented.small { margin-bottom: 0; }
+.segmented button.pending { animation: pending-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes pending-pulse { from { opacity: 1; } to { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .segmented button.pending { animation: none; opacity: 0.8; } }
 .member-level { margin: -8px 0 14px; }
 .manage-events, .add-event { margin-bottom: 16px; }
 .event-form { margin-top: 12px; }

@@ -211,12 +211,12 @@ test('Gast ohne Anmeldung sieht öffentliche Termine und News', async ({ page })
   expect(status).toBe(401);
 });
 
-test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => {
+test('Admin entzieht einem Mitglied die Rolle und gibt sie zurück', async ({ page }) => {
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
-  await page.locator('.role-control').getByRole('button', { name: 'Gast' }).click();
-  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Gast');
+  await page.locator('.role-control').getByRole('button', { name: 'Ohne Rolle' }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle entzogen');
   await shot(page, '13-rolle');
 
   await login(page, 'mariner2');
@@ -225,7 +225,7 @@ test('Admin stuft ein Mitglied zum Gast herab und zurück', async ({ page }) => 
 
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   await page.getByRole('button', { name: 'Spieß' }).click();
-  await page.getByLabel('Auch Gast-Konten anzeigen').check();
+  await page.getByLabel('Auch Konten ohne Rolle anzeigen').check();
   await page.locator('.row', { hasText: 'Mariner2' }).click();
   await page.locator('.role-control').getByRole('button', { name: 'Mitglied' }).click();
   await expect(page.locator('.toast')).toHaveText('Rolle geändert: Mitglied');
@@ -327,8 +327,35 @@ test.describe('Android', () => {
     await expect(button).toBeVisible();
     await shot(page, '14-install-android');
     await button.click();
-    await expect(page.locator('.toast')).toContainText('Die App wird installiert');
     expect(await page.evaluate(() => (window as unknown as { __prompted: number }).__prompted)).toBe(1);
+    // Während der Installation keine Anleitung zeigen, sondern wie es weitergeht.
+    const banner = page.locator('.install-hint');
+    await expect(banner).toContainText('Die App wird installiert');
+    await expect(banner.getByRole('button', { name: "So geht's" })).toHaveCount(0);
+    // Ohne Neuladen wechseln, sonst wäre der Installationsstand weg.
+    await page.evaluate(() => (window.location.hash = '/installieren'));
+    await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+    await expect(page.locator('.install-intro h2')).toHaveText('Die App wird installiert …');
+    await expect(page.locator('.segmented')).toHaveCount(0);
+    await expect(page.locator('.install-step')).toHaveCount(1);
+    // Chrome meldet das Ende der Installation über „appinstalled“.
+    await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+    await expect(page.locator('.install-intro h2')).toHaveText('Fertig! Die App ist installiert');
+    await expect(page.locator('.install-intro')).toContainText('auf das Wappen „Marinekompanie“ tippen');
+    await shot(page, '15-install-android-fertig');
+  });
+
+  test('Abgebrochene Installation führt wieder zur Anleitung', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/app/');
+    await expect(page.locator('.topbar')).toBeVisible();
+    await page.evaluate(() => {
+      const ev = new Event('beforeinstallprompt', { cancelable: true }) as Event & Record<string, unknown>;
+      ev.prompt = () => Promise.resolve();
+      ev.userChoice = Promise.resolve({ outcome: 'dismissed' });
+      window.dispatchEvent(ev);
+    });
+    await page.locator('.install-hint').getByRole('button', { name: 'Installieren' }).click();
     // Das Angebot gilt nur einmal: danach wieder die Anleitung.
     await expect(page.locator('.install-hint').getByRole('button', { name: "So geht's" })).toBeVisible();
   });

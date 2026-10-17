@@ -476,7 +476,7 @@ class MKL_REST {
 	}
 
 	/**
-	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Gast-Konten
+	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Konten ohne Rolle
 	 * abrufen, um ihnen eine Rolle zu geben.
 	 */
 	public static function get_members( WP_REST_Request $req ) {
@@ -536,7 +536,7 @@ class MKL_REST {
 			return self::error( 'Mitglied nicht gefunden.', 404 );
 		}
 		if ( ! MKL_Roles::is_member( $id ) ) {
-			return self::error( 'Gäste können keinen Rang bekommen.' );
+			return self::error( 'Nur Mitglieder können einen Rang bekommen.' );
 		}
 		$raw = $req->get_param( 'rank_id' );
 		if ( null !== $raw && '' !== $raw && ( ! is_numeric( $raw ) || (int) $raw <= 0 ) ) {
@@ -973,7 +973,7 @@ class MKL_REST {
 				return self::error( 'Unbekanntes Mitglied.' );
 			}
 			if ( ! MKL_Roles::is_member( $id ) ) {
-				return self::error( 'Gäste können keine Punkte oder Strafen bekommen.' );
+				return self::error( 'Nur Mitglieder können Punkte oder Strafen bekommen.' );
 			}
 		}
 		return $ids;
