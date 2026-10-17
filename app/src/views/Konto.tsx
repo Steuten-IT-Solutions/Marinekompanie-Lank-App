@@ -35,7 +35,7 @@ export default function Konto({ onToast, onLogout }: { onToast: (msg: string) =>
     <div>
       <div className="card account-card">
         <h2 className="account-name">{config?.user?.name}</h2>
-        <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'gast']}</p>
+        <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'ohne']}</p>
       </div>
 
       <form className="form card account-card" onSubmit={submit}>

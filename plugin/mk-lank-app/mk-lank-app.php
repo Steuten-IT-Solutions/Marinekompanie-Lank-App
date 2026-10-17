@@ -26,7 +26,7 @@ define( 'MKL_CAP_MEMBER', 'mkl_member' );
 define( 'MKL_CAP_EVENTS', 'mkl_manage_events' );
 /** Rolle „Spieß“. Wird Benutzern zusätzlich zu ihrer bisherigen Rolle gegeben. */
 define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
-/** Rolle „Mitglied“. Ohne sie (und ohne Spieß/Admin) ist ein Konto in der App „Gast“. */
+/** Rolle „Mitglied“. Ohne sie (und ohne Spieß/Admin) hat ein Konto in der App keine Rolle. */
 define( 'MKL_ROLE_MITGLIED', 'mkl_mitglied' );
 
 require_once MKL_DIR . 'includes/class-mkl-db.php';
