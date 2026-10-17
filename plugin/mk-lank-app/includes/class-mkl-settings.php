@@ -61,7 +61,7 @@ class MKL_Settings {
 			<p>
 				Die App ist erreichbar unter
 				<a href="<?php echo esc_url( MKL_App_Page::app_url() ); ?>" target="_blank"><?php echo esc_html( MKL_App_Page::app_url() ); ?></a>.
-				Die Rolle in der App (Gast, Mitglied, Spieß) legt ein Admin in der App unter Spieß → Mitglieder fest
+				Die Rolle in der App (Mitglied, Spieß oder ohne Rolle) legt ein Admin in der App unter Spieß → Mitglieder fest
 				oder im jeweiligen <a href="<?php echo esc_url( admin_url( 'users.php' ) ); ?>">Benutzerprofil</a>.
 				Öffentliche Termine für die Startseite zeigt der Shortcode <code>[mkl_termine]</code>.
 			</p>

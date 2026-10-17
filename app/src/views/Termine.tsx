@@ -7,9 +7,9 @@ import { Empty, ErrorBox, Loading, useAsync } from '../ui';
 
 type EventLike = CalendarEvent & { url?: string };
 
-/** Mitglieder sehen den Google Kalender (alle Termine), Gäste die öffentliche Terminliste. */
+/** Anwärter und Mitglieder sehen den Google Kalender (alle Termine), Gäste die öffentliche Terminliste. */
 async function loadEvents(): Promise<EventLike[]> {
-  if (config?.user?.isMember) return api.calendar();
+  if (config?.user?.canSeeCalendar) return api.calendar();
   const list = await api.events();
   return list.map((ev) => ({ ...ev, id: `p${ev.id}` }));
 }
