@@ -331,7 +331,7 @@ function NewMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [level, setLevel] = useState<Exclude<Level, 'admin'>>('mitglied');
+  const [level, setLevel] = useState<Exclude<Level, 'admin'>>('anwaerter');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedUser | null>(null);
@@ -397,7 +397,7 @@ function NewMember() {
               setName('');
               setUsername('');
               setEmail('');
-              setLevel('mitglied');
+              setLevel('anwaerter');
             }}
           >
             Weiteres Mitglied

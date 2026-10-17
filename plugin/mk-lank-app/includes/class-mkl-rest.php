@@ -500,7 +500,7 @@ class MKL_REST {
 
 	/**
 	 * Legt ein Konto mit der gewählten App-Rolle (level: gast|anwaerter|mitglied|spiess,
-	 * Standard mitglied) und zufälligem Startpasswort an.
+	 * Standard anwaerter, weil neue Leute als Anwärter anfangen) und zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 */
@@ -518,7 +518,7 @@ class MKL_REST {
 			MKL_Roles::LEVEL_SPIESS    => MKL_ROLE_SPIESS,
 		);
 		$level = $req->get_param( 'level' );
-		$level = null === $level || '' === $level ? MKL_Roles::LEVEL_MITGLIED : $level;
+		$level = null === $level || '' === $level ? MKL_Roles::LEVEL_ANWAERTER : $level;
 		if ( ! is_string( $level ) || ! isset( $roles[ $level ] ) ) {
 			return self::error( 'Ungültige Rolle.' );
 		}

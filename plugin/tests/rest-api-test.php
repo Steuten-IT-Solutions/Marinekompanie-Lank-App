@@ -197,7 +197,7 @@ foreach ( array( 'mkltest.mueller', 'mkltest.mueller2' ) as $old_login ) {
 		wp_delete_user( $old->ID );
 	}
 }
-list( $s, $u1 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
+list( $s, $u1 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller', 'level' => 'mitglied' ) );
 $created[]      = isset( $u1['id'] ) ? $u1['id'] : 0;
 mkl_assert( 201 === $s && 'mkltest.mueller' === $u1['username'], 'Admin legt Mitglied an, Benutzername aus Name (Umlaut → ue)' );
 mkl_assert( 12 === strlen( $u1['password'] ) && ! preg_match( '/[0O1lI]/', $u1['password'] ), 'Startpasswort: 12 Zeichen, keine verwechselbaren Zeichen' );
@@ -218,7 +218,9 @@ list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'email' => 'keine-
 mkl_assert( 400 === $s, 'Ungültige E-Mail → 400' );
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => '   ' ) );
 mkl_assert( 400 === $s, 'Leerer Name → 400' );
-mkl_assert( 'mitglied' === $u1['level'], 'Ohne Angabe → Rolle Mitglied' );
+list( $s, $u0 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ohne Rolle' ) );
+$created[]      = isset( $u0['id'] ) ? $u0['id'] : 0;
+mkl_assert( 201 === $s && 'anwaerter' === $u0['level'] && array( MKL_ROLE_ANWAERTER ) === array_values( get_userdata( $u0['id'] )->roles ), 'Ohne Angabe → Rolle Anwärter' );
 
 foreach ( array( 'anwaerter' => array( MKL_ROLE_ANWAERTER ), 'spiess' => array( MKL_ROLE_SPIESS ), 'gast' => array( 'subscriber' ), 'mitglied' => array( MKL_ROLE_MITGLIED ) ) as $lvl => $wp_roles ) {
 	list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Rolle ' . $lvl, 'level' => $lvl ) );

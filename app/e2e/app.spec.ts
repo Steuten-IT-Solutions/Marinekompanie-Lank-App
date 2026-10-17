@@ -117,7 +117,9 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill('Neuer Mariner');
+  await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
+  await expect(page.getByTestId('new-level')).toHaveText('Mitglied');
   await expect(page.getByText('Neuer Mariner ist angelegt')).toBeVisible();
   const username = (await page.getByTestId('new-username').textContent())!.trim();
   const password = (await page.getByTestId('new-password').textContent())!.trim();
@@ -135,8 +137,8 @@ test('Admin legt einen Anwärter an', async ({ page }) => {
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill('Neuer Anwaerter');
-  await expect(page.getByRole('button', { name: 'Mitglied', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Anwärter', exact: true }).click();
+  // Neue Konten starten als Anwärter.
+  await expect(page.getByRole('button', { name: 'Anwärter', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
   await expect(page.getByTestId('new-level')).toHaveText('Anwärter');
   const username = (await page.getByTestId('new-username').textContent())!.trim();
