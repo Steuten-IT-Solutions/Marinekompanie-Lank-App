@@ -127,7 +127,7 @@ scripts/                   Build- und Test-Skripte
 
    **Ordnerstruktur:** Galerie-Ordner → Jahr (z. B. `2026`) → Album (z. B. `Schützenfest`) → Bilder.
    - Bilder im Unterordner **`intern`** eines Albums sehen nur angemeldete Mitglieder. Für sie werden diese Bilder ins Album eingemischt.
-   - Neue Bilder übernimmt die App stündlich automatisch.
+   - Neue Bilder übernimmt die App alle 15 Minuten automatisch. Das läuft über WP-Cron und startet daher nur, wenn jemand die Webseite aufruft. Sofort geht es mit „Jetzt synchronisieren“.
    - Gelöschte oder verschobene Bilder verschwinden beim nächsten Abgleich.
    - Videos werden nicht angezeigt.
 

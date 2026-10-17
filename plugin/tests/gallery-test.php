@@ -188,6 +188,11 @@ add_filter(
 
 echo "Sync\n";
 update_option( MKL_Gallery::ROOT_OPTION, 'ROOT' );
+MKL_Gallery::unschedule();
+wp_schedule_event( time() + 60, 'hourly', MKL_Gallery::CRON_HOOK ); // Stand älterer Versionen
+MKL_Gallery::schedule();
+$schedules = wp_get_schedules();
+mkl_g_assert( 'mkl_15min' === wp_get_schedule( MKL_Gallery::CRON_HOOK ) && 900 === $schedules['mkl_15min']['interval'], 'Abgleich alle 15 Minuten (stündliche Planung wird umgestellt)' );
 $stats = MKL_Gallery::sync();
 mkl_g_assert( ! is_wp_error( $stats ), 'Sync ohne Fehler' . ( is_wp_error( $stats ) ? ': ' . $stats->get_error_message() : '' ) );
 mkl_g_assert( $GLOBALS['mkl_http']['jwt_ok'] && 1 === $GLOBALS['mkl_http']['token'], 'Token per signiertem JWT geholt (Signatur geprüft)' );
