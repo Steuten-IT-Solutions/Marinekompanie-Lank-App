@@ -1,7 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import { config } from '../api';
 import logoUrl from '../assets/logo.png';
-import { detectPlatform, isInAppBrowser, isStandalone, promptInstall, useCanPrompt, type Platform } from '../install';
+import {
+  detectPlatform,
+  installDoneText,
+  isInAppBrowser,
+  isStandalone,
+  promptInstall,
+  useCanPrompt,
+  useInstallState,
+  type Platform,
+} from '../install';
 
 /*
  * Schritt-für-Schritt-Anleitung „App aufs Handy holen“ – mit großen Bildern,
@@ -283,19 +292,39 @@ export default function Installieren({ onToast }: { onToast: (msg: string) => vo
   const detected = detectPlatform();
   const [platform, setPlatform] = useState<Platform>(detected === 'other' ? 'ios' : detected);
   const canPrompt = useCanPrompt();
+  const installState = useInstallState();
   const inApp = isInAppBrowser();
   const iosOtherBrowser = detected === 'ios' && /CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent);
-
-  async function install() {
-    const result = await promptInstall();
-    if (result === 'accepted') onToast('Die App wird installiert – gleich ist sie auf dem Startbildschirm');
-  }
 
   if (isStandalone()) {
     return (
       <div className="card install-intro">
         <h2>Alles erledigt</h2>
         <p>Die App ist bereits installiert – du benutzt sie gerade.</p>
+      </div>
+    );
+  }
+
+  // Nach dem Tipp auf „Installieren“ nicht mehr die Anleitung zeigen, sondern wie es weitergeht.
+  if (installState !== 'idle') {
+    const installing = installState === 'installing';
+    return (
+      <div className="install">
+        <div className="card install-intro" role="status" aria-live="polite">
+          <h2>{installing ? 'Die App wird installiert …' : 'Fertig! Die App ist installiert'}</h2>
+          <p>
+            {installing
+              ? 'Das dauert nur einen Moment. Gleich erscheint das Wappen auf dem Startbildschirm. Dort antippen, um die App zu öffnen.'
+              : installDoneText()}
+          </p>
+        </div>
+        {detected !== 'other' && (
+          <ol className="install-steps">
+            <Step n={1} title={<>Auf dem Startbildschirm das Wappen antippen</>} pic={<HomeScreen label="Startbildschirm mit dem Wappen-Symbol der App" />}>
+              Ab jetzt die Kompanie-App immer über dieses Symbol starten.
+            </Step>
+          </ol>
+        )}
       </div>
     );
   }
@@ -309,7 +338,7 @@ export default function Installieren({ onToast }: { onToast: (msg: string) => vo
           kostet nichts.
         </p>
         {canPrompt && (
-          <button className="btn btn-block install-big" onClick={install}>
+          <button className="btn btn-block install-big" onClick={() => void promptInstall()}>
             App installieren
           </button>
         )}
