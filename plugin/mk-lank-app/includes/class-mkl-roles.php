@@ -1,11 +1,14 @@
 <?php
 /**
- * Rollen der App: Admin, Spieß, Mitglied, Gast.
+ * Rollen der App: Admin, Spieß, Mitglied.
  *
- * - Admin   = WordPress-Administrator, darf alles.
- * - Spieß   = Rolle mkl_spiess (mkl_manage + mkl_member).
- * - Mitglied = Rolle mkl_mitglied (mkl_member).
- * - Gast    = nicht angemeldet oder angemeldet ohne mkl_member.
+ * - Admin      = WordPress-Administrator, darf alles.
+ * - Spieß      = Rolle mkl_spiess (mkl_manage + mkl_member).
+ * - Mitglied   = Rolle mkl_mitglied (mkl_member).
+ * - Ohne Rolle = angemeldetes Konto ohne mkl_member (z. B. reines Webseiten-Konto);
+ *                sieht dasselbe wie ein Gast.
+ *
+ * „Gast“ ist keine Rolle, sondern ein Besucher ohne Anmeldung.
  *
  * Spieß und Mitglied werden zusätzlich zur bestehenden WordPress-Rolle vergeben
  * (z. B. Redakteur + Mitglied), damit niemand seine Webseiten-Rechte verliert.
@@ -18,7 +21,7 @@ class MKL_Roles {
 	const LEVEL_ADMIN    = 'admin';
 	const LEVEL_SPIESS   = 'spiess';
 	const LEVEL_MITGLIED = 'mitglied';
-	const LEVEL_GAST     = 'gast';
+	const LEVEL_OHNE     = 'ohne';
 
 	public static function init() {
 		add_action( 'show_user_profile', array( __CLASS__, 'render_profile_field' ) );
@@ -56,7 +59,7 @@ class MKL_Roles {
 
 	/**
 	 * Bis Version 0.1.x hatten alle angemeldeten Konten Mitglieder-Rechte.
-	 * Damit beim Update niemand zum Gast wird, bekommen alle Abonnenten die Rolle Mitglied.
+	 * Damit beim Update niemand seine Rolle verliert, bekommen alle Abonnenten die Rolle Mitglied.
 	 */
 	public static function migrate_subscribers_to_members() {
 		foreach ( get_users( array( 'role' => 'subscriber' ) ) as $user ) {
@@ -72,11 +75,11 @@ class MKL_Roles {
 		return $user_id ? user_can( $user_id, MKL_CAP_MEMBER ) : current_user_can( MKL_CAP_MEMBER );
 	}
 
-	/** @return string admin|spiess|mitglied|gast */
+	/** @return string admin|spiess|mitglied|ohne */
 	public static function get_level( $user_id ) {
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {
-			return self::LEVEL_GAST;
+			return self::LEVEL_OHNE;
 		}
 		$roles = (array) $user->roles;
 		if ( in_array( 'administrator', $roles, true ) ) {
@@ -88,11 +91,11 @@ class MKL_Roles {
 		if ( user_can( $user, MKL_CAP_MEMBER ) ) {
 			return self::LEVEL_MITGLIED;
 		}
-		return self::LEVEL_GAST;
+		return self::LEVEL_OHNE;
 	}
 
 	/**
-	 * Setzt die App-Rolle (gast|mitglied|spiess). Administratoren werden nicht verändert;
+	 * Setzt die App-Rolle (ohne|mitglied|spiess); „ohne“ entzieht die Rolle. Administratoren werden nicht verändert;
 	 * Admin-Rechte vergibt man bewusst nur im WordPress-Backend.
 	 *
 	 * @return true|WP_Error
@@ -105,7 +108,7 @@ class MKL_Roles {
 		if ( in_array( 'administrator', (array) $user->roles, true ) ) {
 			return new WP_Error( 'mkl_invalid', 'Administratoren werden im WordPress-Backend verwaltet.', array( 'status' => 400 ) );
 		}
-		if ( ! in_array( $level, array( self::LEVEL_GAST, self::LEVEL_MITGLIED, self::LEVEL_SPIESS ), true ) ) {
+		if ( ! in_array( $level, array( self::LEVEL_OHNE, self::LEVEL_MITGLIED, self::LEVEL_SPIESS ), true ) ) {
 			return new WP_Error( 'mkl_invalid', 'Ungültige Rolle.', array( 'status' => 400 ) );
 		}
 
@@ -128,7 +131,7 @@ class MKL_Roles {
 			self::LEVEL_ADMIN    => 'Admin',
 			self::LEVEL_SPIESS   => 'Spieß',
 			self::LEVEL_MITGLIED => 'Mitglied',
-			self::LEVEL_GAST     => 'Gast',
+			self::LEVEL_OHNE     => 'Ohne Rolle',
 		);
 		return isset( $labels[ $level ] ) ? $labels[ $level ] : $level;
 	}
@@ -152,7 +155,7 @@ class MKL_Roles {
 						<strong>Admin</strong> – Administratoren dürfen in der App alles.
 					<?php else : ?>
 						<select name="mkl_level" id="mkl_level">
-							<option value="gast" <?php selected( $level, self::LEVEL_GAST ); ?>>Gast – nur öffentliche Inhalte</option>
+							<option value="ohne" <?php selected( $level, self::LEVEL_OHNE ); ?>>Ohne Rolle – nur öffentliche Inhalte</option>
 							<option value="mitglied" <?php selected( $level, self::LEVEL_MITGLIED ); ?>>Mitglied – eigene Punkte und Strafen</option>
 							<option value="spiess" <?php selected( $level, self::LEVEL_SPIESS ); ?>>Spieß – Punkte und Strafen verwalten</option>
 						</select>

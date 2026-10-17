@@ -54,8 +54,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 
 function Members() {
   const canPromote = !!config?.user?.canPromoteUsers;
-  const [showGuests, setShowGuests] = useState(false);
-  const { data, error, loading, reload } = useAsync(() => api.members(showGuests), [showGuests]);
+  const [showWithoutRole, setShowWithoutRole] = useState(false);
+  const { data, error, loading, reload } = useAsync(() => api.members(showWithoutRole), [showWithoutRole]);
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -65,7 +65,7 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).filter((m) => m.level !== 'gast').reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => m.level !== 'ohne').reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
@@ -85,8 +85,8 @@ function Members() {
       />
       {canPromote && (
         <label className="toggle">
-          <input type="checkbox" checked={showGuests} onChange={(e) => setShowGuests(e.target.checked)} />
-          Auch Gast-Konten anzeigen (um ihnen eine Rolle zu geben)
+          <input type="checkbox" checked={showWithoutRole} onChange={(e) => setShowWithoutRole(e.target.checked)} />
+          Auch Konten ohne Rolle anzeigen (um ihnen eine Rolle zu geben)
         </label>
       )}
       <ul className="card-list">
@@ -145,7 +145,7 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      {m.level !== 'gast' && (
+      {m.level !== 'ohne' && (
         <div className="button-row">
           <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
             Punkte vergeben
@@ -236,7 +236,7 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
   );
 }
 
-/** Admins legen hier die Rolle in der App fest (Gast / Mitglied / Spieß). */
+/** Admins legen hier die Rolle in der App fest (ohne Rolle / Mitglied / Spieß). */
 function RoleControl({
   id,
   level,
@@ -271,7 +271,7 @@ function RoleControl({
     setPending(next);
     try {
       await api.setRole(id, next);
-      onToast(`Rolle geändert: ${LEVEL_LABELS[next]}`);
+      onToast(next === 'ohne' ? 'Rolle entzogen' : `Rolle geändert: ${LEVEL_LABELS[next]}`);
       onChanged();
     } catch (e) {
       setShown(previous);
@@ -284,7 +284,7 @@ function RoleControl({
     <div className="role-control">
       <span className="field-label">Rolle in der App</span>
       <div className="segmented small" role="group" aria-label="Rolle in der App" aria-busy={!!pending}>
-        {(['gast', 'mitglied', 'spiess'] as const).map((l) => (
+        {(['ohne', 'mitglied', 'spiess'] as const).map((l) => (
           <button
             key={l}
             className={[shown === l ? 'active' : '', pending === l ? 'pending' : ''].join(' ').trim()}

@@ -41,7 +41,7 @@ function mkl_req( $method, $route, $params = array(), $query = array() ) {
 	return array( $res->get_status(), $res->get_data() );
 }
 
-/** Legt einen Testbenutzer an; $level: gast|mitglied|spiess|admin. */
+/** Legt einen Testbenutzer an; $level: ohne|mitglied|spiess|admin. */
 function mkl_test_user( $login, $level = 'mitglied' ) {
 	$existing = get_user_by( 'login', $login );
 	if ( $existing ) {
@@ -247,12 +247,12 @@ clean_user_cache( $m1 );
 mkl_assert( wp_check_password( 'neues-passwort', get_userdata( $m2 )->user_pass, $m2 ), 'Neues Passwort gilt für das eigene Konto' );
 mkl_assert( ! wp_check_password( 'neues-passwort', get_userdata( $m1 )->user_pass, $m1 ), 'Fremdes Konto (user_id-Parameter) bleibt unverändert' );
 
-echo "Rollen: Gast, Mitglied, Spieß, Admin\n";
-$gast  = mkl_test_user( 'mkltest_gast', 'gast' );
+echo "Rollen: ohne Rolle, Mitglied, Spieß, Admin\n";
+$ohne  = mkl_test_user( 'mkltest_ohne', 'ohne' );
 $admin = mkl_test_user( 'mkltest_admin2', 'admin' );
-mkl_assert( 'gast' === MKL_Roles::get_level( $gast ) && 'mitglied' === MKL_Roles::get_level( $m1 ) && 'spiess' === MKL_Roles::get_level( $spiess ) && 'admin' === MKL_Roles::get_level( $admin ), 'Rollen werden erkannt' );
+mkl_assert( 'ohne' === MKL_Roles::get_level( $ohne ) && 'mitglied' === MKL_Roles::get_level( $m1 ) && 'spiess' === MKL_Roles::get_level( $spiess ) && 'admin' === MKL_Roles::get_level( $admin ), 'Rollen werden erkannt' );
 
-// Rechte-Matrix: [Methode, Route, Body, erwarteter Status je Rolle (anonym, gast, mitglied, spiess, admin)]
+// Rechte-Matrix: [Methode, Route, Body, erwarteter Status je Rolle (Gast = anonym, ohne Rolle, mitglied, spiess, admin)]
 $matrix = array(
 	array( 'GET', '/events', array(), array( 200, 200, 200, 200, 200 ) ),
 	array( 'GET', '/news', array(), array( 200, 200, 200, 200, 200 ) ),
@@ -264,7 +264,7 @@ $matrix = array(
 	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
 );
-$who = array( 0, $gast, $m1, $spiess, $admin );
+$who = array( 0, $ohne, $m1, $spiess, $admin );
 foreach ( $matrix as $row ) {
 	list( $method, $route, $body, $expected ) = $row;
 	$got = array();
@@ -276,38 +276,40 @@ foreach ( $matrix as $row ) {
 	mkl_assert( $got === $expected, sprintf( '%s %s → %s', $method, $route, implode( '/', $got ) ) );
 }
 
-wp_set_current_user( $gast );
+wp_set_current_user( $ohne );
 list( $s, $d ) = mkl_req( 'GET', '/me' );
-mkl_assert( 'gast' === $d['level'] && false === $d['is_member'], 'GET /me als Gast-Konto → level gast' );
+mkl_assert( 'ohne' === $d['level'] && false === $d['is_member'], 'GET /me als Konto ohne Rolle → level ohne' );
 
 wp_set_current_user( $spiess );
 list( $s, $members ) = mkl_req( 'GET', '/members' );
-mkl_assert( ! in_array( $gast, wp_list_pluck( $members, 'id' ), true ), 'Mitgliederliste enthält keine Gäste' );
+mkl_assert( ! in_array( $ohne, wp_list_pluck( $members, 'id' ), true ), 'Mitgliederliste enthält keine Konten ohne Rolle' );
 list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'all' => 1 ) );
-mkl_assert( ! in_array( $gast, wp_list_pluck( $members, 'id' ), true ), 'Spieß bekommt auch mit all=1 keine Gäste' );
-list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $gast ), 'points' => 1, 'reason' => 'x' ) );
-mkl_assert( 400 === $s, 'Gast kann keine Punkte bekommen → 400' );
+mkl_assert( ! in_array( $ohne, wp_list_pluck( $members, 'id' ), true ), 'Spieß bekommt auch mit all=1 keine Konten ohne Rolle' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $ohne ), 'points' => 1, 'reason' => 'x' ) );
+mkl_assert( 400 === $s, 'Konto ohne Rolle kann keine Punkte bekommen → 400' );
 
 wp_set_current_user( $admin );
 list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'all' => 1 ) );
 $levels = wp_list_pluck( $members, 'level', 'id' );
-mkl_assert( isset( $levels[ $gast ] ) && 'gast' === $levels[ $gast ], 'Admin sieht mit all=1 auch Gäste' );
+mkl_assert( isset( $levels[ $ohne ] ) && 'ohne' === $levels[ $ohne ], 'Admin sieht mit all=1 auch Konten ohne Rolle' );
 
-list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'mitglied' ) );
-mkl_assert( 200 === $s && 'mitglied' === $d['level'] && MKL_Roles::is_member( $gast ), 'Admin macht Gast zum Mitglied' );
-list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'spiess' ) );
-mkl_assert( 200 === $s && MKL_Roles::is_spiess( $gast ), 'Admin macht Mitglied zum Spieß' );
-list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $gast . '/role', array( 'level' => 'gast' ) );
-clean_user_cache( $gast );
-mkl_assert( 200 === $s && 'gast' === MKL_Roles::get_level( $gast ) && array( 'subscriber' ) === array_values( get_userdata( $gast )->roles ), 'Zurück zum Gast: Konto behält Rolle Abonnent' );
-list( $s ) = mkl_req( 'PATCH', '/members/' . $admin . '/role', array( 'level' => 'gast' ) );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $ohne . '/role', array( 'level' => 'mitglied' ) );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'] && MKL_Roles::is_member( $ohne ), 'Admin macht Konto ohne Rolle zum Mitglied' );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $ohne . '/role', array( 'level' => 'spiess' ) );
+mkl_assert( 200 === $s && MKL_Roles::is_spiess( $ohne ), 'Admin macht Mitglied zum Spieß' );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $ohne . '/role', array( 'level' => 'ohne' ) );
+clean_user_cache( $ohne );
+mkl_assert( 200 === $s && 'ohne' === MKL_Roles::get_level( $ohne ) && array( 'subscriber' ) === array_values( get_userdata( $ohne )->roles ), 'Rolle entzogen: Konto behält Rolle Abonnent' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $ohne . '/role', array( 'level' => 'gast' ) );
+mkl_assert( 400 === $s, '„gast“ ist keine vergebbare Rolle → 400' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $admin . '/role', array( 'level' => 'ohne' ) );
 mkl_assert( 400 === $s, 'Eigene Rolle nicht änderbar → 400' );
 $admin_other = mkl_test_user( 'mkltest_admin3', 'admin' );
-list( $s ) = mkl_req( 'PATCH', '/members/' . $admin_other . '/role', array( 'level' => 'gast' ) );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $admin_other . '/role', array( 'level' => 'ohne' ) );
 mkl_assert( 400 === $s && 'admin' === MKL_Roles::get_level( $admin_other ), 'Admins sind in der App nicht herabstufbar' );
 
 echo "Migration\n";
-$old_sub = mkl_test_user( 'mkltest_altabonnent', 'gast' );
+$old_sub = mkl_test_user( 'mkltest_altabonnent', 'ohne' );
 MKL_Roles::migrate_subscribers_to_members();
 clean_user_cache( $old_sub );
 mkl_assert( 'mitglied' === MKL_Roles::get_level( $old_sub ), 'Bisherige Abonnenten werden zu Mitgliedern' );
@@ -363,7 +365,7 @@ mkl_assert( 404 === $s, 'Kennwortgeschützter Beitrag → 404' );
 foreach ( array( $pub, $draft, $pw ) as $pid ) {
 	wp_delete_post( $pid, true );
 }
-foreach ( array( $gast, $admin, $admin_other, $old_sub ) as $uid ) {
+foreach ( array( $ohne, $admin, $admin_other, $old_sub ) as $uid ) {
 	wp_delete_user( $uid );
 }
 

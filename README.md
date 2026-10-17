@@ -17,9 +17,10 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
 | **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen |
 | **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
-| **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
 
-Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
+**Gäste** sind Besucher **ohne Anmeldung** und haben keine Rolle. Sie sehen nur öffentliche Termine, News und öffentliche Galeriebilder.
+
+Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein angemeldetes WordPress-Konto ohne App-Rolle (z. B. ein reines Webseiten-Konto) steht in der App als **„Ohne Rolle“** und sieht dasselbe wie ein Gast.
 
 ## Warum kein Apple Developer Account nötig ist
 
@@ -52,7 +53,7 @@ app/                       React + TypeScript (Vite) – Quellcode der PWA
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
-  includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
   includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
@@ -82,10 +83,10 @@ scripts/                   Build- und Test-Skripte
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
 5. **Rollen festlegen:**
-   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Gast / Mitglied / Spieß). Mit „Auch Gast-Konten anzeigen“ findest du Konten, die noch keine Rolle haben.
+   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Ohne Rolle / Mitglied / Spieß). Mit „Auch Konten ohne Rolle anzeigen“ findest du Konten, die noch keine Rolle haben.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
    - Die bisherige WordPress-Rolle, z. B. Redakteur, bleibt dabei erhalten.
-   - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, wird in der App auf „Gast“ gestellt.
+   - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, bekommt in der App „Ohne Rolle“.
 6. **Öffentliche Termine und Startseite:**
    - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
