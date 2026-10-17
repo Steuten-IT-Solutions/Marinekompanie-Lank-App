@@ -89,8 +89,10 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await page.getByRole('button', { name: 'Spieß' }).click();
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill('Neuer Mariner');
+  await page.getByLabel(/^Jungmariner/).check();
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
   await expect(page.getByText('Neuer Mariner ist angelegt')).toBeVisible();
+  await expect(page.getByText('Als Jungmariner markiert')).toBeVisible();
   const username = (await page.getByTestId('new-username').textContent())!.trim();
   const password = (await page.getByTestId('new-password').textContent())!.trim();
   expect(username).toMatch(/^neuer\.mariner\d*$/);
@@ -99,6 +101,8 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
 
   await login(page, username, password);
   await expect(page.locator('.topbar-sub')).toHaveText('Ahoi, Neuer Mariner');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.getByText('Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
 });
 

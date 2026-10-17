@@ -344,6 +344,7 @@ function NewMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [jungmariner, setJungmariner] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedUser | null>(null);
@@ -360,6 +361,7 @@ function NewMember() {
           name: name.trim(),
           ...(username.trim() ? { username: username.trim() } : {}),
           ...(email.trim() ? { email: email.trim() } : {}),
+          ...(jungmariner ? { jungmariner: true } : {}),
         }),
       );
     } catch (err) {
@@ -382,6 +384,7 @@ function NewMember() {
     return (
       <div className="card created">
         <h2>{created.name} ist angelegt</h2>
+        {created.is_jungmariner && <p className="muted">Als Jungmariner markiert: erhält die halbe Punktzahl.</p>}
         <p className="muted">
           Das Startpasswort wird <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und persönlich
           weitergeben.
@@ -406,6 +409,7 @@ function NewMember() {
               setName('');
               setUsername('');
               setEmail('');
+              setJungmariner(false);
             }}
           >
             Weiteres Mitglied
@@ -441,6 +445,10 @@ function NewMember() {
       <label className="field">
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label className="toggle">
+        <input type="checkbox" checked={jungmariner} onChange={(e) => setJungmariner(e.target.checked)} />
+        Jungmariner (erhält die halbe Punktzahl, Abzüge zählen voll)
       </label>
       <p className="muted small">Das Mitglied bekommt die Rolle „Abonnent“ und ein zufälliges Startpasswort.</p>
       {formError && <p className="form-error" role="alert">{formError}</p>}

@@ -179,6 +179,7 @@ export interface CreatedUser {
   email: string;
   /** Startpasswort – wird nur in dieser einen Antwort geliefert. */
   password: string;
+  is_jungmariner: boolean;
 }
 
 export class ApiError extends Error {
@@ -300,7 +301,7 @@ export const api = {
     await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
     await refreshNonce();
   },
-  createUser: (data: { name: string; username?: string; email?: string }) =>
+  createUser: (data: { name: string; username?: string; email?: string; jungmariner?: boolean }) =>
     request<CreatedUser>('POST', '/users', data),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>

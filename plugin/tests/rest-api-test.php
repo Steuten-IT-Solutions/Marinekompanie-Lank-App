@@ -252,10 +252,15 @@ $auth = wp_authenticate( $u1['username'], $u1['password'] );
 mkl_assert( $auth instanceof WP_User && $auth->ID === $u1['id'], 'Anmeldung mit Startpasswort funktioniert' );
 mkl_assert( array( MKL_ROLE_MITGLIED ) === array_values( get_userdata( $u1['id'] )->roles ) && 'mitglied' === MKL_Roles::get_level( $u1['id'] ), 'Neues Mitglied hat die Rolle Mitglied' );
 mkl_assert( 'Mkltest Müller' === get_userdata( $u1['id'] )->display_name, 'Anzeigename gesetzt' );
+mkl_assert( false === $u1['is_jungmariner'] && ! MKL_Roles::is_jungmariner( $u1['id'] ), 'Ohne Angabe kein Jungmariner' );
 
 list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
 $created[]      = isset( $u2['id'] ) ? $u2['id'] : 0;
 mkl_assert( 201 === $s && 'mkltest.mueller2' === $u2['username'], 'Gleicher Name → eindeutiger Benutzername mit Zähler' );
+
+list( $s, $u3 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Jung', 'jungmariner' => true ) );
+$created[]      = isset( $u3['id'] ) ? $u3['id'] : 0;
+mkl_assert( 201 === $s && true === $u3['is_jungmariner'] && MKL_Roles::is_jungmariner( $u3['id'] ), 'Neues Mitglied direkt als Jungmariner angelegt' );
 
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.mueller' ) );
 mkl_assert( 400 === $s, 'Vergebener Benutzername → 400' );

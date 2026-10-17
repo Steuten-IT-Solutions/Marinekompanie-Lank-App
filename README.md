@@ -19,7 +19,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 | **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
 | **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
 
-**Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Dann gilt:
+**Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
 
 - Bei jeder Punktevergabe wird für Jungmariner automatisch nur die Hälfte gutgeschrieben, z. B. 5 → 2,5. Dafür sind halbe Punkte möglich.
 - Abzüge (negative Punkte) zählen auch für Jungmariner voll.

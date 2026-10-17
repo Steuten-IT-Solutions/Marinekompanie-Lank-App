@@ -498,6 +498,7 @@ class MKL_REST {
 	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
+	 * Mit jungmariner=true wird das Mitglied gleich als Jungmariner markiert.
 	 */
 	public static function create_user( WP_REST_Request $req ) {
 		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
@@ -544,14 +545,16 @@ class MKL_REST {
 		if ( is_wp_error( $user_id ) ) {
 			return self::error( $user_id->get_error_message() );
 		}
+		MKL_Roles::set_jungmariner( $user_id, rest_sanitize_boolean( $req->get_param( 'jungmariner' ) ) );
 
 		return new WP_REST_Response(
 			array(
-				'id'       => $user_id,
-				'name'     => $name,
-				'username' => $login,
-				'email'    => $email,
-				'password' => $password,
+				'id'             => $user_id,
+				'name'           => $name,
+				'username'       => $login,
+				'email'          => $email,
+				'password'       => $password,
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $user_id ),
 			),
 			201
 		);
