@@ -715,7 +715,9 @@ test('Titel: Spieß legt Titel an und vergibt ihn, Mitglied sieht ihn zusätzlic
 
   await login(page, 'mariner2');
   await page.getByRole('button', { name: 'Meins' }).click();
-  await expect(page.locator('.rank-card .badge-title')).toHaveText(title);
+  // Der Titel steht auf „Meins → Punkte“ über den Punkten, nicht noch einmal in der Dienstgrad-Karte.
+  await expect(page.locator('.my-titles .badge-title')).toHaveText(title);
+  await expect(page.locator('.my-titles + .stat')).toBeVisible();
   await shot(page, '29-meins-titel');
 
   // Aufräumen: Titel wieder entfernen und löschen.
