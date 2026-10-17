@@ -8,9 +8,11 @@
  * - Den internen Kalender (/calendar) sehen Anwärter und Mitglieder (mkl_calendar).
  * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
  *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
- * - Punkte/Strafen verwalten erfordert mkl_manage (Spieß), Termine pflegen
- *   mkl_manage_events (Admin), Benutzer anlegen/Rollen ändern create_users/promote_users.
- *   Anwärter zum Mitglied befördern darf auch der Spieß (mkl_manage).
+ * - Punkte/Strafen/Dienstgrade verwalten erfordert mkl_manage (Spieß), Termine pflegen
+ *   mkl_manage_events (Admin), Dokumente pflegen mkl_manage_documents (Admin),
+ *   Benutzer anlegen/Rollen ändern create_users/promote_users. Anwärter zum Mitglied
+ *   befördern darf auch der Spieß (mkl_manage).
+ * - Mitglieder sehen nur den eigenen Dienstgrad und Verlauf (/me…), nie den anderer.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -20,6 +22,8 @@ class MKL_REST {
 	const NS = 'mk-lank/v1';
 
 	const MAX_POINTS = 10000;
+	/** Höchster Anfangsbestand beim Anlegen eines Mitglieds. */
+	const MAX_INITIAL_POINTS = 1000000;
 	/** Höchstbetrag einer einzelnen Strafe: 1.000 € */
 	const MAX_CENTS = 100000;
 
@@ -30,6 +34,7 @@ class MKL_REST {
 		$calendar  = array( __CLASS__, 'can_calendar' );
 		$manage    = array( __CLASS__, 'can_manage' );
 		$events    = array( __CLASS__, 'can_manage_events' );
+		$docs      = array( __CLASS__, 'can_manage_docs' );
 		$id_arg    = array(
 			'id' => array(
 				'type'     => 'integer',
@@ -40,6 +45,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_me' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $member ) );
+		register_rest_route( self::NS, '/me/rank-history', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_rank_history' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $calendar ) );
 
@@ -74,14 +80,88 @@ class MKL_REST {
 				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_catalog_item' ), 'permission_callback' => $manage ),
 			)
 		);
-		register_rest_route( self::NS, '/catalog/(?P<id>\d+)', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route(
+			self::NS,
+			'/catalog/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/ranks',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_ranks' ), 'permission_callback' => $member ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_rank' ), 'permission_callback' => $manage ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/ranks/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/titles',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_titles' ), 'permission_callback' => $manage ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_title' ), 'permission_callback' => $manage ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/titles/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_title' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_title' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
+		register_rest_route( self::NS, '/promotions', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_promotions' ), 'permission_callback' => $manage ) );
+
+		register_rest_route(
+			self::NS,
+			'/documents',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_documents' ), 'permission_callback' => $member ),
+				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_document' ), 'permission_callback' => $docs ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/documents/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_document' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_document' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+			)
+		);
+		register_rest_route( self::NS, '/documents/(?P<id>\d+)/file', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'replace_document_file' ), 'permission_callback' => $docs, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/document-categories', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_document_category' ), 'permission_callback' => $docs ) );
+		register_rest_route(
+			self::NS,
+			'/document-categories/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_document_category' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_document_category' ), 'permission_callback' => $docs, 'args' => $id_arg ),
+			)
+		);
 
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/jungmariner', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_jungmariner' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/rank', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/titles', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_titles' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/promote', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'promote_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
+		register_rest_route( self::NS, '/accounts', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_accounts' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ) ) );
+		register_rest_route( self::NS, '/accounts/(?P<id>\d+)', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_account' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/accounts/(?P<id>\d+)/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'reset_account_password' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/points', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_points' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/points/(?P<id>\d+)', array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_points' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
@@ -122,8 +202,16 @@ class MKL_REST {
 		return self::require_cap( MKL_CAP_EVENTS, 'Nur Administratoren dürfen öffentliche Termine pflegen.' );
 	}
 
+	public static function can_manage_docs() {
+		return self::require_cap( MKL_CAP_DOCS, 'Nur Administratoren dürfen Dokumente pflegen.' );
+	}
+
 	public static function can_promote_users() {
 		return self::require_cap( 'promote_users', 'Nur Administratoren dürfen Rollen ändern.' );
+	}
+
+	public static function can_edit_users() {
+		return self::require_cap( 'edit_users', 'Nur Administratoren dürfen Konten verwalten.' );
 	}
 
 	private static function require_cap( $cap, $message ) {
@@ -175,11 +263,39 @@ class MKL_REST {
 				'can_see_calendar'  => MKL_Roles::can_see_calendar(),
 				'is_spiess'         => MKL_Roles::is_spiess(),
 				'can_create_users'  => current_user_can( 'create_users' ),
+				'can_edit_users'    => current_user_can( 'edit_users' ),
 				'can_manage_events' => current_user_can( MKL_CAP_EVENTS ),
+				'can_manage_docs'   => current_user_can( MKL_CAP_DOCS ),
+				'is_jungmariner'    => MKL_Roles::is_jungmariner( $user->ID ),
 				'points'           => MKL_DB::get_points_total( $user->ID ),
 				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
-			)
+				'titles'           => MKL_Titles::for_user( $user->ID ),
+			) + self::own_rank( $user->ID )
 		);
+	}
+
+	/**
+	 * Dienstgrad-Angaben für das Mitglied selbst: zugewiesener Dienstgrad, nächster Dienstgrad und
+	 * fehlende Punkte. Gäste haben keinen Dienstgrad.
+	 */
+	private static function own_rank( $user_id ) {
+		if ( ! MKL_Roles::is_member( $user_id ) ) {
+			return array(
+				'rank'           => null,
+				'next_rank'      => null,
+				'points_to_next' => null,
+			);
+		}
+		$status = MKL_Ranks::status_for_user( $user_id );
+		return array(
+			'rank'           => $status['rank'],
+			'next_rank'      => $status['next_rank'],
+			'points_to_next' => $status['points_to_next'],
+		);
+	}
+
+	public static function get_my_rank_history() {
+		return rest_ensure_response( MKL_Ranks::history( get_current_user_id() ) );
 	}
 
 	public static function get_my_points() {
@@ -404,6 +520,14 @@ class MKL_REST {
 		return rest_ensure_response( MKL_DB::get_catalog_item( $id ) );
 	}
 
+	/** Bereits vergebene Punkte bleiben erhalten: Punktzahl und Grund stehen im Punkte-Eintrag selbst. */
+	public static function delete_catalog_item( WP_REST_Request $req ) {
+		if ( ! MKL_DB::delete_catalog_item( (int) $req['id'] ) ) {
+			return self::error( 'Eintrag nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Mitglieder (Spieß)                                                  */
 	/* ------------------------------------------------------------------ */
@@ -422,13 +546,20 @@ class MKL_REST {
 
 	/**
 	 * Mitglieder (mkl_member) mit Summen. Mit ?anwaerter=1 kommen Anwärter dazu
-	 * (damit der Spieß sie befördern kann). Admins können mit ?all=1 auch
-	 * Gast-Konten abrufen, um ihnen eine Rolle zu geben.
+	 * (damit der Spieß sie befördern kann). Admins können mit ?all=1 auch Konten
+	 * ohne Rolle abrufen, um ihnen eine Rolle zu geben.
 	 */
 	public static function get_members( WP_REST_Request $req ) {
 		$all       = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
 		$anwaerter = (bool) $req->get_param( 'anwaerter' );
 		$totals    = MKL_DB::get_totals_by_user();
+		$ranks  = array();
+		foreach ( MKL_Ranks::all( false ) as $r ) {
+			$ranks[ $r['id'] ] = $r;
+		}
+		$assigned  = MKL_Ranks::rank_ids_by_user();
+		$titles    = MKL_Titles::all();
+		$title_ids = MKL_Titles::title_ids_by_user();
 		$out       = array();
 		foreach ( self::member_users() as $u ) {
 			$id = (int) $u->ID;
@@ -436,12 +567,15 @@ class MKL_REST {
 				continue;
 			}
 			$out[] = array(
-				'id'         => $id,
-				'name'       => $u->display_name,
-				'level'      => MKL_Roles::get_level( $id ),
-				'is_spiess'  => MKL_Roles::is_spiess( $id ),
-				'points'     => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
-				'open_cents' => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
+				'id'             => $id,
+				'name'           => $u->display_name,
+				'level'          => MKL_Roles::get_level( $id ),
+				'is_spiess'      => MKL_Roles::is_spiess( $id ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $id ),
+				'points'         => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
+				'open_cents'     => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
+				'rank'           => isset( $assigned[ $id ], $ranks[ $assigned[ $id ] ] ) ? MKL_Ranks::ref( $ranks[ $assigned[ $id ] ] ) : null,
+				'titles'         => MKL_Titles::for_user( $id, isset( $title_ids[ $id ] ) ? $title_ids[ $id ] : array(), $titles ),
 			);
 		}
 		return rest_ensure_response( $out );
@@ -454,16 +588,315 @@ class MKL_REST {
 		}
 		return rest_ensure_response(
 			array(
-				'id'         => $user->ID,
-				'name'       => $user->display_name,
-				'level'      => MKL_Roles::get_level( $user->ID ),
-				'is_spiess'  => MKL_Roles::is_spiess( $user->ID ),
-				'points'     => MKL_DB::get_points_total( $user->ID ),
-				'open_cents' => MKL_DB::get_open_penalties_cents( $user->ID ),
-				'point_list' => MKL_DB::get_points_for_user( $user->ID ),
-				'penalties'  => MKL_DB::get_penalties_for_user( $user->ID ),
+				'id'             => $user->ID,
+				'name'           => $user->display_name,
+				'level'          => MKL_Roles::get_level( $user->ID ),
+				'is_spiess'      => MKL_Roles::is_spiess( $user->ID ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $user->ID ),
+				'points'         => MKL_DB::get_points_total( $user->ID ),
+				'open_cents'     => MKL_DB::get_open_penalties_cents( $user->ID ),
+				'point_list'     => MKL_DB::get_points_for_user( $user->ID ),
+				'penalties'      => MKL_DB::get_penalties_for_user( $user->ID ),
+				'rank_status'    => MKL_Ranks::status_for_user( $user->ID ),
+				'rank_history'   => MKL_Ranks::history( $user->ID ),
+				'titles'         => MKL_Titles::for_user( $user->ID ),
 			)
 		);
+	}
+
+	/**
+	 * Markiert ein Mitglied als Jungmariner (oder hebt das auf). Gilt nur für
+	 * künftige Punktevergaben; bereits vergebene Punkte bleiben unverändert.
+	 */
+	public static function set_member_jungmariner( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( ! MKL_Roles::is_member( $id ) ) {
+			return self::error( 'Nur Mitglieder können Jungmariner sein.' );
+		}
+		$value = $req->get_param( 'jungmariner' );
+		if ( null === $value ) {
+			return self::error( 'Bitte angeben, ob das Mitglied Jungmariner ist.' );
+		}
+		MKL_Roles::set_jungmariner( $id, rest_sanitize_boolean( $value ) );
+		return rest_ensure_response( array( 'id' => $id, 'is_jungmariner' => MKL_Roles::is_jungmariner( $id ) ) );
+	}
+
+	/**
+	 * Ersetzt die Titel eines Mitglieds (Spieße und Admins). title_ids = [] entfernt alle.
+	 */
+	public static function set_member_titles( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( ! MKL_Roles::is_member( $id ) ) {
+			return self::error( 'Nur Mitglieder können Titel bekommen.' );
+		}
+		$raw = $req->get_param( 'title_ids' );
+		if ( ! is_array( $raw ) ) {
+			return self::error( 'Ungültige Titel.' );
+		}
+		$result = MKL_Titles::set_for_user( $id, $raw );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'titles' => MKL_Titles::for_user( $id ) ) );
+	}
+
+	/**
+	 * Befördern/Degradieren. Die Regeln gelten für alle, auch für Administratoren.
+	 */
+	public static function set_member_rank( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( ! MKL_Roles::is_member( $id ) ) {
+			return self::error( 'Nur Mitglieder können einen Dienstgrad bekommen.' );
+		}
+		$raw = $req->get_param( 'rank_id' );
+		if ( null !== $raw && '' !== $raw && ( ! is_numeric( $raw ) || (int) $raw <= 0 ) ) {
+			return self::error( 'Ungültiger Dienstgrad.' );
+		}
+		$target_id = $raw ? (int) $raw : null;
+		$points    = MKL_DB::get_points_total( $id );
+		$change    = MKL_Ranks::validate_change( $id, $target_id, $points );
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+		$reason = sanitize_text_field( (string) $req->get_param( 'reason' ) );
+		MKL_Ranks::set_rank( $id, $change['current'], $change['target'], $change['kind'], $points, $reason, get_current_user_id() );
+		return rest_ensure_response(
+			array(
+				'rank_status'  => MKL_Ranks::status_for_user( $id ),
+				'rank_history' => MKL_Ranks::history( $id ),
+			)
+		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Dienstgrade                                                               */
+	/* ------------------------------------------------------------------ */
+
+	/** Aktive Dienstgrade für alle Mitglieder; Spieße bekommen mit ?all=1 auch inaktive und die Anzahl Zugewiesener. */
+	public static function get_ranks( WP_REST_Request $req ) {
+		$all = $req->get_param( 'all' ) && current_user_can( MKL_CAP_MANAGE );
+		$out = MKL_Ranks::all( ! $all );
+		if ( $all ) {
+			$counts = array_count_values( MKL_Ranks::rank_ids_by_user() );
+			foreach ( $out as &$r ) {
+				$r['member_count'] = isset( $counts[ $r['id'] ] ) ? $counts[ $r['id'] ] : 0;
+			}
+			unset( $r );
+		}
+		return rest_ensure_response( $out );
+	}
+
+	public static function create_rank( WP_REST_Request $req ) {
+		$min = self::parse_min_points( $req->get_param( 'min_points' ) );
+		if ( is_wp_error( $min ) ) {
+			return $min;
+		}
+		$id = MKL_Ranks::insert( sanitize_text_field( (string) $req->get_param( 'title' ) ), $min );
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		return new WP_REST_Response( MKL_Ranks::get( $id ), 201 );
+	}
+
+	public static function update_rank( WP_REST_Request $req ) {
+		$data = array();
+		if ( null !== $req->get_param( 'title' ) ) {
+			$data['title'] = sanitize_text_field( (string) $req->get_param( 'title' ) );
+		}
+		if ( null !== $req->get_param( 'min_points' ) ) {
+			$min = self::parse_min_points( $req->get_param( 'min_points' ) );
+			if ( is_wp_error( $min ) ) {
+				return $min;
+			}
+			$data['min_points'] = $min;
+		}
+		if ( null !== $req->get_param( 'active' ) ) {
+			$data['active'] = rest_sanitize_boolean( $req->get_param( 'active' ) );
+		}
+		$result = MKL_Ranks::update( (int) $req['id'], $data );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( MKL_Ranks::get( (int) $req['id'] ) );
+	}
+
+	public static function delete_rank( WP_REST_Request $req ) {
+		$result = MKL_Ranks::delete( (int) $req['id'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Titel                                                               */
+	/* ------------------------------------------------------------------ */
+
+	/** Titelliste mit Anzahl der Mitglieder, denen der Titel zugewiesen ist. */
+	public static function get_titles() {
+		$by_user = MKL_Titles::title_ids_by_user();
+		$out     = MKL_Titles::all();
+		foreach ( $out as &$t ) {
+			$count = 0;
+			foreach ( $by_user as $ids ) {
+				if ( in_array( $t['id'], $ids, true ) ) {
+					$count++;
+				}
+			}
+			$t['member_count'] = $count;
+		}
+		unset( $t );
+		return rest_ensure_response( $out );
+	}
+
+	public static function create_title( WP_REST_Request $req ) {
+		$id = MKL_Titles::insert( sanitize_text_field( (string) $req->get_param( 'title' ) ) );
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		return new WP_REST_Response( MKL_Titles::get( $id ), 201 );
+	}
+
+	public static function update_title( WP_REST_Request $req ) {
+		$result = MKL_Titles::rename( (int) $req['id'], sanitize_text_field( (string) $req->get_param( 'title' ) ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( MKL_Titles::get( (int) $req['id'] ) );
+	}
+
+	public static function delete_title( WP_REST_Request $req ) {
+		$result = MKL_Titles::delete( (int) $req['id'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/** Beförderungsübersicht für die Spieße (Mitglieder, Spieße und Admins, keine Gäste). */
+	public static function get_promotions() {
+		$users = array_values(
+			array_filter(
+				self::member_users(),
+				function ( $u ) {
+					return MKL_Roles::is_member( (int) $u->ID );
+				}
+			)
+		);
+		$titles    = MKL_Titles::all();
+		$title_ids = MKL_Titles::title_ids_by_user();
+		$out       = MKL_Ranks::promotions( $users );
+		foreach ( $out as &$p ) {
+			$p['titles'] = MKL_Titles::for_user( $p['user_id'], isset( $title_ids[ $p['user_id'] ] ) ? $title_ids[ $p['user_id'] ] : array(), $titles );
+		}
+		unset( $p );
+		return rest_ensure_response( $out );
+	}
+
+	private static function parse_min_points( $raw ) {
+		if ( ! is_numeric( $raw ) || (int) $raw != $raw || (int) $raw < 0 || (int) $raw > MKL_Ranks::MAX_MIN_POINTS ) { // phpcs:ignore WordPress.PHP.StrictComparisons
+			return self::error( 'Bitte eine ganze Punktzahl ab 0 als Schwelle angeben.' );
+		}
+		return (int) $raw;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Dokumente                                                           */
+	/* ------------------------------------------------------------------ */
+
+	/** Dokumente, die das Konto sehen darf, und alle Kategorien. */
+	public static function get_documents() {
+		return rest_ensure_response(
+			array(
+				'categories' => MKL_Documents::categories(),
+				'documents'  => MKL_Documents::visible(),
+			)
+		);
+	}
+
+	/**
+	 * Neues Dokument: Die Datei kommt direkt als Request-Body, die Angaben als
+	 * Query-Parameter: filename, title, category_id, date (JJJJ-MM-TT), visibility.
+	 */
+	public static function create_document( WP_REST_Request $req ) {
+		$body = self::upload_body( $req );
+		if ( is_wp_error( $body ) ) {
+			return $body;
+		}
+		$doc = MKL_Documents::create(
+			array(
+				'title'       => $req->get_param( 'title' ),
+				'category_id' => $req->get_param( 'category_id' ),
+				'date'        => $req->get_param( 'date' ),
+				'visibility'  => $req->get_param( 'visibility' ),
+			),
+			$body,
+			(string) $req->get_param( 'filename' ),
+			get_current_user_id()
+		);
+		return is_wp_error( $doc ) ? $doc : new WP_REST_Response( $doc, 201 );
+	}
+
+	/** Neue Fassung: ersetzt die Datei, die Angaben bleiben. */
+	public static function replace_document_file( WP_REST_Request $req ) {
+		$body = self::upload_body( $req );
+		if ( is_wp_error( $body ) ) {
+			return $body;
+		}
+		$doc = MKL_Documents::replace_file( (int) $req['id'], $body, (string) $req->get_param( 'filename' ), get_current_user_id() );
+		return is_wp_error( $doc ) ? $doc : rest_ensure_response( $doc );
+	}
+
+	/** Der Request-Body ist die Datei; JSON und Formulare würde WordPress als Parameter lesen. */
+	private static function upload_body( WP_REST_Request $req ) {
+		$type = $req->get_content_type();
+		if ( ! $type || in_array( strtolower( $type['value'] ), array( 'application/json', 'application/x-www-form-urlencoded', 'multipart/form-data' ), true ) ) {
+			return self::error( 'Bitte die Datei direkt als Inhalt der Anfrage senden.' );
+		}
+		return $req->get_body();
+	}
+
+	/** Titel, Kategorie, Stand und Sichtbarkeit ändern (nur übergebene Felder). */
+	public static function update_document( WP_REST_Request $req ) {
+		$meta = array();
+		foreach ( array( 'title', 'category_id', 'date', 'visibility' ) as $key ) {
+			if ( $req->has_param( $key ) ) {
+				$meta[ $key ] = $req->get_param( $key );
+			}
+		}
+		$doc = MKL_Documents::update( (int) $req['id'], $meta );
+		return is_wp_error( $doc ) ? $doc : rest_ensure_response( $doc );
+	}
+
+	public static function delete_document( WP_REST_Request $req ) {
+		if ( ! MKL_Documents::delete( (int) $req['id'] ) ) {
+			return self::error( 'Dokument nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	public static function create_document_category( WP_REST_Request $req ) {
+		$cat = MKL_Documents::save_category( 0, $req->get_param( 'title' ), (int) $req->get_param( 'sort' ) );
+		return is_wp_error( $cat ) ? $cat : new WP_REST_Response( $cat, 201 );
+	}
+
+	public static function update_document_category( WP_REST_Request $req ) {
+		$cat = MKL_Documents::save_category( (int) $req['id'], $req->get_param( 'title' ), $req->get_param( 'sort' ) );
+		return is_wp_error( $cat ) ? $cat : rest_ensure_response( $cat );
+	}
+
+	public static function delete_document_category( WP_REST_Request $req ) {
+		$result = MKL_Documents::delete_category( (int) $req['id'] );
+		return is_wp_error( $result ) ? $result : rest_ensure_response( array( 'deleted' => true ) );
 	}
 
 	/** Spieß und Admins befördern Anwärter zu vollen Mitgliedern. */
@@ -499,10 +932,17 @@ class MKL_REST {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Legt ein Konto mit der gewählten App-Rolle (level: gast|anwaerter|mitglied|spiess,
+	 * Legt ein Konto mit der gewählten App-Rolle (level: ohne|anwaerter|mitglied|spiess,
 	 * Standard anwaerter, weil neue Leute als Anwärter anfangen) und zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
+	 *
+	 * Optional für die Übernahme bestehender Mitglieder: initial_points (Anfangsbestand,
+	 * wird als normale Buchung angelegt), initial_points_date und rank_id. Der Dienstgrad muss
+	 * mit dem Anfangsbestand erreichbar sein; das wird geprüft, bevor das Konto entsteht.
+	 * Mit jungmariner=true wird das Mitglied gleich als Jungmariner markiert; der
+	 * Anfangsbestand wird dabei nicht halbiert. Anfangsbestand, Dienstgrad und Jungmariner
+	 * gibt es nur für Mitglieder und Spieße.
 	 */
 	public static function create_user( WP_REST_Request $req ) {
 		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
@@ -512,7 +952,7 @@ class MKL_REST {
 
 		// Admin-Rechte vergibt man bewusst nur im WordPress-Backend.
 		$roles = array(
-			MKL_Roles::LEVEL_GAST      => 'subscriber',
+			MKL_Roles::LEVEL_OHNE      => 'subscriber',
 			MKL_Roles::LEVEL_ANWAERTER => MKL_ROLE_ANWAERTER,
 			MKL_Roles::LEVEL_MITGLIED  => MKL_ROLE_MITGLIED,
 			MKL_Roles::LEVEL_SPIESS    => MKL_ROLE_SPIESS,
@@ -522,6 +962,7 @@ class MKL_REST {
 		if ( ! is_string( $level ) || ! isset( $roles[ $level ] ) ) {
 			return self::error( 'Ungültige Rolle.' );
 		}
+		$is_member = in_array( $level, array( MKL_Roles::LEVEL_MITGLIED, MKL_Roles::LEVEL_SPIESS ), true );
 
 		$login = trim( (string) $req->get_param( 'username' ) );
 		if ( '' === $login ) {
@@ -545,6 +986,38 @@ class MKL_REST {
 			}
 		}
 
+		$raw_points = $req->get_param( 'initial_points' );
+		$initial    = 0;
+		if ( null !== $raw_points && '' !== $raw_points ) {
+			if ( ! is_numeric( $raw_points ) || (int) $raw_points != $raw_points || (int) $raw_points < 0 || (int) $raw_points > self::MAX_INITIAL_POINTS ) { // phpcs:ignore WordPress.PHP.StrictComparisons
+				return self::error( 'Bitte als Anfangsbestand eine ganze Punktzahl ab 0 angeben.' );
+			}
+			$initial = (int) $raw_points;
+		}
+		$initial_date = self::parse_date( $req->get_param( 'initial_points_date' ) );
+		if ( is_wp_error( $initial_date ) ) {
+			return $initial_date;
+		}
+		$raw_rank = $req->get_param( 'rank_id' );
+		$rank     = null;
+		if ( null !== $raw_rank && '' !== $raw_rank && 0 !== (int) $raw_rank ) {
+			$rank = MKL_Ranks::get( (int) $raw_rank );
+			if ( ! $rank ) {
+				return self::error( 'Dienstgrad nicht gefunden.' );
+			}
+			if ( ! $rank['active'] ) {
+				return self::error( sprintf( 'Der Dienstgrad „%s“ ist deaktiviert.', $rank['title'] ) );
+			}
+			if ( $initial < $rank['min_points'] ) {
+				return self::error( sprintf( 'Für „%s“ sind mindestens %s Punkte nötig.', $rank['title'], number_format_i18n( $rank['min_points'] ) ) );
+			}
+		}
+
+		$jungmariner = rest_sanitize_boolean( $req->get_param( 'jungmariner' ) );
+		if ( ! $is_member && ( $initial > 0 || $rank || $jungmariner ) ) {
+			return self::error( 'Anfangsbestand, Dienstgrad und Jungmariner gibt es nur für Mitglieder.' );
+		}
+
 		$parts    = preg_split( '/\s+/', $name, 2 );
 		$password = self::readable_password( 12 );
 		$user_id  = wp_insert_user(
@@ -563,17 +1036,189 @@ class MKL_REST {
 			return self::error( $user_id->get_error_message() );
 		}
 
+		if ( $initial > 0 ) {
+			$ids = MKL_DB::add_points( array( $user_id ), $initial, 'Anfangsbestand bei Übernahme', null, $initial_date, get_current_user_id() );
+			if ( ! $ids[0] ) {
+				self::rollback_user( $user_id );
+				return self::error( 'Der Anfangsbestand konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
+			}
+		}
+		if ( $rank && ! MKL_Ranks::set_rank( $user_id, null, $rank, MKL_Ranks::KIND_PROMOTION, $initial, 'Ersteinstufung bei Anlage', get_current_user_id() ) ) {
+			self::rollback_user( $user_id );
+			return self::error( 'Der Dienstgrad konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
+		}
+		// Erst nach dem Anfangsbestand: Der ist ein bereits erreichter Stand und wird nicht halbiert.
+		MKL_Roles::set_jungmariner( $user_id, $jungmariner );
+
 		return new WP_REST_Response(
 			array(
-				'id'       => $user_id,
-				'name'     => $name,
-				'username' => $login,
-				'email'    => $email,
-				'level'    => MKL_Roles::get_level( $user_id ),
-				'password' => $password,
+				'id'             => $user_id,
+				'name'           => $name,
+				'username'       => $login,
+				'email'          => $email,
+				'level'          => MKL_Roles::get_level( $user_id ),
+				'password'       => $password,
+				'points'         => $initial,
+				'rank'           => MKL_Ranks::ref( $rank ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $user_id ),
 			),
 			201
 		);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Konten verwalten (Admin)                                            */
+	/* ------------------------------------------------------------------ */
+
+	/** Alle Konten (auch ohne Rolle) mit Benutzername und E-Mail. */
+	public static function get_accounts() {
+		$users = get_users(
+			array(
+				'orderby' => 'display_name',
+				'order'   => 'ASC',
+				'fields'  => array( 'ID', 'display_name', 'user_login', 'user_email' ),
+			)
+		);
+		$out = array();
+		foreach ( $users as $u ) {
+			$out[] = self::format_account( (int) $u->ID, $u->display_name, $u->user_login, $u->user_email );
+		}
+		return rest_ensure_response( $out );
+	}
+
+	private static function format_account( $id, $name, $login, $email ) {
+		return array(
+			'id'       => $id,
+			'name'     => $name,
+			'username' => $login,
+			'email'    => $email,
+			'level'    => MKL_Roles::get_level( $id ),
+			'is_self'  => get_current_user_id() === $id,
+			'editable' => current_user_can( 'edit_user', $id ),
+		);
+	}
+
+	/** @return WP_User|WP_Error */
+	private static function editable_account( $id ) {
+		$user = get_userdata( $id );
+		if ( ! $user ) {
+			return self::error( 'Konto nicht gefunden.', 404 );
+		}
+		if ( ! current_user_can( 'edit_user', $id ) ) {
+			return new WP_Error( 'mkl_forbidden', 'Dieses Konto darfst du nicht bearbeiten.', array( 'status' => 403 ) );
+		}
+		return $user;
+	}
+
+	/**
+	 * Name, Benutzername und/oder E-Mail eines Kontos ändern.
+	 *
+	 * WordPress sieht keine Änderung des Benutzernamens vor; er wird deshalb direkt
+	 * in der Datenbank geändert. Das Anmelde-Cookie enthält den Benutzernamen, daher
+	 * werden dabei alle Sitzungen des Kontos beendet. Den eigenen Benutzernamen kann
+	 * man so nicht ändern, um sich nicht selbst abzumelden.
+	 */
+	public static function update_account( WP_REST_Request $req ) {
+		global $wpdb;
+		$id   = (int) $req['id'];
+		$user = self::editable_account( $id );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+
+		$data = array( 'ID' => $id );
+		if ( null !== $req->get_param( 'name' ) ) {
+			$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
+			if ( '' === $name ) {
+				return self::error( 'Bitte einen Namen angeben.' );
+			}
+			$parts                = preg_split( '/\s+/', $name, 2 );
+			$data['display_name'] = $name;
+			$data['nickname']     = $name;
+			$data['first_name']   = $parts[0];
+			$data['last_name']    = isset( $parts[1] ) ? $parts[1] : '';
+		}
+		if ( null !== $req->get_param( 'email' ) ) {
+			$email = trim( (string) $req->get_param( 'email' ) );
+			if ( '' !== $email ) {
+				if ( ! is_email( $email ) ) {
+					return self::error( 'Die E-Mail-Adresse ist ungültig.' );
+				}
+				$owner = email_exists( $email );
+				if ( $owner && (int) $owner !== $id ) {
+					return self::error( 'Diese E-Mail-Adresse wird schon verwendet.' );
+				}
+			}
+			$data['user_email'] = $email;
+		}
+
+		$login = null;
+		if ( null !== $req->get_param( 'username' ) ) {
+			$login = trim( (string) $req->get_param( 'username' ) );
+			if ( $login === $user->user_login ) {
+				$login = null;
+			} elseif ( get_current_user_id() === $id ) {
+				return self::error( 'Den eigenen Benutzernamen kann man hier nicht ändern, weil man dabei abgemeldet würde.' );
+			} elseif ( '' === $login || sanitize_user( $login, true ) !== $login || strlen( $login ) > 60 ) {
+				return self::error( 'Der Benutzername darf nur Buchstaben (a–z), Ziffern sowie . _ - @ enthalten.' );
+			} elseif ( username_exists( $login ) ) {
+				return self::error( 'Dieser Benutzername ist schon vergeben.' );
+			}
+		}
+
+		if ( count( $data ) > 1 ) {
+			// Wie beim Anlegen: keine automatischen E-Mails an das Mitglied.
+			add_filter( 'send_email_change_email', '__return_false' );
+			$result = wp_update_user( $data );
+			remove_filter( 'send_email_change_email', '__return_false' );
+			if ( is_wp_error( $result ) ) {
+				return self::error( $result->get_error_message() );
+			}
+		}
+		if ( null !== $login ) {
+			$wpdb->update( $wpdb->users, array( 'user_login' => $login ), array( 'ID' => $id ), array( '%s' ), array( '%d' ) );
+			clean_user_cache( $id );
+			WP_Session_Tokens::get_instance( $id )->destroy_all();
+		}
+
+		$fresh = get_userdata( $id );
+		return rest_ensure_response( self::format_account( $id, $fresh->display_name, $fresh->user_login, $fresh->user_email ) );
+	}
+
+	/**
+	 * Setzt ein neues zufälliges Startpasswort und beendet alle Sitzungen des Kontos.
+	 * Das Passwort wird nur in dieser Antwort zurückgegeben. Das eigene Passwort
+	 * ändert man unter „Konto“.
+	 */
+	public static function reset_account_password( WP_REST_Request $req ) {
+		$id   = (int) $req['id'];
+		$user = self::editable_account( $id );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+		if ( get_current_user_id() === $id ) {
+			return self::error( 'Das eigene Passwort bitte unter „Konto“ ändern.' );
+		}
+		$password = self::readable_password( 12 );
+		wp_set_password( $password, $id );
+		WP_Session_Tokens::get_instance( $id )->destroy_all();
+		return rest_ensure_response(
+			array(
+				'id'       => $id,
+				'name'     => $user->display_name,
+				'username' => $user->user_login,
+				'password' => $password,
+			)
+		);
+	}
+
+	/** Entfernt ein gerade angelegtes Konto samt Buchungen wieder, damit kein halb angelegtes Mitglied bleibt. */
+	private static function rollback_user( $user_id ) {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+		$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $user_id ), array( '%d' ) );
+		$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $user_id ), array( '%d' ) );
+		wp_delete_user( $user_id );
 	}
 
 	/**
@@ -721,7 +1366,7 @@ class MKL_REST {
 				return self::error( 'Unbekanntes Mitglied.' );
 			}
 			if ( ! MKL_Roles::is_member( $id ) ) {
-				return self::error( 'Gäste können keine Punkte oder Strafen bekommen.' );
+				return self::error( 'Nur Mitglieder können Punkte oder Strafen bekommen.' );
 			}
 		}
 		return $ids;

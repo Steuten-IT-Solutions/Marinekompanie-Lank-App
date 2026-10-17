@@ -201,7 +201,8 @@ button, input, select { font: inherit; color: inherit; }
 .badge-open { background: #f6d9cf; color: #7a2412; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
-.badge-level-gast, .badge-level-anwaerter { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-level-ohne, .badge-level-anwaerter { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-jungmariner { background: #d6e0f5; color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -342,6 +343,7 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
   .error { background: #3d1a14; color: #f6c7b9; border-color: #6e2c15; }
   .badge-open { background: #4a1e14; color: #f6b8a6; }
   .badge-paid { background: #163a24; color: #9fdcb2; }
+  .badge-jungmariner { background: #22355f; color: #c9d6f5; }
   .row::before { background: var(--brass); opacity: 0.7; }
   .segmented button.active { background: var(--navy); }
 }
@@ -350,8 +352,12 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; color: var(--ink-2); margin: 0 2px 14px; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--navy); }
 .role-control { margin: -4px 0 16px; }
+.promote-anwaerter { margin-bottom: 16px; }
 .field-label { display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .segmented.small { margin-bottom: 0; }
+.segmented button.pending { animation: pending-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes pending-pulse { from { opacity: 1; } to { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .segmented button.pending { animation: none; opacity: 0.8; } }
 .member-level { margin: -8px 0 14px; }
 .manage-events, .add-event { margin-bottom: 16px; }
 .event-form { margin-top: 12px; }
@@ -439,3 +445,73 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 @media (prefers-color-scheme: dark) {
   .install-warn { background: #3a2c0c; color: #f3dca4; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Dienstgrade                                                         */
+/* ------------------------------------------------------------------ */
+
+.rank-card, .rank-control { padding: 16px 18px; margin-top: 12px; border-left: 4px solid var(--brass); }
+.rank-card.clickable { cursor: pointer; }
+.rank-control { margin: 14px 0; }
+.rank-label { font-family: var(--font-head); font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.78rem; color: var(--muted); }
+.rank-title { font-family: var(--font-head); font-weight: 700; font-size: 1.5rem; line-height: 1.15; color: var(--accent-text); margin-bottom: 8px; }
+.rank-next { font-size: 0.92rem; color: var(--ink-2); }
+.rank-more { margin-top: 8px; font-size: 0.85rem; font-weight: 650; color: var(--accent-text); }
+.progress { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 4px 0 8px; }
+.progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brass-dark), var(--brass)); }
+.rank-list .row-value { font-size: 1rem; color: var(--ink-2); }
+.rank-mine { border-color: var(--brass); }
+.rank-mine::before { background: var(--brass); opacity: 1; }
+.rank-history-degradierung::before { background: var(--wood); }
+.promo-due { color: var(--good); font-weight: 650; }
+.promo-missing { text-align: right; font-size: 1.05rem; }
+.promo-missing small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+.rank-form { margin-top: 12px; }
+.rank-control .section-title { margin-top: 18px; }
+
+/* Titel (z. B. Ehrenkapitän), zusätzlich zum Dienstgrad */
+.title-badges { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; vertical-align: 2px; }
+.row-title .title-badges { margin-left: 6px; }
+.title-control { padding: 16px 18px; margin: 14px 0; border-left: 4px solid var(--brass); }
+.rank-card .title-badges, .title-control .title-badges { display: flex; margin: 2px 0 8px; }
+.badge-title { background: transparent; color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--brass); }
+.title-picker { border: 1.5px solid var(--line-strong); border-radius: 12px; margin-bottom: 4px; }
+.title-edit { margin-top: 8px; }
+
+/* Einrichtung */
+.inline-link { padding: 0; min-height: 0; font-size: inherit; vertical-align: baseline; }
+.account-points { margin-bottom: 14px; }
+.account-form, .account-password { margin-bottom: 14px; }
+.account-password { padding: 16px 18px; }
+.fieldset { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fieldset legend { padding: 0 6px; font-family: var(--font-head); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85rem; color: var(--accent-text); }
+
+/* ------------------------------------------------------------------ */
+/* Dokumente                                                           */
+/* ------------------------------------------------------------------ */
+
+.doc-card { padding: 14px 16px 2px; }
+.doc-head { display: flex; gap: 12px; align-items: flex-start; }
+.doc-icon { flex: none; color: var(--wood); padding-top: 2px; }
+.doc-offline { margin-top: 4px; font-size: 0.82rem; color: var(--good); font-weight: 650; }
+.doc-stand { margin-bottom: 12px; }
+.pdf-viewer { display: flex; flex-direction: column; gap: 10px; }
+.pdf-page { display: block; width: 100%; height: auto; background: #fff; border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); }
+.pdf-progress { text-align: center; }
+
+/* Handys: fünf Spieß-Reiter (Mitglieder … Einrichtung) ohne Umbruch, auch auf 360 px. */
+@media (max-width: 430px) {
+  .segmented button { white-space: nowrap; padding: 9px 2px; font-size: 0.74rem; letter-spacing: 0.02em; }
+}
+/* Schmale Handys (z. B. 360 px): sechs Tabs ohne Umbruch. */
+@media (max-width: 380px) {
+  .tabbar button { letter-spacing: 0.04em; }
+}
+
+/* Dokumente mit Kategorien und verschiedenen Dateitypen */
+.doc-group + .doc-group { margin-top: 6px; }
+.doc-icon-bild { color: var(--navy); }
+.doc-icon-datei { color: var(--brass-dark); }
+.button-row.single { grid-template-columns: 1fr; }
+.doc-admin-group + .doc-admin-group { margin-top: 10px; }
+.doc-edit { padding: 14px 16px; }

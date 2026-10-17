@@ -2,6 +2,9 @@
  *
  * - JS/CSS/Icons aus app-dist/ haben Hash-Dateinamen → cache-first.
  * - Seite /app/ und API-Antworten → network-first; ohne Netz die letzte Version.
+ * - Dokumente (/app/dokument/<id>?v=<version>) → cache-first: Die Adresse ändert sich
+ *   mit jeder neuen Fassung. Was einmal geöffnet wurde, ist so offline verfügbar und
+ *   wird nicht bei jedem Öffnen neu geladen. Gespeichert wird nur die aktuelle Fassung.
  * Beim Abmelden löscht die App alle Caches.
  */
 const STATIC_CACHE = 'mkl-static-v1';
@@ -24,6 +27,10 @@ function isStatic(url) {
 
 function isApi(url) {
   return url.pathname.includes('/wp-json/mk-lank/v1/') || (url.searchParams.get('rest_route') || '').startsWith('/mk-lank/v1/');
+}
+
+function isDocument(url) {
+  return url.pathname.startsWith(new URL(self.registration.scope).pathname + 'dokument/');
 }
 
 function cacheable(res) {
@@ -56,6 +63,21 @@ async function networkFirst(request, fallbackUrl) {
   }
 }
 
+/** Cache-first; beim Speichern einer neuen Fassung werden ältere desselben Dokuments entfernt. */
+async function documentFirst(request) {
+  const cached = await caches.match(request.url);
+  if (cached) return cached;
+  const res = await fetch(request);
+  if (cacheable(res)) {
+    const cache = await caches.open(DATA_CACHE);
+    const path = new URL(request.url).pathname;
+    const old = (await cache.keys()).filter((k) => new URL(k.url).pathname === path && k.url !== request.url);
+    await Promise.all(old.map((k) => cache.delete(k)));
+    await cache.put(request.url, res.clone());
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -64,6 +86,8 @@ self.addEventListener('fetch', (event) => {
 
   if (isStatic(url)) {
     event.respondWith(cacheFirst(request));
+  } else if (isDocument(url)) {
+    event.respondWith(documentFirst(request));
   } else if (request.mode === 'navigate' && url.pathname.startsWith(new URL(self.registration.scope).pathname)) {
     event.respondWith(networkFirst(request, self.registration.scope));
   } else if (isApi(url)) {

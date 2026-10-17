@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { caps } from './format';
-import { detectPlatform, isStandalone, promptInstall, useCanPrompt } from './install';
+import { detectPlatform, installDoneText, isStandalone, promptInstall, useCanPrompt, useInstallState } from './install';
 import { navigate, useRoute } from './router';
+import Dokumente from './views/Dokumente';
+import DokumenteVerwalten from './views/DokumenteVerwalten';
 import Galerie from './views/Galerie';
 import Installieren from './views/Installieren';
 import Konto from './views/Konto';
@@ -13,7 +15,7 @@ import Spiess from './views/Spiess';
 import Termine from './views/Termine';
 import TermineVerwalten from './views/TermineVerwalten';
 
-type Tab = 'termine' | 'news' | 'galerie' | 'meins' | 'spiess';
+type Tab = 'termine' | 'news' | 'galerie' | 'meins' | 'dokumente' | 'spiess';
 type View = Tab | 'konto' | 'installieren';
 
 const TITLES: Record<View, string> = {
@@ -21,6 +23,7 @@ const TITLES: Record<View, string> = {
   news: 'Neuigkeiten',
   galerie: 'Galerie',
   meins: 'Meins',
+  dokumente: 'Dokumente',
   spiess: 'Spieß',
   konto: 'Mein Konto',
   installieren: 'App installieren',
@@ -31,6 +34,7 @@ const TAB_LABELS: Record<Tab, string> = {
   news: 'News',
   galerie: 'Galerie',
   meins: 'Meins',
+  dokumente: 'Dokumente',
   spiess: 'Spieß',
 };
 
@@ -46,6 +50,7 @@ function Icon({ name }: { name: Tab }) {
     news: 'M4 4h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V4zm15 4h1a1 1 0 0 1 1 1v9a2 2 0 0 1-4 0V8h2zM7 7v4h7V7H7zm0 6v1.5h7V13H7zm0 3v1.5h7V16H7z',
     galerie: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 11.5V17h14v-2.5l-4-4-3.5 3.5-2-2L5 16.5zM8.5 7a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z',
     meins: 'M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7L12 2z',
+    dokumente: 'M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V9h5.5L13 3.5zM8 13v1.5h8V13H8zm0 3v1.5h8V16H8zm0-6v1.5h4V10H8z',
     spiess: 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm0 5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm-4 9.5c.8-1.6 2.3-2.5 4-2.5s3.2.9 4 2.5',
   };
   return (
@@ -56,9 +61,10 @@ function Icon({ name }: { name: Tab }) {
 }
 
 /** Banner „App aufs Handy holen“: auf Android ein Knopf, sonst Link zur bebilderten Anleitung. */
-function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
+function InstallBanner() {
   const key = 'mkl-install-hint-dismissed';
   const canPrompt = useCanPrompt();
+  const installState = useInstallState();
   const [hidden, setHidden] = useState(() => {
     try {
       return isStandalone() || localStorage.getItem(key) === '1';
@@ -66,6 +72,30 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
       return isStandalone();
     }
   });
+  const [statusHidden, setStatusHidden] = useState(false);
+
+  // Während und nach der Installation sagen, wie es weitergeht – auch wenn über das Browser-Menü installiert wurde.
+  if (installState !== 'idle') {
+    if (statusHidden || isStandalone()) return null;
+    const installing = installState === 'installing';
+    return (
+      <div className="install-hint" role="status" aria-live="polite">
+        <img src={logoUrl} alt="" className="install-hint-logo" />
+        <div className="install-hint-text">
+          <strong>{installing ? 'Die App wird installiert …' : 'Fertig! Die App ist installiert'}</strong>
+          <span>
+            {installing
+              ? 'Gleich erscheint das Wappen auf dem Startbildschirm. Dort antippen, um die App zu öffnen.'
+              : installDoneText()}
+          </span>
+        </div>
+        <button className="btn btn-link install-hint-close" onClick={() => setStatusHidden(true)} aria-label="Hinweis schließen">
+          ✕
+        </button>
+      </div>
+    );
+  }
+
   // Am Computer nur anzeigen, wenn der Browser die Installation direkt anbietet.
   if (hidden || (!canPrompt && detectPlatform() === 'other')) return null;
   const dismiss = () => {
@@ -76,10 +106,6 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
     }
     setHidden(true);
   };
-  async function install() {
-    const result = await promptInstall();
-    if (result === 'accepted') onToast('Die App wird installiert – gleich ist sie auf dem Startbildschirm');
-  }
   return (
     <div className="install-hint" role="note">
       <img src={logoUrl} alt="" className="install-hint-logo" />
@@ -88,7 +114,7 @@ function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
         <span>Mit dem Wappen auf dem Startbildschirm – wie jede andere App.</span>
       </div>
       {canPrompt ? (
-        <button className="btn btn-small install-hint-btn" onClick={install}>
+        <button className="btn btn-small install-hint-btn" onClick={() => void promptInstall()}>
           Installieren
         </button>
       ) : (
@@ -125,6 +151,7 @@ export default function App() {
     news: true,
     galerie: true,
     meins: isMember,
+    dokumente: isMember,
     spiess: isSpiess,
     konto: !!user,
     installieren: true,
@@ -161,7 +188,7 @@ export default function App() {
     );
   }
 
-  const tabs = (['termine', 'news', 'galerie', 'meins', 'spiess'] as Tab[]).filter((t) => allowed[t]);
+  const tabs = (['termine', 'news', 'galerie', 'dokumente', 'spiess', 'meins'] as Tab[]).filter((t) => allowed[t]);
   const albumId = tab === 'galerie' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
   const newsId = tab === 'news' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
 
@@ -189,7 +216,7 @@ export default function App() {
       </header>
 
       {!online && <div className="offline">Offline – angezeigt werden die zuletzt geladenen Daten.</div>}
-      {tab !== 'installieren' && <InstallBanner onToast={showToast} />}
+      {tab !== 'installieren' && <InstallBanner />}
 
       <main className="content">
         {tab === 'termine' &&
@@ -197,6 +224,12 @@ export default function App() {
         {tab === 'news' && <News id={newsId} />}
         {tab === 'galerie' && <Galerie albumId={albumId} />}
         {tab === 'meins' && <Meins sub={path[1]} />}
+        {tab === 'dokumente' &&
+          (path[1] === 'verwalten' && user?.canManageDocs ? (
+            <DokumenteVerwalten onToast={showToast} />
+          ) : (
+            <Dokumente docId={/^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined} onToast={showToast} />
+          ))}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
         {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}
         {tab === 'installieren' && <Installieren onToast={showToast} />}
