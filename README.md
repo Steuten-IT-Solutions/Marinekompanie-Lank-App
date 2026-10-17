@@ -4,20 +4,23 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 
 - **Termine:**
   - Gäste sehen die öffentliche Terminliste, die Admins in der App pflegen. Dieselbe Liste erscheint per Shortcode auf der Startseite.
-  - Mitglieder sehen den Google Kalender mit allen Terminen.
+  - Anwärter und Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt).
 - **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
+- **Spieß:** Punkte und Strafen vergeben, Anwärter zu Mitgliedern befördern, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, Konten bearbeiten und Passwörter zurücksetzen, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog, Dienstgrade und Titel pflegen, befördern und degradieren, Titel vergeben |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog, Dienstgrade und Titel pflegen, befördern und degradieren, Titel vergeben, Anwärter zum Mitglied befördern |
 | **Mitglied** | die eigenen Punkte, den eigenen Dienstgrad und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
+| **Anwärter** | wie „Ohne Rolle“, sieht aber den Google Kalender mit allen Terminen statt der öffentlichen Terminliste |
+
+**Anwärter** haben keinen Bereich „Meins“, keine Dokumente für Mitglieder, keine internen Galeriebilder und bekommen keine Punkte, Strafen, Dienstgrade oder Titel. Im Spieß-Bereich stehen sie mit Abzeichen in der Mitgliederliste; in ihrer Detailansicht gibt es den Knopf **„Zum Mitglied befördern“** (Spieß und Admins). Neue Konten starten beim Anlegen als Anwärter, die Rolle lässt sich dort aber auch anders wählen.
 
 **Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
 
@@ -62,7 +65,7 @@ app/                       React + TypeScript (Vite) – Quellcode der PWA
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
-  includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-roles.php     Rollen Anwärter/Mitglied/Spieß/Admin, Migration
   includes/class-mkl-ranks.php     Dienstgrade, zugewiesene Dienstgrade, Beförderungsregeln, Verlauf
   includes/class-mkl-titles.php    Titel (Kapitän, Ehrenkapitän, …) und ihre Zuweisung
   includes/class-mkl-documents.php Dokumente und Kategorien: Prüfung, geschützte Ablage, Auslieferung
@@ -80,11 +83,12 @@ scripts/                   Build- und Test-Skripte
 
 - **Login:** Es gilt der normale WordPress-Login. Ohne Anmeldung zeigt `/app/` die Gast-Ansicht. Über „Anmelden“ geht es zum WordPress-Login und danach zurück in die App.
 - **Rechte:** Die `/me`-Endpunkte lesen die Benutzer-ID immer aus der Sitzung, nie aus der Anfrage. Die Capabilities sind:
+  - `mkl_calendar`: interner Kalender (Anwärter und Mitglied)
   - `mkl_member`: Mitglied
   - `mkl_manage`: Spieß
   - `mkl_manage_events`: Admin (öffentliche Termine)
   - `mkl_manage_documents`: Admin (Dokumente)
-  - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden.
+  - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden. Ausnahme: Anwärter zum Mitglied befördern (`POST /members/{id}/promote`) darf auch der Spieß (`mkl_manage`).
 - **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet.
 
 ## Installation auf der Webseite
@@ -96,7 +100,7 @@ scripts/                   Build- und Test-Skripte
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
 5. **Rollen festlegen:**
-   - In der App unter **Spieß → Einrichtung → Mitglieder verwalten → Konto antippen → „Rolle in der App“** (Ohne Rolle / Mitglied / Spieß). Die Liste enthält alle Konten, auch die ohne Rolle.
+   - In der App unter **Spieß → Einrichtung → Mitglieder verwalten → Konto antippen → „Rolle in der App“** (Ohne Rolle / Anwärter / Mitglied / Spieß). Die Liste enthält alle Konten, auch die ohne Rolle.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
    - Die bisherige WordPress-Rolle, z. B. Redakteur, bleibt dabei erhalten.
    - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, bekommt in der App „Ohne Rolle“.
@@ -104,7 +108,7 @@ scripts/                   Build- und Test-Skripte
    - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
    - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
-7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Einrichtung → Mitglieder verwalten → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
+7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Einrichtung → Mitglieder verwalten → „+ Mitglied anlegen“**. Dort wählt man auch die Rolle in der App (vorausgewählt ist Anwärter; Anfangsbestand, Dienstgrad und Jungmariner gibt es nur bei Mitglied und Spieß). Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
 
    Unter **Mitglieder verwalten** können Admins außerdem Name, Benutzername und E-Mail eines Kontos ändern und ein **neues Startpasswort** erzeugen, wenn jemand sein Passwort vergessen hat. Bei einem neuen Passwort oder Benutzernamen wird das Mitglied auf allen Geräten abgemeldet. Den eigenen Benutzernamen und das eigene Passwort ändert man dort nicht (das eigene Passwort unter „Konto“).
 8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“):
@@ -183,7 +187,7 @@ scripts/setup-test-wp.sh
 PHP_CLI_SERVER_WORKERS=4 php -S localhost:8888 -t .wp-test/wp .wp-test/router.php
 ```
 
-- App: http://localhost:8888/app/. Benutzer `spiess`, `mariner1`, `mariner2`, Passwort `test1234`.
+- App: http://localhost:8888/app/. Benutzer `spiess`, `mariner1`, `mariner2`, `anwaerter`, Passwort `test1234`.
 - WP-Admin: http://localhost:8888/wp-admin/ mit `admin` / `admin`.
 
 Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu laden.

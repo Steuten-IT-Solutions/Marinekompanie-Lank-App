@@ -48,6 +48,35 @@ test('Mitglied sieht Termine, aber keinen Spieß-Bereich', async ({ page }) => {
   await expect(page.locator('.topbar-title')).toHaveText('Termine');
 });
 
+test('Anwärter sieht interne Termine, aber weder Meins noch Spieß-Bereich', async ({ page }) => {
+  await login(page, 'anwaerter');
+  // Kompanieabend steht nur im internen Kalender, nicht in der öffentlichen Liste.
+  await expect(page.getByText('Kompanieabend')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
+  await page.goto('/app/#/konto');
+  await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
+});
+
+test('Spieß befördert Anwärter, Admin stuft wieder zurück', async ({ page }) => {
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByText(/^Anwaerter/).click();
+  await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Punkte vergeben' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Zum Mitglied befördern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Zum Mitglied befördert');
+  await expect(page.getByRole('button', { name: 'Punkte vergeben' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zum Mitglied befördern' })).toHaveCount(0);
+
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
+  await page.getByText(/^Anwaerter/).click();
+  await page.locator('.role-control').getByRole('button', { name: 'Anwärter', exact: true }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Anwärter');
+});
+
 test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();
@@ -103,8 +132,10 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill('Neuer Mariner');
+  await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
   await page.getByLabel(/^Jungmariner/).check();
   await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
+  await expect(page.getByTestId('new-level')).toHaveText('Mitglied');
   await expect(page.getByText('Neuer Mariner ist angelegt')).toBeVisible();
   await expect(page.getByText('Als Jungmariner markiert')).toBeVisible();
   const username = (await page.getByTestId('new-username').textContent())!.trim();
@@ -118,6 +149,26 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.getByText('Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
+});
+
+test('Admin legt einen Anwärter an', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Mitglieder verwalten');
+  await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
+  await page.getByPlaceholder('Vorname Nachname').fill('Neuer Anwaerter');
+  // Neue Konten starten als Anwärter.
+  await expect(page.getByRole('button', { name: 'Anwärter', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // Anfangsbestand, Dienstgrad und Jungmariner gibt es nur für Mitglieder.
+  await expect(page.getByLabel(/^Jungmariner/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Mitglied anlegen' }).click();
+  await expect(page.getByTestId('new-level')).toHaveText('Anwärter');
+  const username = (await page.getByTestId('new-username').textContent())!.trim();
+  const password = (await page.getByTestId('new-password').textContent())!.trim();
+
+  await login(page, username, password);
+  await expect(page.getByText('Kompanieabend')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
 });
 
 test('Spieß ohne Admin-Rechte sieht keine Funktion zum Anlegen', async ({ page }) => {
@@ -573,6 +624,7 @@ test('Dienstgrade: Anlage mit Dienstgrad, Beförderungsübersicht, Beförderung 
   await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByPlaceholder('Vorname Nachname').fill(name);
+  await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
   await page.getByLabel('Punkte (Anfangsbestand)').fill('12');
   await expect(page.getByLabel('Dienstgrad').locator('option')).toHaveText(['Kein Dienstgrad', `${gefreiter} (ab 10)`]);
   await page.getByLabel('Dienstgrad').selectOption({ label: `${gefreiter} (ab 10)` });

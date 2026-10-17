@@ -41,7 +41,7 @@ function mkl_req( $method, $route, $params = array(), $query = array() ) {
 	return array( $res->get_status(), $res->get_data() );
 }
 
-/** Legt einen Testbenutzer an; $level: ohne|mitglied|spiess|admin. */
+/** Legt einen Testbenutzer an; $level: ohne|anwaerter|mitglied|spiess|admin. */
 function mkl_test_user( $login, $level = 'mitglied' ) {
 	$existing = get_user_by( 'login', $login );
 	if ( $existing ) {
@@ -262,7 +262,7 @@ foreach ( array( 'mkltest.mueller', 'mkltest.mueller2' ) as $old_login ) {
 		wp_delete_user( $old->ID );
 	}
 }
-list( $s, $u1 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' ) );
+list( $s, $u1 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller', 'level' => 'mitglied' ) );
 $created[]      = isset( $u1['id'] ) ? $u1['id'] : 0;
 mkl_assert( 201 === $s && 'mkltest.mueller' === $u1['username'], 'Admin legt Mitglied an, Benutzername aus Name (Umlaut → ue)' );
 mkl_assert( 12 === strlen( $u1['password'] ) && ! preg_match( '/[0O1lI]/', $u1['password'] ), 'Startpasswort: 12 Zeichen, keine verwechselbaren Zeichen' );
@@ -276,7 +276,7 @@ list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Müller' 
 $created[]      = isset( $u2['id'] ) ? $u2['id'] : 0;
 mkl_assert( 201 === $s && 'mkltest.mueller2' === $u2['username'], 'Gleicher Name → eindeutiger Benutzername mit Zähler' );
 
-list( $s, $u3 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Jung', 'jungmariner' => true ) );
+list( $s, $u3 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Jung', 'jungmariner' => true, 'level' => 'mitglied' ) );
 $created[]      = isset( $u3['id'] ) ? $u3['id'] : 0;
 mkl_assert( 201 === $s && true === $u3['is_jungmariner'] && MKL_Roles::is_jungmariner( $u3['id'] ), 'Neues Mitglied direkt als Jungmariner angelegt' );
 
@@ -288,6 +288,27 @@ list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'email' => 'keine-
 mkl_assert( 400 === $s, 'Ungültige E-Mail → 400' );
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => '   ' ) );
 mkl_assert( 400 === $s, 'Leerer Name → 400' );
+list( $s, $u0 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ohne Rolle' ) );
+$created[]      = isset( $u0['id'] ) ? $u0['id'] : 0;
+mkl_assert( 201 === $s && 'anwaerter' === $u0['level'] && array( MKL_ROLE_ANWAERTER ) === array_values( get_userdata( $u0['id'] )->roles ), 'Ohne Angabe → Rolle Anwärter' );
+
+foreach ( array( 'anwaerter' => array( MKL_ROLE_ANWAERTER ), 'spiess' => array( MKL_ROLE_SPIESS ), 'ohne' => array( 'subscriber' ), 'mitglied' => array( MKL_ROLE_MITGLIED ) ) as $lvl => $wp_roles ) {
+	list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Rolle ' . $lvl, 'level' => $lvl ) );
+	$created[]     = isset( $u['id'] ) ? $u['id'] : 0;
+	mkl_assert( 201 === $s && $lvl === $u['level'] && $lvl === MKL_Roles::get_level( $u['id'] ) && $wp_roles === array_values( get_userdata( $u['id'] )->roles ), 'Anlegen mit Rolle ' . $lvl );
+}
+foreach ( array( 'admin', 'gast', 'egal', array( 'mitglied' ) ) as $bad ) {
+	$before = count_users()['total_users'];
+	list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ungültig', 'level' => $bad ) );
+	mkl_assert( 400 === $s && count_users()['total_users'] === $before, 'Ungültige Rolle ' . wp_json_encode( $bad ) . ' → 400, kein Konto angelegt' );
+}
+foreach ( array( array( 'jungmariner' => true ), array( 'initial_points' => 10 ) ) as $extra ) {
+	foreach ( array( 'anwaerter', 'ohne' ) as $lvl ) {
+		$before = count_users()['total_users'];
+		list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Extra', 'level' => $lvl ) + $extra );
+		mkl_assert( 400 === $s && count_users()['total_users'] === $before, sprintf( '%s mit %s → 400, kein Konto angelegt', $lvl, key( $extra ) ) );
+	}
+}
 
 list( $s, $members ) = mkl_req( 'GET', '/members' );
 mkl_assert( in_array( $u1['id'], wp_list_pluck( $members, 'id' ), true ), 'Neues Mitglied erscheint in der Mitgliederliste' );
@@ -393,6 +414,70 @@ mkl_assert( 400 === $s, 'Eigene Rolle nicht änderbar → 400' );
 $admin_other = mkl_test_user( 'mkltest_admin3', 'admin' );
 list( $s ) = mkl_req( 'PATCH', '/members/' . $admin_other . '/role', array( 'level' => 'ohne' ) );
 mkl_assert( 400 === $s && 'admin' === MKL_Roles::get_level( $admin_other ), 'Admins sind in der App nicht herabstufbar' );
+
+echo "Anwärter\n";
+$anw = mkl_test_user( 'mkltest_anwaerter', 'anwaerter' );
+mkl_assert( 'anwaerter' === MKL_Roles::get_level( $anw ) && ! MKL_Roles::is_member( $anw ) && MKL_Roles::can_see_calendar( $anw ), 'Anwärter: kein Mitglied, aber interner Kalender' );
+mkl_assert( MKL_Roles::can_see_calendar( $m1 ) && MKL_Roles::can_see_calendar( $spiess ) && MKL_Roles::can_see_calendar( $admin ) && ! MKL_Roles::can_see_calendar( $ohne ), 'Interner Kalender: Mitglied/Spieß/Admin ja, ohne Rolle nein' );
+wp_set_current_user( $anw );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 200 === $s && 'anwaerter' === $d['level'] && false === $d['is_member'] && true === $d['can_see_calendar'], 'GET /me als Anwärter' );
+// Je nach Kalenderquelle 200 oder 502 – entscheidend ist, dass der Zugriff erlaubt ist.
+list( $s ) = mkl_req( 'GET', '/calendar' );
+mkl_assert( ! in_array( $s, array( 401, 403 ), true ), 'Anwärter darf den internen Kalender abrufen' );
+list( $s ) = mkl_req( 'GET', '/me/points' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Punkte → 403' );
+list( $s ) = mkl_req( 'GET', '/me/penalties' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Strafen → 403' );
+list( $s ) = mkl_req( 'GET', '/members' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Mitgliederliste → 403' );
+list( $s ) = mkl_req( 'GET', '/documents' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Dokumente für Mitglieder → 403' );
+list( $s ) = mkl_req( 'GET', '/me/rank-history' );
+mkl_assert( 403 === $s, 'Anwärter hat keinen Dienstgrad-Verlauf → 403' );
+list( $s ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 403 === $s, 'Anwärter kann sich nicht selbst befördern → 403' );
+foreach ( array( 0 => 401, $ohne => 403 ) as $uid => $expected ) {
+	wp_set_current_user( $uid );
+	list( $s ) = mkl_req( 'GET', '/calendar' );
+	mkl_assert( $expected === $s, sprintf( 'GET /calendar als %s → %d', $uid ? 'Konto ohne Rolle' : 'Gast', $expected ) );
+}
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 403 === $s, 'Mitglied darf nicht befördern → 403' );
+
+wp_set_current_user( $spiess );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+mkl_assert( ! in_array( $anw, wp_list_pluck( $members, 'id' ), true ), 'Mitgliederliste ohne Anwärter' );
+list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'anwaerter' => 1 ) );
+$levels = wp_list_pluck( $members, 'level', 'id' );
+mkl_assert( isset( $levels[ $anw ] ) && 'anwaerter' === $levels[ $anw ] && ! isset( $levels[ $ohne ] ), 'Mit anwaerter=1: Anwärter ja, Konten ohne Rolle nein' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $anw ), 'points' => 1, 'reason' => 'x' ) );
+mkl_assert( 400 === $s, 'Anwärter kann keine Punkte bekommen → 400' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $anw . '/role', array( 'level' => 'mitglied' ) );
+mkl_assert( 403 === $s, 'Spieß darf Rollen nicht frei ändern → 403' );
+list( $s ) = mkl_req( 'POST', '/members/' . $ohne . '/promote' );
+mkl_assert( 400 === $s && 'ohne' === MKL_Roles::get_level( $ohne ), 'Konto ohne Rolle lässt sich nicht befördern → 400' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $anw . '/jungmariner', array( 'jungmariner' => true ) );
+mkl_assert( 400 === $s && ! MKL_Roles::is_jungmariner( $anw ), 'Anwärter kann kein Jungmariner sein → 400' );
+list( $s ) = mkl_req( 'POST', '/members/' . $m2 . '/promote' );
+mkl_assert( 400 === $s && 'mitglied' === MKL_Roles::get_level( $m2 ), 'Mitglied lässt sich nicht nochmal befördern → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+clean_user_cache( $anw );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'] && MKL_Roles::is_member( $anw ) && ! in_array( MKL_ROLE_ANWAERTER, get_userdata( $anw )->roles, true ), 'Spieß befördert Anwärter zum Mitglied' );
+list( $s ) = mkl_req( 'POST', '/members/999999/promote' );
+mkl_assert( 404 === $s, 'Unbekanntes Konto → 404' );
+
+wp_set_current_user( $admin );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $anw . '/role', array( 'level' => 'anwaerter' ) );
+mkl_assert( 200 === $s && 'anwaerter' === $d['level'], 'Admin macht Mitglied zum Anwärter' );
+list( $s, $d ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'], 'Admin befördert Anwärter zum Mitglied' );
+MKL_Roles::set_level( $anw, 'anwaerter' );
+MKL_Roles::set_level( $anw, 'ohne' );
+clean_user_cache( $anw );
+mkl_assert( 'ohne' === MKL_Roles::get_level( $anw ) && array( 'subscriber' ) === array_values( get_userdata( $anw )->roles ), 'Anwärter → ohne Rolle: Rolle Anwärter entfernt' );
+wp_delete_user( $anw );
 
 echo "Migration\n";
 $old_sub = mkl_test_user( 'mkltest_altabonnent', 'ohne' );
@@ -619,13 +704,13 @@ foreach ( array( 'mkltest.uebernahme', 'mkltest.zuwenig', 'mkltest.ohne' ) as $o
 		wp_delete_user( $old->ID );
 	}
 }
-list( $s, $d ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ) );
+list( $s, $d ) = mkl_req( 'POST', '/users', array( 'level' => 'mitglied', 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ) );
 mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Dienstgrad mit zu wenig Anfangspunkten → 400, kein Konto angelegt' );
-list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) );
+list( $s ) = mkl_req( 'POST', '/users', array( 'level' => 'mitglied', 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) );
 mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Deaktivierter Dienstgrad → 400' );
-list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => -3 ) );
+list( $s ) = mkl_req( 'POST', '/users', array( 'level' => 'mitglied', 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => -3 ) );
 mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Negativer Anfangsbestand → 400' );
-list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Übernahme', 'username' => 'mkltest.uebernahme', 'initial_points' => 45, 'initial_points_date' => '2025-12-31', 'rank_id' => $bootsmann['id'] ) );
+list( $s, $u ) = mkl_req( 'POST', '/users', array( 'level' => 'mitglied', 'name' => 'Mkltest Übernahme', 'username' => 'mkltest.uebernahme', 'initial_points' => 45, 'initial_points_date' => '2025-12-31', 'rank_id' => $bootsmann['id'] ) );
 mkl_assert( 201 === $s && 45 === $u['points'] && $bootsmann['id'] === $u['rank']['id'], 'Mitglied mit 45 Punkten und Dienstgrad Bootsmann angelegt' );
 $entries = MKL_DB::get_points_for_user( $u['id'] );
 mkl_assert( 1 === count( $entries ) && 45 === $entries[0]['points'] && 'Anfangsbestand bei Übernahme' === $entries[0]['reason'] && '2025-12-31' === $entries[0]['date'], 'Anfangsbestand als normale Buchung mit Datum' );
@@ -646,7 +731,7 @@ foreach ( array( 'mkltest.jungrang' ) as $old_login ) {
 		wp_delete_user( $old->ID );
 	}
 }
-list( $s, $ju ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Jungrang', 'username' => 'mkltest.jungrang', 'initial_points' => 8, 'initial_points_date' => '2026-01-01', 'jungmariner' => true ) );
+list( $s, $ju ) = mkl_req( 'POST', '/users', array( 'level' => 'mitglied', 'name' => 'Mkltest Jungrang', 'username' => 'mkltest.jungrang', 'initial_points' => 8, 'initial_points_date' => '2026-01-01', 'jungmariner' => true ) );
 mkl_assert( 201 === $s && 8 === $ju['points'] && true === $ju['is_jungmariner'] && 8 === MKL_DB::get_points_total( $ju['id'] ), 'Anfangsbestand eines neuen Jungmariners wird nicht halbiert' );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $ju['id'] ), 'points' => 3, 'reason' => 'x', 'date' => '2026-02-01' ) );
 $st = MKL_Ranks::status_for_user( $ju['id'] );

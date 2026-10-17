@@ -1,14 +1,20 @@
 // Zugriff auf die REST-API des WordPress-Plugins (Cookie-Login + REST-Nonce).
 
 /** Rolle eines angemeldeten Kontos. Gäste (ohne Anmeldung) haben keine Rolle und kein Konto. */
-export type Level = 'admin' | 'spiess' | 'mitglied' | 'ohne';
+export type Level = 'admin' | 'spiess' | 'mitglied' | 'anwaerter' | 'ohne';
 
 export const LEVEL_LABELS: Record<Level, string> = {
   admin: 'Admin',
   spiess: 'Spieß',
   mitglied: 'Mitglied',
+  anwaerter: 'Anwärter',
   ohne: 'Ohne Rolle',
 };
+
+/** Nur Mitglieder (inkl. Spieß/Admin) haben Punkte, Strafen, Dienstgrad und Titel. */
+export function isMemberLevel(level: Level): boolean {
+  return level !== 'ohne' && level !== 'anwaerter';
+}
 
 export interface AppUser {
   id: number;
@@ -16,6 +22,8 @@ export interface AppUser {
   login: string;
   level: Level;
   isMember: boolean;
+  /** Interner Kalender (Anwärter und Mitglieder). */
+  canSeeCalendar: boolean;
   isSpiess: boolean;
   canCreateUsers: boolean;
   canManageEvents: boolean;
@@ -277,6 +285,7 @@ export interface CreatedUser {
   name: string;
   username: string;
   email: string;
+  level: Level;
   /** Startpasswort – wird nur in dieser einen Antwort geliefert. */
   password: string;
   points: number;
@@ -304,6 +313,8 @@ export interface NewUserInput {
   initial_points_date?: string;
   rank_id?: number;
   jungmariner?: boolean;
+  /** Standard auf dem Server: Anwärter. */
+  level?: Exclude<Level, 'admin'>;
 }
 
 export class ApiError extends Error {
@@ -420,7 +431,13 @@ export const api = {
     request<CatalogItem>('PATCH', `/catalog/${id}`, data),
   deleteCatalogItem: (id: number) => request<{ deleted: boolean }>('DELETE', `/catalog/${id}`),
 
-  members: (all = false) => request<MemberSummary[]>('GET', '/members', undefined, all ? { all: '1' } : undefined),
+  members: (opts: { all?: boolean; anwaerter?: boolean } = {}) =>
+    request<MemberSummary[]>('GET', '/members', undefined, {
+      ...(opts.all ? { all: '1' } : {}),
+      ...(opts.anwaerter ? { anwaerter: '1' } : {}),
+    }),
+  /** Anwärter zum Mitglied befördern (Spieß und Admin). */
+  promote: (id: number) => request<{ id: number; level: Level }>('POST', `/members/${id}/promote`),
   setRole: (id: number, level: Exclude<Level, 'admin'>) =>
     request<{ id: number; level: Level }>('PATCH', `/members/${id}/role`, { level }),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),

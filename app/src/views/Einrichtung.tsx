@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, config, LEVEL_LABELS, type Account, type CreatedUser, type Level } from '../api';
+import { api, config, isMemberLevel, LEVEL_LABELS, type Account, type CreatedUser, type Level } from '../api';
 import { caps, formatPoints, todayYmd } from '../format';
 import { navigate } from '../router';
 import { BackToSetup, Empty, ErrorBox, Loading, useAsync } from '../ui';
@@ -224,7 +224,7 @@ function AccountDetail({ id, onToast }: { id: number; onToast: (msg: string) => 
       <BackToSetup to="spiess/einrichtung/mitglieder" label="Mitglieder verwalten" />
       <h2 className="member-name">{account.name}</h2>
       <RoleControl id={account.id} level={account.level} onChanged={reload} onToast={onToast} />
-      {account.level !== 'ohne' && (
+      {isMemberLevel(account.level) && (
         <button className="btn btn-secondary btn-block account-points" onClick={() => navigate(`spiess/mitglied/${account.id}`)}>
           Punkte, Strafen, Dienstgrad und Titel ›
         </button>
@@ -363,7 +363,7 @@ function PasswordReset({ account, onToast }: { account: Account; onToast: (msg: 
   );
 }
 
-/** Admins legen hier die Rolle in der App fest (ohne Rolle / Mitglied / Spieß). */
+/** Admins legen hier die Rolle in der App fest (ohne Rolle / Anwärter / Mitglied / Spieß). */
 export
 function RoleControl({
   id,
@@ -412,7 +412,7 @@ function RoleControl({
     <div className="role-control">
       <span className="field-label">Rolle in der App</span>
       <div className="segmented small" role="group" aria-label="Rolle in der App" aria-busy={!!pending}>
-        {(['ohne', 'mitglied', 'spiess'] as const).map((l) => (
+        {(['ohne', 'anwaerter', 'mitglied', 'spiess'] as const).map((l) => (
           <button
             key={l}
             className={[shown === l ? 'active' : '', pending === l ? 'pending' : ''].join(' ').trim()}
@@ -435,6 +435,7 @@ function NewMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [level, setLevel] = useState<Exclude<Level, 'admin'>>('anwaerter');
   const [jungmariner, setJungmariner] = useState(false);
   const [points, setPoints] = useState('');
   const [pointsDate, setPointsDate] = useState(todayYmd());
@@ -448,12 +449,14 @@ function NewMember() {
   // Nur Dienstgrade, deren Schwelle der Anfangsbestand erreicht (prüft auch der Server).
   const reachable = (ranks.data ?? []).filter((r) => Number.isInteger(initialPoints) && r.min_points <= initialPoints);
   const rankId = reachable.some((r) => String(r.id) === chosenRank) ? chosenRank : '';
+  // Anfangsbestand, Dienstgrad und Jungmariner gibt es nur für Mitglieder (prüft auch der Server).
+  const memberRole = isMemberLevel(level);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!name.trim()) return setFormError('Bitte einen Namen angeben.');
-    if (points.trim() !== '' && (!Number.isInteger(initialPoints) || initialPoints < 0))
+    if (memberRole && points.trim() !== '' && (!Number.isInteger(initialPoints) || initialPoints < 0))
       return setFormError('Bitte als Anfangsbestand eine ganze Punktzahl ab 0 angeben.');
     setBusy(true);
     try {
@@ -462,9 +465,10 @@ function NewMember() {
           name: name.trim(),
           ...(username.trim() ? { username: username.trim() } : {}),
           ...(email.trim() ? { email: email.trim() } : {}),
-          ...(initialPoints > 0 ? { initial_points: initialPoints, initial_points_date: pointsDate } : {}),
-          ...(rankId ? { rank_id: Number(rankId) } : {}),
-          ...(jungmariner ? { jungmariner: true } : {}),
+          level,
+          ...(memberRole && initialPoints > 0 ? { initial_points: initialPoints, initial_points_date: pointsDate } : {}),
+          ...(memberRole && rankId ? { rank_id: Number(rankId) } : {}),
+          ...(memberRole && jungmariner ? { jungmariner: true } : {}),
         }),
       );
     } catch (err) {
@@ -495,6 +499,8 @@ function NewMember() {
         <dl className="credentials">
           <dt>App</dt>
           <dd>{config?.appUrl}</dd>
+          <dt>Rolle</dt>
+          <dd data-testid="new-level">{LEVEL_LABELS[created.level]}</dd>
           <dt>Benutzername</dt>
           <dd data-testid="new-username">{created.username}</dd>
           <dt>Passwort</dt>
@@ -520,6 +526,7 @@ function NewMember() {
               setPoints('');
               setRankId('');
               setJungmariner(false);
+              setLevel('anwaerter');
             }}
           >
             Weiteres Mitglied
@@ -556,39 +563,60 @@ function NewMember() {
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
-      <label className="toggle">
-        <input type="checkbox" checked={jungmariner} onChange={(e) => setJungmariner(e.target.checked)} />
-        Jungmariner (erhält die halbe Punktzahl, Abzüge zählen voll)
-      </label>
-      <fieldset className="fieldset">
-        <legend>Übernahme (optional)</legend>
-        <p className="muted small">Für bestehende Mitglieder: aktuellen Punktestand und Dienstgrad eintragen. Neue Mitglieder starten ohne Dienstgrad bei 0 Punkten.</p>
-        <div className="field-row">
-          <label className="field">
-            <span>Punkte (Anfangsbestand)</span>
-            <input type="number" inputMode="numeric" min="0" step="1" placeholder="0" value={points} onChange={(e) => setPoints(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Stand vom</span>
-            <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
-          </label>
+      <div className="field">
+        <span>Rolle in der App</span>
+        <div className="segmented small" role="group" aria-label="Rolle in der App">
+          {(['ohne', 'anwaerter', 'mitglied', 'spiess'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={level === l ? 'active' : ''}
+              aria-pressed={level === l}
+              aria-label={LEVEL_LABELS[l]}
+              onClick={() => setLevel(l)}
+            >
+              {caps(LEVEL_LABELS[l])}
+            </button>
+          ))}
         </div>
-        <label className="field">
-          <span>Dienstgrad</span>
-          <select value={rankId} onChange={(e) => setRankId(e.target.value)} disabled={reachable.length === 0}>
-            <option value="">Kein Dienstgrad</option>
-            {reachable.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.title} (ab {r.min_points.toLocaleString('de-DE')})
-              </option>
-            ))}
-          </select>
-        </label>
-        {(ranks.data ?? []).length > reachable.length && (
-          <p className="muted small">Zur Auswahl stehen nur Dienstgrade, deren Schwelle die eingetragenen Punkte erreichen.</p>
-        )}
-      </fieldset>
-      <p className="muted small">Das Konto bekommt die Rolle „Mitglied“ und ein zufälliges Startpasswort.</p>
+      </div>
+      {memberRole && (
+        <>
+          <label className="toggle">
+            <input type="checkbox" checked={jungmariner} onChange={(e) => setJungmariner(e.target.checked)} />
+            Jungmariner (erhält die halbe Punktzahl, Abzüge zählen voll)
+          </label>
+          <fieldset className="fieldset">
+            <legend>Übernahme (optional)</legend>
+            <p className="muted small">Für bestehende Mitglieder: aktuellen Punktestand und Dienstgrad eintragen. Neue Mitglieder starten ohne Dienstgrad bei 0 Punkten.</p>
+            <div className="field-row">
+              <label className="field">
+                <span>Punkte (Anfangsbestand)</span>
+                <input type="number" inputMode="numeric" min="0" step="1" placeholder="0" value={points} onChange={(e) => setPoints(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>Stand vom</span>
+                <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Dienstgrad</span>
+              <select value={rankId} onChange={(e) => setRankId(e.target.value)} disabled={reachable.length === 0}>
+                <option value="">Kein Dienstgrad</option>
+                {reachable.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title} (ab {r.min_points.toLocaleString('de-DE')})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(ranks.data ?? []).length > reachable.length && (
+              <p className="muted small">Zur Auswahl stehen nur Dienstgrade, deren Schwelle die eingetragenen Punkte erreichen.</p>
+            )}
+          </fieldset>
+        </>
+      )}
+      <p className="muted small">Das Konto bekommt die gewählte Rolle und ein zufälliges Startpasswort.</p>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Legt an …' : 'Mitglied anlegen'}

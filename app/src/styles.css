@@ -201,7 +201,7 @@ button, input, select { font: inherit; color: inherit; }
 .badge-open { background: #f6d9cf; color: #7a2412; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
-.badge-level-ohne { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-level-ohne, .badge-level-anwaerter { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
 .badge-jungmariner { background: #d6e0f5; color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
@@ -352,6 +352,7 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; color: var(--ink-2); margin: 0 2px 14px; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--navy); }
 .role-control { margin: -4px 0 16px; }
+.promote-anwaerter { margin-bottom: 16px; }
 .field-label { display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .segmented.small { margin-bottom: 0; }
 .segmented button.pending { animation: pending-pulse 0.9s ease-in-out infinite alternate; }

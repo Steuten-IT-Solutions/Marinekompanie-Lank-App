@@ -135,6 +135,7 @@ class MKL_App_Page {
 				'login'           => $user->user_login,
 				'level'           => MKL_Roles::get_level( $user->ID ),
 				'isMember'        => MKL_Roles::is_member(),
+				'canSeeCalendar'  => MKL_Roles::can_see_calendar(),
 				'isSpiess'        => MKL_Roles::is_spiess(),
 				'canCreateUsers'  => current_user_can( 'create_users' ),
 				'canManageEvents' => current_user_can( MKL_CAP_EVENTS ),

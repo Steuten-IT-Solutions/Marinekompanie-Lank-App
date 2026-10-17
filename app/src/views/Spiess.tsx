@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api, LEVEL_LABELS, type CatalogItem, type MemberSummary } from '../api';
+import { api, config, isMemberLevel, LEVEL_LABELS, type CatalogItem, type MemberSummary } from '../api';
 import { caps, formatDate, formatEuro, formatPoints, halvedNote, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, TitleBadges, useAsync } from '../ui';
@@ -67,7 +67,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 /* ------------------------------------------------------------------ */
 
 function Members() {
-  const { data, error, loading, reload } = useAsync(api.members);
+  // Anwärter mitladen, damit Spieß und Admins sie befördern können.
+  const { data, error, loading, reload } = useAsync(() => api.members({ anwaerter: true }));
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -77,7 +78,7 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).filter((m) => m.level !== 'ohne').reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => isMemberLevel(m.level)).reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
@@ -163,14 +164,19 @@ function MemberDetailView({
           </>
         )}
       </p>
-      {m.level !== 'ohne' && (
+      {m.level === 'anwaerter' && config?.user?.isSpiess && (
+        <button className="btn btn-block promote-anwaerter" disabled={busy} onClick={() => run(() => api.promote(m.id), 'Zum Mitglied befördert')}>
+          Zum Mitglied befördern
+        </button>
+      )}
+      {isMemberLevel(m.level) && (
         <JungmarinerToggle key={m.id} id={m.id} initial={m.is_jungmariner} onChanged={reload} onToast={onToast} />
       )}
       <div className="stats">
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      {m.level !== 'ohne' && (
+      {isMemberLevel(m.level) && (
         <div className="button-row">
           <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
             Punkte vergeben
@@ -180,7 +186,7 @@ function MemberDetailView({
           </button>
         </div>
       )}
-      {m.level !== 'ohne' && (
+      {isMemberLevel(m.level) && (
         <RankControl
           key={`${m.id}-${m.rank_status.rank?.id ?? 0}-${m.points}`}
           member={m}
@@ -189,7 +195,7 @@ function MemberDetailView({
           onToast={onToast}
         />
       )}
-      {m.level !== 'ohne' && <TitleControl member={m} onChanged={reload} onToast={onToast} />}
+      {isMemberLevel(m.level) && <TitleControl member={m} onChanged={reload} onToast={onToast} />}
 
       <h3 className="section-title">Strafen</h3>
       {m.penalties.length === 0 ? (
@@ -412,7 +418,7 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
 }
 
 function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(api.members);
+  const { data, error, loading, reload } = useAsync(() => api.members());
   const [selected, setSelected] = useState<number[]>(preselect);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');

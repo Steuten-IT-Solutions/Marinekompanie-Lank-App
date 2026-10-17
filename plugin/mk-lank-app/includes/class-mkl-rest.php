@@ -5,11 +5,13 @@
  * Grundsätze:
  * - Öffentlich (auch Gäste ohne Anmeldung): /events (lesen), /news, /gallery
  *   (Gäste nur öffentliche Bilder).
+ * - Den internen Kalender (/calendar) sehen Anwärter und Mitglieder (mkl_calendar).
  * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
  *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
  * - Punkte/Strafen/Dienstgrade verwalten erfordert mkl_manage (Spieß), Termine pflegen
  *   mkl_manage_events (Admin), Dokumente pflegen mkl_manage_documents (Admin),
- *   Benutzer anlegen/Rollen ändern create_users/promote_users.
+ *   Benutzer anlegen/Rollen ändern create_users/promote_users. Anwärter zum Mitglied
+ *   befördern darf auch der Spieß (mkl_manage).
  * - Mitglieder sehen nur den eigenen Dienstgrad und Verlauf (/me…), nie den anderer.
  */
 
@@ -29,6 +31,7 @@ class MKL_REST {
 		$public    = '__return_true';
 		$logged_in = array( __CLASS__, 'can_read' );
 		$member    = array( __CLASS__, 'can_member' );
+		$calendar  = array( __CLASS__, 'can_calendar' );
 		$manage    = array( __CLASS__, 'can_manage' );
 		$events    = array( __CLASS__, 'can_manage_events' );
 		$docs      = array( __CLASS__, 'can_manage_docs' );
@@ -44,7 +47,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/rank-history', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_rank_history' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
-		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $member ) );
+		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $calendar ) );
 
 		register_rest_route(
 			self::NS,
@@ -152,6 +155,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/jungmariner', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_jungmariner' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/rank', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_rank' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/titles', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'set_member_titles' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/promote', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'promote_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
@@ -187,6 +191,11 @@ class MKL_REST {
 	/** Mitglied, Spieß oder Admin. */
 	public static function can_member() {
 		return self::require_cap( MKL_CAP_MEMBER, 'Dieser Bereich ist nur für Mitglieder.' );
+	}
+
+	/** Anwärter, Mitglied, Spieß oder Admin. */
+	public static function can_calendar() {
+		return self::require_cap( MKL_CAP_CALENDAR, 'Die internen Termine sind nur für Anwärter und Mitglieder.' );
 	}
 
 	public static function can_manage_events() {
@@ -251,6 +260,7 @@ class MKL_REST {
 				'name'             => $user->display_name,
 				'level'             => MKL_Roles::get_level( $user->ID ),
 				'is_member'         => MKL_Roles::is_member(),
+				'can_see_calendar'  => MKL_Roles::can_see_calendar(),
 				'is_spiess'         => MKL_Roles::is_spiess(),
 				'can_create_users'  => current_user_can( 'create_users' ),
 				'can_edit_users'    => current_user_can( 'edit_users' ),
@@ -535,12 +545,14 @@ class MKL_REST {
 	}
 
 	/**
-	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Konten ohne Rolle
-	 * abrufen, um ihnen eine Rolle zu geben.
+	 * Mitglieder (mkl_member) mit Summen. Mit ?anwaerter=1 kommen Anwärter dazu
+	 * (damit der Spieß sie befördern kann). Admins können mit ?all=1 auch Konten
+	 * ohne Rolle abrufen, um ihnen eine Rolle zu geben.
 	 */
 	public static function get_members( WP_REST_Request $req ) {
-		$all    = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
-		$totals = MKL_DB::get_totals_by_user();
+		$all       = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
+		$anwaerter = (bool) $req->get_param( 'anwaerter' );
+		$totals    = MKL_DB::get_totals_by_user();
 		$ranks  = array();
 		foreach ( MKL_Ranks::all( false ) as $r ) {
 			$ranks[ $r['id'] ] = $r;
@@ -551,7 +563,7 @@ class MKL_REST {
 		$out       = array();
 		foreach ( self::member_users() as $u ) {
 			$id = (int) $u->ID;
-			if ( ! $all && ! MKL_Roles::is_member( $id ) ) {
+			if ( ! $all && ! MKL_Roles::is_member( $id ) && ! ( $anwaerter && MKL_Roles::LEVEL_ANWAERTER === MKL_Roles::get_level( $id ) ) ) {
 				continue;
 			}
 			$out[] = array(
@@ -887,6 +899,22 @@ class MKL_REST {
 		return is_wp_error( $result ) ? $result : rest_ensure_response( array( 'deleted' => true ) );
 	}
 
+	/** Spieß und Admins befördern Anwärter zu vollen Mitgliedern. */
+	public static function promote_member( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( MKL_Roles::LEVEL_ANWAERTER !== MKL_Roles::get_level( $id ) ) {
+			return self::error( 'Nur Anwärter können zum Mitglied befördert werden.' );
+		}
+		$result = MKL_Roles::set_level( $id, MKL_Roles::LEVEL_MITGLIED );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'id' => $id, 'level' => MKL_Roles::get_level( $id ) ) );
+	}
+
 	public static function set_member_role( WP_REST_Request $req ) {
 		$id = (int) $req['id'];
 		if ( get_current_user_id() === $id ) {
@@ -904,7 +932,8 @@ class MKL_REST {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Legt ein Mitglied (Rolle Mitglied) mit zufälligem Startpasswort an.
+	 * Legt ein Konto mit der gewählten App-Rolle (level: ohne|anwaerter|mitglied|spiess,
+	 * Standard anwaerter, weil neue Leute als Anwärter anfangen) und zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 *
@@ -912,13 +941,28 @@ class MKL_REST {
 	 * wird als normale Buchung angelegt), initial_points_date und rank_id. Der Dienstgrad muss
 	 * mit dem Anfangsbestand erreichbar sein; das wird geprüft, bevor das Konto entsteht.
 	 * Mit jungmariner=true wird das Mitglied gleich als Jungmariner markiert; der
-	 * Anfangsbestand wird dabei nicht halbiert.
+	 * Anfangsbestand wird dabei nicht halbiert. Anfangsbestand, Dienstgrad und Jungmariner
+	 * gibt es nur für Mitglieder und Spieße.
 	 */
 	public static function create_user( WP_REST_Request $req ) {
 		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
 		if ( '' === $name ) {
 			return self::error( 'Bitte einen Namen angeben.' );
 		}
+
+		// Admin-Rechte vergibt man bewusst nur im WordPress-Backend.
+		$roles = array(
+			MKL_Roles::LEVEL_OHNE      => 'subscriber',
+			MKL_Roles::LEVEL_ANWAERTER => MKL_ROLE_ANWAERTER,
+			MKL_Roles::LEVEL_MITGLIED  => MKL_ROLE_MITGLIED,
+			MKL_Roles::LEVEL_SPIESS    => MKL_ROLE_SPIESS,
+		);
+		$level = $req->get_param( 'level' );
+		$level = null === $level || '' === $level ? MKL_Roles::LEVEL_ANWAERTER : $level;
+		if ( ! is_string( $level ) || ! isset( $roles[ $level ] ) ) {
+			return self::error( 'Ungültige Rolle.' );
+		}
+		$is_member = in_array( $level, array( MKL_Roles::LEVEL_MITGLIED, MKL_Roles::LEVEL_SPIESS ), true );
 
 		$login = trim( (string) $req->get_param( 'username' ) );
 		if ( '' === $login ) {
@@ -969,6 +1013,11 @@ class MKL_REST {
 			}
 		}
 
+		$jungmariner = rest_sanitize_boolean( $req->get_param( 'jungmariner' ) );
+		if ( ! $is_member && ( $initial > 0 || $rank || $jungmariner ) ) {
+			return self::error( 'Anfangsbestand, Dienstgrad und Jungmariner gibt es nur für Mitglieder.' );
+		}
+
 		$parts    = preg_split( '/\s+/', $name, 2 );
 		$password = self::readable_password( 12 );
 		$user_id  = wp_insert_user(
@@ -980,7 +1029,7 @@ class MKL_REST {
 				'nickname'     => $name,
 				'first_name'   => $parts[0],
 				'last_name'    => isset( $parts[1] ) ? $parts[1] : '',
-				'role'         => MKL_ROLE_MITGLIED,
+				'role'         => $roles[ $level ],
 			)
 		);
 		if ( is_wp_error( $user_id ) ) {
@@ -999,7 +1048,7 @@ class MKL_REST {
 			return self::error( 'Der Dienstgrad konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
 		}
 		// Erst nach dem Anfangsbestand: Der ist ein bereits erreichter Stand und wird nicht halbiert.
-		MKL_Roles::set_jungmariner( $user_id, rest_sanitize_boolean( $req->get_param( 'jungmariner' ) ) );
+		MKL_Roles::set_jungmariner( $user_id, $jungmariner );
 
 		return new WP_REST_Response(
 			array(
@@ -1007,6 +1056,7 @@ class MKL_REST {
 				'name'           => $name,
 				'username'       => $login,
 				'email'          => $email,
+				'level'          => MKL_Roles::get_level( $user_id ),
 				'password'       => $password,
 				'points'         => $initial,
 				'rank'           => MKL_Ranks::ref( $rank ),
