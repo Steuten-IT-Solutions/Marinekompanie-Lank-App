@@ -112,6 +112,9 @@ class MKL_App_Page {
 			return;
 		}
 
+		// Wer die App öffnet, bleibt angemeldet: Anmeldung bei Bedarf verlängern.
+		MKL_Session::maybe_renew();
+
 		// Gäste (nicht angemeldet) sehen die öffentliche Ansicht; ein Nonce gibt es nur mit Anmeldung.
 		$user   = wp_get_current_user();
 		$config = array(

@@ -38,7 +38,7 @@ Die App hilft beim Installieren selbst, damit es auch ohne Smartphone-Erfahrung 
 - Die Anleitung hat eine eigene Adresse zum Weitergeben: **`https://marinekompanie-lank.de/app/installieren/`**. Diesen Link kann man per WhatsApp, E-Mail oder Rundschreiben verschicken. Auf der Anleitung selbst gibt es dafür den Knopf **„Link teilen“**, außerdem erreicht man sie über **Konto → App installieren**.
 - Wurde der Link in Facebook oder Instagram geöffnet, wo man nicht installieren kann, erscheint ein Hinweis mit einem Knopf zum Kopieren der Adresse.
 
-Hinweis für das iPhone: Die installierte App hat ihren eigenen Speicher, getrennt von Safari. Man meldet sich also einmal direkt in der App an. Mit „Angemeldet bleiben“ hält die Anmeldung 14 Tage.
+Hinweis für das iPhone: Die installierte App hat ihren eigenen Speicher, getrennt von Safari. Man meldet sich also einmal direkt in der App an. „Angemeldet bleiben“ ist auf der Anmeldeseite der App schon angehakt. Damit bleibt man praktisch dauerhaft angemeldet: Die Anmeldung gilt 400 Tage (mehr erlauben Chrome und Edge für Cookies nicht) und verlängert sich automatisch, sobald man die App öffnet. Wer die App mindestens einmal im Jahr nutzt, muss sich also nie neu anmelden. Abmelden geht über **Konto → Abmelden**. Bei einem verlorenen Handy hilft eine Passwortänderung (meldet alle anderen Geräte ab) oder im WP-Profil des Mitglieds „Überall sonst abmelden“.
 
 ## Aufbau
 

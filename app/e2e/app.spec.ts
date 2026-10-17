@@ -333,3 +333,18 @@ test.describe('Android', () => {
     await expect(page.locator('.install-hint').getByRole('button', { name: "So geht's" })).toBeVisible();
   });
 });
+
+test('Angemeldet bleiben ist vorausgewählt und hält rund 400 Tage', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/app/');
+  await page.getByRole('link', { name: 'Anmelden' }).click();
+  await expect(page.locator('#rememberme')).toBeChecked();
+  await page.fill('#user_login', 'mariner1');
+  await page.fill('#user_pass', PASSWORD);
+  await page.click('#wp-submit');
+  await expect(page.locator('.topbar')).toBeVisible();
+  const cookie = (await page.context().cookies()).find((c) => c.name.startsWith('wordpress_logged_in_'));
+  expect(cookie).toBeDefined();
+  const days = (cookie!.expires - Date.now() / 1000) / 86400;
+  expect(days).toBeGreaterThan(390);
+});
