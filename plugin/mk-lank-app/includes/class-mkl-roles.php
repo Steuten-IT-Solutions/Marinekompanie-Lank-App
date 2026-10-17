@@ -42,7 +42,7 @@ class MKL_Roles {
 		$caps = array(
 			MKL_ROLE_MITGLIED => array( MKL_CAP_MEMBER ),
 			MKL_ROLE_SPIESS   => array( MKL_CAP_MEMBER, MKL_CAP_MANAGE ),
-			'administrator'   => array( MKL_CAP_MEMBER, MKL_CAP_MANAGE, MKL_CAP_EVENTS ),
+			'administrator'   => array( MKL_CAP_MEMBER, MKL_CAP_MANAGE, MKL_CAP_EVENTS, MKL_CAP_DOCS ),
 		);
 		foreach ( $caps as $role_name => $role_caps ) {
 			$role = get_role( $role_name );

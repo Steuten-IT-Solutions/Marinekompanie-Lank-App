@@ -19,6 +19,7 @@ export interface AppUser {
   isSpiess: boolean;
   canCreateUsers: boolean;
   canManageEvents: boolean;
+  canManageDocs: boolean;
   canPromoteUsers: boolean;
 }
 
@@ -50,6 +51,61 @@ export interface Me {
   is_spiess: boolean;
   points: number;
   open_cents: number;
+  /** Zugewiesener Rang (setzen die Spieße), null = noch kein Rang. */
+  rank: RankRef | null;
+  next_rank: RankRef | null;
+  /** Fehlende Punkte bis zum nächsten Rang; ≤ 0 = Schwelle erreicht, null = höchster Rang. */
+  points_to_next: number | null;
+}
+
+export interface RankRef {
+  id: number;
+  title: string;
+  min_points: number;
+}
+
+export interface Rank extends RankRef {
+  active: boolean;
+  /** Nur für Spieße (?all=1). */
+  member_count?: number;
+}
+
+export interface RankStatus {
+  rank: RankRef | null;
+  next_rank: RankRef | null;
+  points_to_next: number | null;
+  reachable_rank: RankRef | null;
+  threshold_reached_since: string | null;
+  below_current_threshold: boolean;
+}
+
+export interface Promotion extends RankStatus {
+  user_id: number;
+  name: string;
+  points: number;
+}
+
+export interface RankHistoryEntry {
+  id: number;
+  from_title: string | null;
+  to_title: string | null;
+  kind: 'befoerderung' | 'degradierung';
+  points: number;
+  reason: string;
+  changed_at: string;
+  changed_by_name: string | null;
+}
+
+export interface DocumentInfo {
+  key: string;
+  title: string;
+  /** Stand (YYYY-MM-DD). */
+  date: string;
+  size: number;
+  version: string;
+  /** Geschützte Adresse unter /app/dokument/ (offline über den Service Worker). */
+  url: string;
+  updated_at: string;
 }
 
 export interface PointEntry {
@@ -158,11 +214,14 @@ export interface MemberSummary {
   is_spiess: boolean;
   points: number;
   open_cents: number;
+  rank: RankRef | null;
 }
 
-export interface MemberDetail extends MemberSummary {
+export interface MemberDetail extends Omit<MemberSummary, 'rank'> {
   point_list: PointEntry[];
   penalties: Penalty[];
+  rank_status: RankStatus;
+  rank_history: RankHistoryEntry[];
 }
 
 export interface CreatedUser {
@@ -172,6 +231,17 @@ export interface CreatedUser {
   email: string;
   /** Startpasswort – wird nur in dieser einen Antwort geliefert. */
   password: string;
+  points: number;
+  rank: RankRef | null;
+}
+
+export interface NewUserInput {
+  name: string;
+  username?: string;
+  email?: string;
+  initial_points?: number;
+  initial_points_date?: string;
+  rank_id?: number;
 }
 
 export class ApiError extends Error {
@@ -233,9 +303,13 @@ async function requestFull<T>(
       credentials: 'same-origin',
       headers: {
         ...(nonce ? { 'X-WP-Nonce': nonce } : {}),
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body instanceof Blob
+          ? { 'Content-Type': body.type }
+          : body !== undefined
+            ? { 'Content-Type': 'application/json' }
+            : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body instanceof Blob ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError('Keine Verbindung. Bitte später erneut versuchen.', 0);
@@ -260,6 +334,7 @@ export const api = {
   me: () => request<Me>('GET', '/me'),
   myPoints: () => request<PointEntry[]>('GET', '/me/points'),
   myPenalties: () => request<Penalty[]>('GET', '/me/penalties'),
+  myRankHistory: () => request<RankHistoryEntry[]>('GET', '/me/rank-history'),
   calendar: () => request<CalendarEvent[]>('GET', '/calendar'),
 
   events: () => request<PublicEvent[]>('GET', '/events'),
@@ -291,8 +366,7 @@ export const api = {
     await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
     await refreshNonce();
   },
-  createUser: (data: { name: string; username?: string; email?: string }) =>
-    request<CreatedUser>('POST', '/users', data),
+  createUser: (data: NewUserInput) => request<CreatedUser>('POST', '/users', data),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
     request<PointEntry[]>('POST', '/points', data),
@@ -303,4 +377,24 @@ export const api = {
   setPenaltyStatus: (id: number, status: 'open' | 'paid') =>
     request<Penalty>('PATCH', `/penalties/${id}`, { status }),
   deletePenalty: (id: number) => request<{ deleted: boolean }>('DELETE', `/penalties/${id}`),
+
+  ranks: (all = false) => request<Rank[]>('GET', '/ranks', undefined, all ? { all: '1' } : undefined),
+  createRank: (title: string, min_points: number) => request<Rank>('POST', '/ranks', { title, min_points }),
+  updateRank: (id: number, data: Partial<Pick<Rank, 'title' | 'min_points' | 'active'>>) =>
+    request<Rank>('PATCH', `/ranks/${id}`, data),
+  deleteRank: (id: number) => request<{ deleted: boolean }>('DELETE', `/ranks/${id}`),
+  promotions: () => request<Promotion[]>('GET', '/promotions'),
+  /** Befördern/Degradieren; rank_id null = kein Rang. */
+  setRank: (id: number, rank_id: number | null, reason: string) =>
+    request<{ rank_status: RankStatus; rank_history: RankHistoryEntry[] }>('PUT', `/members/${id}/rank`, {
+      rank_id,
+      reason,
+    }),
+
+  documents: () => request<DocumentInfo[]>('GET', '/documents'),
+  /** Neue Fassung hochladen (PDF als Request-Body). */
+  uploadDocument: (key: string, file: Blob, date: string) =>
+    request<DocumentInfo>('POST', `/documents/${key}`, new Blob([file], { type: 'application/pdf' }), { date }),
+  updateDocument: (key: string, date: string) => request<DocumentInfo>('PATCH', `/documents/${key}`, { date }),
+  deleteDocument: (key: string) => request<{ deleted: boolean }>('DELETE', `/documents/${key}`),
 };

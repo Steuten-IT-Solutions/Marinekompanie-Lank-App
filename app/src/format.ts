@@ -65,3 +65,10 @@ export const formatMonth = (d: Date) => monthFmt.format(d);
  * Browser machen daraus sonst „SS“ (Spieß → SPIESS). Mit dem großen ẞ bleibt es „SPIEẞ“.
  */
 export const caps = (s: string) => s.replace(/ß/g, 'ẞ');
+
+/** Dateigröße, z. B. „245 KB“ oder „1,2 MB“. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
+}
