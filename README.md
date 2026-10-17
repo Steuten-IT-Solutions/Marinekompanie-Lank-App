@@ -55,7 +55,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
-  includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
+  includes/class-mkl-drive.php     Google Drive über „Mit Google verbinden“ (OAuth) oder Dienstkonto, ohne Bibliothek
   includes/class-mkl-gallery.php   Galerie: Abgleich, Bildgrößen, Ablage, Auslieferung
   includes/class-mkl-calendar.php  Google Kalender / iCal, mit Zwischenspeicher
   includes/class-mkl-app-page.php  liefert die App unter /app/ aus
@@ -91,13 +91,19 @@ scripts/                   Build- und Test-Skripte
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
    - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
 7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
-8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“):
+8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“). Der Zugang läuft über **„Mit Google verbinden“**. Einen Dienstkontoschlüssel braucht es nicht; Google verbietet das Erstellen solcher Schlüssel in neueren Organisationen ohnehin standardmäßig.
    1. In der [Google Cloud Console](https://console.cloud.google.com/) im vorhandenen Projekt die **Google Drive API** aktivieren: [Direktlink](https://console.cloud.google.com/apis/library/drive.googleapis.com).
-   2. Unter [IAM → Dienstkonten](https://console.cloud.google.com/iam-admin/serviceaccounts) ein **Dienstkonto** anlegen. Rollen braucht es keine.
-   3. Beim Dienstkonto unter **Schlüssel → Schlüssel hinzufügen → JSON** einen Schlüssel erzeugen. Die heruntergeladene Datei gut aufbewahren und nicht weitergeben.
-   4. In Google Drive den Galerie-Hauptordner für die **E-Mail-Adresse des Dienstkontos** freigeben (Rolle „Betrachter“).
-   5. In WordPress **Einstellungen → Kompanie-App → Galerie** den Inhalt der JSON-Datei einfügen, den Link zum Galerie-Ordner eintragen, speichern und **„Jetzt synchronisieren“** klicken. Beim ersten Mal lädt die Seite selbstständig weiter, bis alle Bilder aufbereitet sind.
+   2. Unter [Google Auth Platform](https://console.cloud.google.com/auth/overview) die App einrichten, falls noch nicht geschehen: App-Name (z. B. „Kompanie-App“) und Support-E-Mail eintragen.
+      - Bei **Zielgruppe** möglichst **„Intern“** wählen. Das geht, wenn das Projekt zu einer Google-Organisation gehört. Dann ist keine Überprüfung durch Google nötig und die Verbindung läuft nicht ab.
+      - Geht nur **„Extern“**: die App unter **Zielgruppe → App veröffentlichen** auf „In Produktion“ stellen. Im Status „Test“ läuft die Verbindung nach **7 Tagen** ab. Bei der Anmeldung zeigt Google dann einen Hinweis „Google hat diese App nicht überprüft“; über **Erweitert → Weiter zu …** geht es trotzdem.
+   3. Unter [Clients](https://console.developers.google.com/auth/clients) → **Client erstellen** → Typ **Webanwendung**. Bei **Autorisierte Weiterleitungs-URIs** die Adresse eintragen, die WordPress unter **Einstellungen → Kompanie-App → Galerie** anzeigt, also `https://marinekompanie-lank.de/wp-admin/admin-post.php`. **Client-ID** und **Clientschlüssel** sofort kopieren: Google zeigt den Clientschlüssel nur dieses eine Mal vollständig an. Bis eine neue Weiterleitungs-URI greift, kann es laut Google 5 Minuten bis einige Stunden dauern; meldet Google `redirect_uri_mismatch`, also kurz warten.
+   4. In WordPress unter **Einstellungen → Kompanie-App → Galerie** beides eintragen und **„Speichern und mit Google verbinden“** klicken. Bei Google mit dem Konto anmelden, dem der Galerie-Ordner gehört oder für das er freigegeben ist, und den Lesezugriff auf Google Drive erlauben.
+   5. Danach den Link zum Galerie-Ordner eintragen, speichern und **„Jetzt synchronisieren“** klicken. Beim ersten Mal lädt die Seite selbstständig weiter, bis alle Bilder aufbereitet sind.
    6. Auf der Galerie-Seite der Webseite den bisherigen Block durch einen Shortcode-Block mit `[mkl_galerie]` ersetzen. Danach kann „Integrate Google Drive“ deaktiviert werden.
+
+   Gespeichert wird nur ein Refresh-Token, und zwar ausschließlich auf dem eigenen Server. Die App fordert nur Lesezugriff an (`drive.readonly`), kann damit aber alle Dateien sehen, die das verbundene Google-Konto sehen kann. Wer das enger fassen will, nimmt ein eigenes Google-Konto nur für die Galerie. Mit **„Verbindung trennen“** widerruft das Plugin den Zugriff bei Google. Läuft die Verbindung ab oder wird sie widerrufen, zeigt der Status eine Meldung; dann einfach neu verbinden.
+
+   *Alternative:* Wer Dienstkontoschlüssel erstellen darf, kann unter „Alternative: Dienstkonto mit JSON-Schlüssel“ auch den Schlüssel eines Dienstkontos einfügen und den Galerie-Ordner für dessen E-Mail-Adresse freigeben (Rolle „Betrachter“). Ist zusätzlich eine Google-Verbindung eingerichtet, hat diese Vorrang.
 
    **Ordnerstruktur:** Galerie-Ordner → Jahr (z. B. `2026`) → Album (z. B. `Schützenfest`) → Bilder.
    - Bilder im Unterordner **`intern`** eines Albums sehen nur angemeldete Mitglieder. Für sie werden diese Bilder ins Album eingemischt.

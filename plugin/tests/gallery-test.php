@@ -94,6 +94,8 @@ $GLOBALS['mkl_http']      = array(
 	'list'      => 0,
 	'paged'     => false,
 	'downloads' => 0,
+	'oauth'     => array(),
+	'revoked'   => '',
 );
 $GLOBALS['mkl_public_pem'] = $public_pem;
 
@@ -120,6 +122,26 @@ add_filter(
 				'filename' => null,
 			);
 		};
+		if ( 0 === strpos( $url, 'https://oauth2.googleapis.com/revoke' ) ) {
+			$GLOBALS['mkl_http']['revoked'] = $args['body']['token'];
+			return $ok( array() );
+		}
+		if ( 0 === strpos( $url, 'https://www.googleapis.com/drive/v3/about' ) ) {
+			return $ok( array( 'user' => array( 'emailAddress' => 'kompanie@example.com' ) ) );
+		}
+		if ( 0 === strpos( $url, 'https://oauth2.googleapis.com/token' ) && 'urn:ietf:params:oauth:grant-type:jwt-bearer' !== $args['body']['grant_type'] ) {
+			$GLOBALS['mkl_http']['oauth'][] = $args['body'];
+			if ( ! empty( $GLOBALS['mkl_http']['invalid_grant'] ) ) {
+				$res             = $ok( array( 'error' => 'invalid_grant', 'error_description' => 'Token has been expired or revoked.' ) );
+				$res['response'] = array( 'code' => 400, 'message' => 'Bad Request' );
+				return $res;
+			}
+			$tok = array( 'access_token' => 'TOKEN123', 'expires_in' => 3599, 'scope' => MKL_Drive::SCOPE );
+			if ( 'authorization_code' === $args['body']['grant_type'] ) {
+				$tok['refresh_token'] = 'R1';
+			}
+			return $ok( $tok );
+		}
 		if ( 0 === strpos( $url, 'https://oauth2.googleapis.com/token' ) ) {
 			$GLOBALS['mkl_http']['token']++;
 			$parts = explode( '.', $args['body']['assertion'] );
@@ -249,6 +271,60 @@ mkl_g_assert( ! $wpdb->get_var( "SELECT id FROM " . MKL_Gallery::photos_table() 
 mkl_g_assert( 'pending' === $wpdb->get_var( "SELECT status FROM " . MKL_Gallery::photos_table() . " WHERE drive_file_id = 'IMG2'" ), 'Geändertes Bild wird neu aufbereitet' );
 mkl_g_assert( 1 === $GLOBALS['mkl_http']['token'], 'Zugriffstoken wird zwischengespeichert' );
 
+echo "Mit Google verbinden (OAuth)\n";
+$admin = wp_insert_user( array( 'user_login' => 'mkltest_oauth', 'user_pass' => wp_generate_password(), 'role' => 'administrator' ) );
+wp_set_current_user( $admin );
+mkl_g_assert( is_wp_error( MKL_Drive::save_client( 'falsch', 'geheim' ) ), 'Ungültige Client-ID wird abgelehnt' );
+mkl_g_assert( is_wp_error( MKL_Drive::save_client( '123-abc.apps.googleusercontent.com', '' ) ), 'Ohne Client-Secret wird abgelehnt' );
+mkl_g_assert( true === MKL_Drive::save_client( '123-abc.apps.googleusercontent.com', 'GEHEIM' ) && ! MKL_Drive::oauth_connected(), 'Client gespeichert, noch nicht verbunden' );
+
+parse_str( (string) wp_parse_url( MKL_Drive::auth_url( 'mkl_drive_x' ), PHP_URL_QUERY ), $q );
+mkl_g_assert(
+	'123-abc.apps.googleusercontent.com' === $q['client_id'] && admin_url( 'admin-post.php' ) === $q['redirect_uri'] && MKL_Drive::SCOPE === $q['scope']
+		&& 'offline' === $q['access_type'] && 'consent' === $q['prompt'] && 'code' === $q['response_type'] && 'mkl_drive_x' === $q['state'],
+	'Anmelde-Link zu Google mit Offline-Zugriff, nur Lesen'
+);
+$state = MKL_Drive::new_state();
+mkl_g_assert( MKL_Drive::check_state( $state ) && ! MKL_Drive::check_state( $state ), 'state gilt genau einmal' );
+mkl_g_assert( ! MKL_Drive::check_state( 'mkl_drive_gefaelscht' ), 'Fremdes state wird abgelehnt' );
+
+$_GET['state'] = 'etwas_anderes';
+MKL_Settings::drive_callback(); // darf nichts tun (und nicht beenden)
+unset( $_GET['state'] );
+mkl_g_assert( true, 'Fremde admin-post-Aufrufe ohne action werden ignoriert' );
+
+$res = MKL_Drive::exchange_code( 'CODE1' );
+$req = end( $GLOBALS['mkl_http']['oauth'] );
+mkl_g_assert( true === $res && MKL_Drive::oauth_connected(), 'Code gegen Refresh-Token getauscht' );
+mkl_g_assert( 'authorization_code' === $req['grant_type'] && 'CODE1' === $req['code'] && 'GEHEIM' === $req['client_secret'] && admin_url( 'admin-post.php' ) === $req['redirect_uri'], 'Token-Tausch mit Code, Secret und Weiterleitungs-URI' );
+mkl_g_assert( 'kompanie@example.com' === MKL_Drive::oauth_email(), 'Verbundenes Google-Konto wird angezeigt' );
+
+delete_transient( MKL_Drive::TOKEN_CACHE );
+$jwt_before = $GLOBALS['mkl_http']['token'];
+$stats      = MKL_Gallery::sync();
+$req        = end( $GLOBALS['mkl_http']['oauth'] );
+mkl_g_assert( ! is_wp_error( $stats ) && 4 === $stats['photos'], 'Sync über die Google-Verbindung' );
+mkl_g_assert( 'refresh_token' === $req['grant_type'] && 'R1' === $req['refresh_token'] && $jwt_before === $GLOBALS['mkl_http']['token'], 'Verbindung hat Vorrang vor dem Dienstkonto (Refresh-Token statt JWT)' );
+
+MKL_Drive::save_client( '123-abc.apps.googleusercontent.com', '' );
+mkl_g_assert( MKL_Drive::oauth_connected(), 'Leeres Secret behält Secret und Verbindung' );
+
+delete_transient( MKL_Drive::TOKEN_CACHE );
+$GLOBALS['mkl_http']['invalid_grant'] = true;
+$err = MKL_Drive::access_token();
+$GLOBALS['mkl_http']['invalid_grant'] = false;
+mkl_g_assert( is_wp_error( $err ) && false !== strpos( $err->get_error_message(), 'neu mit Google verbinden' ), 'Widerrufene Verbindung: verständliche Meldung' );
+
+MKL_Drive::disconnect();
+mkl_g_assert( 'R1' === $GLOBALS['mkl_http']['revoked'] && ! MKL_Drive::oauth_connected(), 'Trennen widerruft das Token bei Google' );
+mkl_g_assert( MKL_Drive::is_configured() && ! is_wp_error( MKL_Drive::access_token() ) && $jwt_before + 1 === $GLOBALS['mkl_http']['token'], 'Danach greift wieder das Dienstkonto' );
+
+MKL_Drive::exchange_code( 'CODE2' );
+MKL_Drive::save_client( '999-neu.apps.googleusercontent.com', 'ANDERS' );
+mkl_g_assert( ! MKL_Drive::oauth_connected(), 'Anderer OAuth-Client erfordert neue Verbindung' );
+wp_set_current_user( 0 );
+wp_delete_user( $admin );
+
 // Aufräumen.
 foreach ( $wpdb->get_results( 'SELECT * FROM ' . MKL_Gallery::photos_table(), ARRAY_A ) as $ph ) {
 	MKL_Gallery::delete_files( $ph );
@@ -257,6 +333,7 @@ $wpdb->query( 'DELETE FROM ' . MKL_Gallery::photos_table() );
 $wpdb->query( 'DELETE FROM ' . MKL_Gallery::albums_table() );
 delete_option( MKL_Gallery::ROOT_OPTION );
 delete_option( MKL_Drive::OPTION_KEY );
+delete_option( MKL_Drive::OAUTH_OPTION );
 delete_option( MKL_Gallery::STATUS_OPTION );
 delete_transient( MKL_Drive::TOKEN_CACHE );
 MKL_Gallery::unschedule();
