@@ -28,6 +28,7 @@ foreach ( $wpdb->get_results( 'SELECT * FROM ' . MKL_Gallery::photos_table(), AR
 }
 $wpdb->query( 'DELETE FROM ' . MKL_Gallery::photos_table() );
 $wpdb->query( 'DELETE FROM ' . MKL_Gallery::albums_table() );
+delete_option( MKL_Drive::OAUTH_OPTION );
 delete_transient( MKL_Drive::TOKEN_CACHE );
 
 echo "Dienstkonto\n";
