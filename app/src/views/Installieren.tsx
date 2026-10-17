@@ -102,7 +102,7 @@ function HomeScreen({ label }: { label: string }) {
       <rect x="76" y="80" width="40" height="40" rx="10" fill="var(--line)" />
       <rect x="128" y="80" width="40" height="40" rx="10" fill="#fff" stroke="var(--line-strong)" />
       <image href={logoUrl} x="131" y="83" width="34" height="34" />
-      <text x="148" y="140" textAnchor="middle" className="pic-small pic-strong">MK Lank</text>
+      <text x="148" y="140" textAnchor="middle" className="pic-small pic-strong">Marinekompanie</text>
       <Tap x={148} y={100} r={25} />
     </Frame>
   );

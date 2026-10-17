@@ -67,7 +67,7 @@ class MKL_App_Page {
 		echo wp_json_encode(
 			array(
 				'name'             => get_option( 'mkl_app_name', 'Marinekompanie Lank' ),
-				'short_name'       => get_option( 'mkl_app_short_name', 'MK Lank' ),
+				'short_name'       => get_option( 'mkl_app_short_name', 'Marinekompanie' ),
 				'description'      => 'Termine, Punkte und Strafen der Marinekompanie 1973 Lank',
 				'lang'             => 'de',
 				'start_url'        => self::app_url(),
