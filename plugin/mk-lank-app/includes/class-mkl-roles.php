@@ -72,6 +72,22 @@ class MKL_Roles {
 		return $user_id ? user_can( $user_id, MKL_CAP_MEMBER ) : current_user_can( MKL_CAP_MEMBER );
 	}
 
+	/**
+	 * Jungmariner ist keine eigene Rolle, sondern ein Merkmal eines Mitglieds
+	 * (Benutzer-Meta). Jungmariner erhalten bei der Punktevergabe nur die halbe Punktzahl.
+	 */
+	public static function is_jungmariner( $user_id ) {
+		return (bool) get_user_meta( $user_id, MKL_META_JUNGMARINER, true );
+	}
+
+	public static function set_jungmariner( $user_id, $value ) {
+		if ( $value ) {
+			update_user_meta( $user_id, MKL_META_JUNGMARINER, 1 );
+		} else {
+			delete_user_meta( $user_id, MKL_META_JUNGMARINER );
+		}
+	}
+
 	/** @return string admin|spiess|mitglied|gast */
 	public static function get_level( $user_id ) {
 		$user = get_userdata( $user_id );

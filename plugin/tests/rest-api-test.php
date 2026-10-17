@@ -174,6 +174,53 @@ mkl_assert( 403 === $s, 'Mitglied kann eigene Strafe nicht auf bezahlt setzen' )
 list( $s ) = mkl_req( 'DELETE', '/penalties/' . $pen1 );
 mkl_assert( 403 === $s, 'Mitglied kann eigene Strafe nicht stornieren' );
 
+echo "Jungmariner erhalten die halbe Punktzahl\n";
+$jung = mkl_test_user( 'mkltest_jungmariner' );
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $jung . '/jungmariner', array( 'jungmariner' => true ) );
+mkl_assert( 403 === $s, 'Mitglied darf niemanden als Jungmariner markieren → 403' );
+wp_set_current_user( $spiess );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $jung . '/jungmariner', array( 'jungmariner' => true ) );
+mkl_assert( 200 === $s && true === $d['is_jungmariner'], 'Spieß markiert Mitglied als Jungmariner' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $jung . '/jungmariner', array() );
+mkl_assert( 400 === $s, 'Jungmariner ohne Angabe → 400' );
+
+list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $jung, $m2 ), 'points' => 5, 'reason' => 'Jungmariner-Test' ) );
+$by_user = array();
+foreach ( $d as $r ) {
+	$by_user[ $r['user_id'] ] = $r;
+}
+mkl_assert( 201 === $s && 2.5 === $by_user[ $jung ]['points'] && true === $by_user[ $jung ]['halved'] && 5 === $by_user[ $jung ]['full_points'], 'Jungmariner: 5 Punkte → 2,5' );
+mkl_assert( 5 === $by_user[ $m2 ]['points'] && false === $by_user[ $m2 ]['halved'], 'Gleiche Vergabe: normales Mitglied erhält volle 5' );
+$m2_jung_test = $by_user[ $m2 ]['id'];
+list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $jung ), 'points' => 4, 'reason' => 'Jungmariner-Test 2' ) );
+mkl_assert( 2 === $d[0]['points'], 'Jungmariner: 4 Punkte → 2' );
+list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $jung ), 'points' => -3, 'reason' => 'Abzug' ) );
+mkl_assert( -3 === $d[0]['points'] && false === $d[0]['halved'], 'Jungmariner: Abzug −3 zählt voll' );
+
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $jung );
+mkl_assert( 200 === $s && 1.5 === $d['points'] && true === $d['is_jungmariner'], 'Summe Jungmariner: 2,5 + 2 − 3 = 1,5' );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+$row = wp_list_filter( $members, array( 'id' => $jung ) );
+$row = reset( $row );
+mkl_assert( 1.5 === $row['points'] && true === $row['is_jungmariner'], 'Übersicht: Jungmariner mit 1,5 Punkten' );
+
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $jung . '/jungmariner', array( 'jungmariner' => false ) );
+mkl_assert( 200 === $s && false === $d['is_jungmariner'], 'Jungmariner-Markierung aufgehoben' );
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $jung );
+mkl_assert( 1.5 === $d['points'], 'Aufheben ändert bereits vergebene Punkte nicht' );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $jung ), 'points' => 2, 'reason' => 'Nach Aufheben' ) );
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $jung );
+mkl_assert( 3.5 === $d['points'], 'Nach dem Aufheben volle Punkte (1,5 + 2)' );
+
+wp_set_current_user( $jung );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 3.5 === $d['points'] && false === $d['is_jungmariner'], 'GET /me Summe Jungmariner' );
+wp_set_current_user( $spiess );
+mkl_req( 'DELETE', '/points/' . $m2_jung_test );
+list( $s ) = mkl_req( 'PATCH', '/members/999999/jungmariner', array( 'jungmariner' => true ) );
+mkl_assert( 404 === $s, 'Unbekanntes Mitglied → 404' );
+
 echo "Mitglieder anlegen (nur Admin)\n";
 $admin = mkl_test_user( 'mkltest_admin', 'admin' );
 $created = array();
@@ -378,7 +425,7 @@ mkl_assert( 'Kompanieabend' === $events[1]['title'] && false === $events[1]['all
 
 // Aufräumen.
 global $wpdb;
-foreach ( array( $spiess, $m1, $m2 ) as $uid ) {
+foreach ( array( $spiess, $m1, $m2, $jung ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
 	$wpdb->delete( MKL_DB::table( 'penalties' ), array( 'user_id' => $uid ) );
 	wp_delete_user( $uid );

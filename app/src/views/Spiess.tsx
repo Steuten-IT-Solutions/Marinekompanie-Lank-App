@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
-import { caps, formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
+import { caps, formatDate, formatEuro, formatPoints, halvedNote, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
 import { PenaltyRow } from './Strafen';
@@ -96,6 +96,7 @@ function Members() {
               <div className="row-title">
                 {m.name}{' '}
                 {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{caps(LEVEL_LABELS[m.level])}</span>}
+                {m.is_jungmariner && <span className="badge badge-jungmariner">Jungmariner</span>}
               </div>
               <div className="row-sub">
                 {m.points.toLocaleString('de-DE')} Punkte
@@ -141,6 +142,9 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
       </button>
       <h2 className="member-name">{m.name}</h2>
       <RoleControl id={m.id} level={m.level} onChanged={reload} onToast={onToast} />
+      {m.level !== 'gast' && (
+        <JungmarinerToggle key={m.id} id={m.id} initial={m.is_jungmariner} onChanged={reload} onToast={onToast} />
+      )}
       <div className="stats">
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
@@ -213,6 +217,7 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
                 <div className="row-sub">
                   {formatDate(p.date)}
                   {p.created_by_name && ` · von ${p.created_by_name}`}
+                  {halvedNote(p)}
                 </div>
                 <div className="row-actions">
                   <button
@@ -233,6 +238,45 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * Jungmariner erhalten laut Satzung nur die halbe Punktzahl. Die Markierung gilt
+ * für künftige Vergaben; bereits vergebene Punkte bleiben, wie sie sind.
+ */
+function JungmarinerToggle({
+  id,
+  initial,
+  onChanged,
+  onToast,
+}: {
+  id: number;
+  initial: boolean;
+  onChanged: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const [checked, setChecked] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  async function change(next: boolean) {
+    setChecked(next);
+    setBusy(true);
+    try {
+      await api.setJungmariner(id, next);
+      onToast(next ? 'Als Jungmariner markiert' : 'Kein Jungmariner mehr');
+      onChanged();
+    } catch (e) {
+      setChecked(!next);
+      onToast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <label className="toggle">
+      <input type="checkbox" checked={checked} disabled={busy} onChange={(e) => change(e.target.checked)} />
+      Jungmariner (erhält ab jetzt die halbe Punktzahl, Abzüge zählen voll)
+    </label>
   );
 }
 
@@ -426,6 +470,8 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   const [members, catalog] = data as [MemberSummary[], CatalogItem[]];
+  const n = Number(points);
+  const juniors = members.filter((m) => m.is_jungmariner && selected.includes(m.id));
 
   function chooseCatalog(id: string) {
     setCatalogId(id);
@@ -439,7 +485,6 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    const n = Number(points);
     if (selected.length === 0) return setFormError('Bitte mindestens ein Mitglied auswählen.');
     if (!Number.isInteger(n) || n === 0) return setFormError('Bitte eine ganze Punktzahl ungleich 0 angeben.');
     if (!reason.trim()) return setFormError('Bitte einen Grund angeben.');
@@ -492,6 +537,12 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
         <span>Mitglieder</span>
         <MemberPicker members={members} selected={selected} onChange={setSelected} />
       </div>
+      {juniors.length > 0 && n > 0 && Number.isInteger(n) && (
+        <p className="muted small" role="status">
+          {juniors.length === 1 ? `${juniors[0].name} ist Jungmariner und erhält` : `${juniors.length} Jungmariner erhalten`} nur die
+          halbe Punktzahl: {formatPoints(n / 2)}.
+        </p>
+      )}
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Speichert …' : 'Punkte vergeben'}

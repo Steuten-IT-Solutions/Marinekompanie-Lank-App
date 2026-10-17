@@ -109,6 +109,7 @@ export function MemberPicker({
             <label>
               <input type="checkbox" checked={selected.includes(m.id)} onChange={() => toggle(m.id)} />
               <span>{m.name}</span>
+              {m.is_jungmariner && <span className="badge badge-jungmariner">Jungmariner</span>}
             </label>
           </li>
         ))}

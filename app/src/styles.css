@@ -202,6 +202,7 @@ button, input, select { font: inherit; color: inherit; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
 .badge-level-gast { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-jungmariner { background: #d6e0f5; color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -342,6 +343,7 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
   .error { background: #3d1a14; color: #f6c7b9; border-color: #6e2c15; }
   .badge-open { background: #4a1e14; color: #f6b8a6; }
   .badge-paid { background: #163a24; color: #9fdcb2; }
+  .badge-jungmariner { background: #22355f; color: #c9d6f5; }
   .row::before { background: var(--brass); opacity: 0.7; }
   .segmented button.active { background: var(--navy); }
 }

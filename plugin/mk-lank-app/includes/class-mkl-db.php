@@ -43,6 +43,7 @@ class MKL_DB {
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   user_id bigint(20) unsigned NOT NULL,
   points int(11) NOT NULL,
+  halved tinyint(1) NOT NULL DEFAULT 0,
   reason varchar(255) NOT NULL DEFAULT '',
   catalog_id bigint(20) unsigned DEFAULT NULL,
   entry_date date NOT NULL,
@@ -158,6 +159,26 @@ class MKL_DB {
 	/* Punkte                                                              */
 	/* ------------------------------------------------------------------ */
 
+	/**
+	 * Gutgeschriebene Punkte eines Eintrags. points enthält immer die vergebene
+	 * Punktzahl; bei halved = 1 (Jungmariner) zählt davon die Hälfte.
+	 */
+	const EFFECTIVE_POINTS_SQL = 'CASE WHEN halved = 1 THEN points / 2.0 ELSE points END';
+
+	/** Ganze Zahlen als int, halbe Punkte als float (z. B. 2.5). */
+	public static function points_value( $value ) {
+		$value = round( (float) $value, 1 );
+		return floor( $value ) == $value ? (int) $value : $value; // phpcs:ignore WordPress.PHP.StrictComparisons
+	}
+
+	/**
+	 * Jungmariner erhalten laut Satzung nur die halbe Punktzahl. Abzüge (negative
+	 * Punkte) zählen auch für Jungmariner voll.
+	 */
+	public static function halves_points( $user_id, $points ) {
+		return $points > 0 && MKL_Roles::is_jungmariner( $user_id );
+	}
+
 	public static function get_points_for_user( $user_id ) {
 		global $wpdb;
 		$t    = self::table( 'points' );
@@ -174,8 +195,10 @@ class MKL_DB {
 	public static function get_points_total( $user_id ) {
 		global $wpdb;
 		$t = self::table( 'points' );
-		return (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COALESCE(SUM(points), 0) FROM $t WHERE user_id = %d AND deleted_at IS NULL", $user_id )
+		return self::points_value(
+			$wpdb->get_var(
+				$wpdb->prepare( 'SELECT COALESCE(SUM(' . self::EFFECTIVE_POINTS_SQL . "), 0) FROM $t WHERE user_id = %d AND deleted_at IS NULL", $user_id )
+			)
 		);
 	}
 
@@ -187,7 +210,8 @@ class MKL_DB {
 	}
 
 	/**
-	 * Legt für jeden Benutzer einen Punkte-Eintrag an.
+	 * Legt für jeden Benutzer einen Punkte-Eintrag an. Ob der Eintrag halbiert
+	 * zählt, wird bei der Vergabe festgehalten und ändert sich später nicht mehr.
 	 *
 	 * @return int[] IDs der angelegten Einträge.
 	 */
@@ -201,13 +225,14 @@ class MKL_DB {
 				array(
 					'user_id'    => $user_id,
 					'points'     => $points,
+					'halved'     => self::halves_points( $user_id, $points ) ? 1 : 0,
 					'reason'     => $reason,
 					'catalog_id' => $catalog_id,
 					'entry_date' => $entry_date,
 					'created_by' => $created_by,
 					'created_at' => self::now(),
 				),
-				array( '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
+				array( '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
 			);
 			$ids[] = (int) $wpdb->insert_id;
 		}
@@ -312,7 +337,7 @@ class MKL_DB {
 	/**
 	 * Summen je Benutzer für die Spieß-Übersicht.
 	 *
-	 * @return array<int, array{points:int, open_cents:int}>
+	 * @return array<int, array{points:int|float, open_cents:int}>
 	 */
 	public static function get_totals_by_user() {
 		global $wpdb;
@@ -320,9 +345,9 @@ class MKL_DB {
 		$s   = self::table( 'penalties' );
 		$out = array();
 
-		$rows = $wpdb->get_results( "SELECT user_id, SUM(points) AS total FROM $p WHERE deleted_at IS NULL GROUP BY user_id", ARRAY_A );
+		$rows = $wpdb->get_results( 'SELECT user_id, SUM(' . self::EFFECTIVE_POINTS_SQL . ") AS total FROM $p WHERE deleted_at IS NULL GROUP BY user_id", ARRAY_A );
 		foreach ( $rows as $r ) {
-			$out[ (int) $r['user_id'] ]['points'] = (int) $r['total'];
+			$out[ (int) $r['user_id'] ]['points'] = self::points_value( $r['total'] );
 		}
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -397,10 +422,13 @@ class MKL_DB {
 	}
 
 	public static function format_points_row( array $r ) {
+		$halved = ! empty( $r['halved'] );
 		return array(
 			'id'              => (int) $r['id'],
 			'user_id'         => (int) $r['user_id'],
-			'points'          => (int) $r['points'],
+			'points'          => self::points_value( $halved ? $r['points'] / 2 : $r['points'] ),
+			'full_points'     => (int) $r['points'],
+			'halved'          => $halved,
 			'reason'          => $r['reason'],
 			'catalog_id'      => $r['catalog_id'] ? (int) $r['catalog_id'] : null,
 			'date'            => $r['entry_date'],

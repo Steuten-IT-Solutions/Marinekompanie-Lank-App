@@ -138,6 +138,38 @@ test('Mitglied 2 sieht keine fremden Strafen und keine Verwaltungsdaten', async 
   expect(status).toBe(403);
 });
 
+test('Jungmariner erhalten bei der Punktevergabe die halbe Punktzahl', async ({ page }) => {
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.row', { hasText: 'Mariner2' }).click();
+  await page.getByLabel(/^Jungmariner/).check();
+  await expect(page.locator('.toast')).toHaveText('Als Jungmariner markiert');
+
+  await page.getByRole('button', { name: 'Punkte vergeben' }).click();
+  await page.getByLabel('Punkte', { exact: true }).fill('3');
+  await page.getByLabel('Grund').fill('Aufbau Zelt');
+  await expect(page.getByText('Mariner2 ist Jungmariner')).toHaveText('Mariner2 ist Jungmariner und erhält nur die halbe Punktzahl: +1,5.');
+  await shot(page, '9-jungmariner');
+  await page.getByRole('button', { name: 'Punkte vergeben' }).click();
+  await expect(page.locator('.toast')).toContainText('vergeben');
+
+  await page.getByRole('button', { name: 'Mitglieder' }).click();
+  await expect(page.locator('.row', { hasText: 'Mariner2' })).toContainText('Jungmariner');
+  await expect(page.locator('.row', { hasText: 'Mariner2' })).toContainText('6,5 Punkte');
+
+  await login(page, 'mariner2');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.stat-value')).toHaveText('6,5');
+  await expect(page.locator('.row', { hasText: 'Aufbau Zelt' })).toContainText('halbe Punktzahl von +3');
+
+  // Zurücksetzen für die folgenden Tests.
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.locator('.row', { hasText: 'Mariner2' }).click();
+  await page.getByLabel(/^Jungmariner/).uncheck();
+  await expect(page.locator('.toast')).toHaveText('Kein Jungmariner mehr');
+});
+
 test('Mitglied ändert sein Passwort und bleibt angemeldet', async ({ page }) => {
   const NEW = 'Anker-Lank-1973';
   await login(page, 'mariner2');

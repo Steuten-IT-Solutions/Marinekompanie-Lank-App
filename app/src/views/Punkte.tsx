@@ -1,5 +1,5 @@
 import { api } from '../api';
-import { formatDate, formatPoints } from '../format';
+import { formatDate, formatPoints, halvedNote } from '../format';
 import { Empty, ErrorBox, Loading, StatCard, useAsync } from '../ui';
 
 export default function Punkte() {
@@ -12,6 +12,9 @@ export default function Punkte() {
   return (
     <div>
       <StatCard label="Meine Punkte" value={me.points.toLocaleString('de-DE')} tone="good" />
+      {me.is_jungmariner && (
+        <p className="muted small">Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.</p>
+      )}
       <h2 className="section-title">Verlauf</h2>
       {points.length === 0 ? (
         <Empty>Noch keine Punkte – das ändert sich beim nächsten Antreten!</Empty>
@@ -21,7 +24,10 @@ export default function Punkte() {
             <li key={p.id} className="card row">
               <div className="row-main">
                 <div className="row-title">{p.reason}</div>
-                <div className="row-sub">{formatDate(p.date)}</div>
+                <div className="row-sub">
+                  {formatDate(p.date)}
+                  {halvedNote(p)}
+                </div>
               </div>
               <div className={`row-value ${p.points < 0 ? 'neg' : 'pos'}`}>{formatPoints(p.points)}</div>
             </li>

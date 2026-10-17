@@ -19,6 +19,12 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 | **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
 | **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
 
+**Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Dann gilt:
+
+- Bei jeder Punktevergabe wird für Jungmariner automatisch nur die Hälfte gutgeschrieben, z. B. 5 → 2,5. Dafür sind halbe Punkte möglich.
+- Abzüge (negative Punkte) zählen auch für Jungmariner voll.
+- Ob ein Eintrag halbiert wurde, wird bei der Vergabe gespeichert und im Verlauf angezeigt („Jungmariner: halbe Punktzahl von +5“). Wird der Haken später entfernt, gelten nur künftige Vergaben wieder voll. Bereits vergebene Punkte bleiben unverändert.
+
 Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
 
 ## Warum kein Apple Developer Account nötig ist

@@ -24,6 +24,11 @@ export function formatPoints(points: number): string {
   return (points > 0 ? '+' : '') + points.toLocaleString('de-DE');
 }
 
+/** Hinweis für halbierte Einträge (Jungmariner), sonst leer. */
+export function halvedNote(p: { halved: boolean; full_points: number }): string {
+  return p.halved ? ` · Jungmariner: halbe Punktzahl von ${formatPoints(p.full_points)}` : '';
+}
+
 /** "2,50" / "2.50" / "2" → 250 Cent; null bei ungültiger Eingabe. */
 export function parseEuroToCents(input: string): number | null {
   const s = input.trim().replace(/\s|€/g, '').replace(',', '.');

@@ -75,6 +75,7 @@ class MKL_REST {
 
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/jungmariner', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_jungmariner' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
@@ -166,6 +167,7 @@ class MKL_REST {
 				'is_spiess'         => MKL_Roles::is_spiess(),
 				'can_create_users'  => current_user_can( 'create_users' ),
 				'can_manage_events' => current_user_can( MKL_CAP_EVENTS ),
+				'is_jungmariner'    => MKL_Roles::is_jungmariner( $user->ID ),
 				'points'           => MKL_DB::get_points_total( $user->ID ),
 				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
 			)
@@ -424,12 +426,13 @@ class MKL_REST {
 				continue;
 			}
 			$out[] = array(
-				'id'         => $id,
-				'name'       => $u->display_name,
-				'level'      => MKL_Roles::get_level( $id ),
-				'is_spiess'  => MKL_Roles::is_spiess( $id ),
-				'points'     => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
-				'open_cents' => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
+				'id'             => $id,
+				'name'           => $u->display_name,
+				'level'          => MKL_Roles::get_level( $id ),
+				'is_spiess'      => MKL_Roles::is_spiess( $id ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $id ),
+				'points'         => isset( $totals[ $id ]['points'] ) ? $totals[ $id ]['points'] : 0,
+				'open_cents'     => isset( $totals[ $id ]['open_cents'] ) ? $totals[ $id ]['open_cents'] : 0,
 			);
 		}
 		return rest_ensure_response( $out );
@@ -442,16 +445,37 @@ class MKL_REST {
 		}
 		return rest_ensure_response(
 			array(
-				'id'         => $user->ID,
-				'name'       => $user->display_name,
-				'level'      => MKL_Roles::get_level( $user->ID ),
-				'is_spiess'  => MKL_Roles::is_spiess( $user->ID ),
-				'points'     => MKL_DB::get_points_total( $user->ID ),
-				'open_cents' => MKL_DB::get_open_penalties_cents( $user->ID ),
-				'point_list' => MKL_DB::get_points_for_user( $user->ID ),
-				'penalties'  => MKL_DB::get_penalties_for_user( $user->ID ),
+				'id'             => $user->ID,
+				'name'           => $user->display_name,
+				'level'          => MKL_Roles::get_level( $user->ID ),
+				'is_spiess'      => MKL_Roles::is_spiess( $user->ID ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $user->ID ),
+				'points'         => MKL_DB::get_points_total( $user->ID ),
+				'open_cents'     => MKL_DB::get_open_penalties_cents( $user->ID ),
+				'point_list'     => MKL_DB::get_points_for_user( $user->ID ),
+				'penalties'      => MKL_DB::get_penalties_for_user( $user->ID ),
 			)
 		);
+	}
+
+	/**
+	 * Markiert ein Mitglied als Jungmariner (oder hebt das auf). Gilt nur für
+	 * künftige Punktevergaben; bereits vergebene Punkte bleiben unverändert.
+	 */
+	public static function set_member_jungmariner( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( ! MKL_Roles::is_member( $id ) ) {
+			return self::error( 'Nur Mitglieder können Jungmariner sein.' );
+		}
+		$value = $req->get_param( 'jungmariner' );
+		if ( null === $value ) {
+			return self::error( 'Bitte angeben, ob das Mitglied Jungmariner ist.' );
+		}
+		MKL_Roles::set_jungmariner( $id, rest_sanitize_boolean( $value ) );
+		return rest_ensure_response( array( 'id' => $id, 'is_jungmariner' => MKL_Roles::is_jungmariner( $id ) ) );
 	}
 
 	public static function set_member_role( WP_REST_Request $req ) {
