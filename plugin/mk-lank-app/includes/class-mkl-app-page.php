@@ -65,7 +65,7 @@ class MKL_App_Page {
 
 	private static function send_manifest() {
 		header( 'Content-Type: application/manifest+json; charset=utf-8' );
-		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Cache-Control: no-cache' );
 		$icons = MKL_URL . 'app-dist/icons/';
 		echo wp_json_encode(
 			array(
