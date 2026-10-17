@@ -645,6 +645,16 @@ function Catalog({ onToast }: { onToast: (msg: string) => void }) {
                 >
                   {c.active ? 'Deaktivieren' : 'Aktivieren'}
                 </button>
+                <button
+                  className="btn btn-small btn-danger"
+                  disabled={busy}
+                  onClick={() =>
+                    window.confirm(`Vorlage „${c.title}“ wirklich löschen? Bereits vergebene Punkte bleiben erhalten.`) &&
+                    run(() => api.deleteCatalogItem(c.id), 'Vorlage gelöscht')
+                  }
+                >
+                  Löschen
+                </button>
               </div>
             </div>
             <div className="row-value pos">{formatPoints(c.points)}</div>

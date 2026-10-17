@@ -61,6 +61,13 @@ test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await page.getByRole('button', { name: 'Punkte vergeben' }).click();
   await expect(page.locator('.toast')).toHaveText('+5 Punkte an 2 Mitglieder vergeben');
 
+  // Eine Vorlage lässt sich löschen; die vergebenen Punkte bleiben (siehe Test „Mitglied 1“).
+  await page.getByRole('button', { name: 'Katalog' }).click();
+  page.once('dialog', (d) => d.accept());
+  await page.locator('.row', { hasText: 'Teilnahme Schützenfest' }).getByRole('button', { name: 'Löschen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Vorlage gelöscht');
+  await expect(page.locator('.row', { hasText: 'Teilnahme Schützenfest' })).toHaveCount(0);
+
   await page.getByRole('button', { name: 'Strafe +' }).click();
   await page.getByPlaceholder('2,50').fill('2,50');
   await page.getByPlaceholder('z. B. Zu spät beim Antreten').fill('Zu spät beim Antreten');

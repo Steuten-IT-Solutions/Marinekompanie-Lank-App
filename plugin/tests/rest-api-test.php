@@ -104,6 +104,24 @@ list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1, $m
 mkl_assert( 201 === $s && 2 === count( $d ), 'Punkte aus Katalog an zwei Mitglieder' );
 mkl_assert( 5 === $d[0]['points'] && 'Teilnahme Schützenfest' === $d[0]['reason'], 'Punkte/Grund aus Katalog übernommen' );
 
+list( $s, $tmp ) = mkl_req( 'POST', '/catalog', array( 'title' => 'Vorlage zum Löschen', 'points' => 2 ) );
+list( $s, $d )   = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m2 ), 'catalog_id' => $tmp['id'] ) );
+$tmp_point_id    = $d[0]['id'];
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'DELETE', '/catalog/' . $tmp['id'] );
+mkl_assert( 403 === $s, 'DELETE /catalog/{id} als Mitglied → 403' );
+wp_set_current_user( $spiess );
+list( $s, $d ) = mkl_req( 'DELETE', '/catalog/' . $tmp['id'] );
+mkl_assert( 200 === $s && true === $d['deleted'], 'Katalogeintrag löschen' );
+list( $s, $d ) = mkl_req( 'GET', '/catalog', array(), array( 'all' => '1' ) );
+mkl_assert( ! in_array( $tmp['id'], wp_list_pluck( $d, 'id' ), true ), 'Gelöschter Eintrag fehlt im Katalog' );
+$row = MKL_DB::get_points_row( $tmp_point_id );
+mkl_assert( 2 === $row['points'] && 'Vorlage zum Löschen' === $row['reason'] && null === $row['catalog_id'] && ! $row['deleted'], 'Vergebene Punkte bleiben nach dem Löschen erhalten' );
+list( $s ) = mkl_req( 'DELETE', '/catalog/' . $tmp['id'] );
+mkl_assert( 404 === $s, 'Bereits gelöschten Eintrag erneut löschen → 404' );
+global $wpdb;
+$wpdb->delete( MKL_DB::table( 'points' ), array( 'id' => $tmp_point_id ) );
+
 list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'Aufbau Maifest' ) );
 mkl_assert( 201 === $s, 'Freie Punkte an Mitglied 1' );
 $free_point_id = $d[0]['id'];
@@ -260,6 +278,7 @@ $matrix = array(
 	array( 'GET', '/me/points', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'GET', '/me/penalties', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'GET', '/members', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'DELETE', '/catalog/999999', array(), array( 401, 403, 403, 404, 404 ) ),
 	array( 'POST', '/events', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),

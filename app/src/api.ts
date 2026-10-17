@@ -280,6 +280,7 @@ export const api = {
     request<CatalogItem>('POST', '/catalog', { title, points }),
   updateCatalogItem: (id: number, data: Partial<Pick<CatalogItem, 'title' | 'points' | 'active' | 'sort'>>) =>
     request<CatalogItem>('PATCH', `/catalog/${id}`, data),
+  deleteCatalogItem: (id: number) => request<{ deleted: boolean }>('DELETE', `/catalog/${id}`),
 
   members: (all = false) => request<MemberSummary[]>('GET', '/members', undefined, all ? { all: '1' } : undefined),
   setRole: (id: number, level: Exclude<Level, 'admin'>) =>
