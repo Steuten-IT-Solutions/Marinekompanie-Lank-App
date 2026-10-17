@@ -201,7 +201,7 @@ button, input, select { font: inherit; color: inherit; }
 .badge-open { background: #f6d9cf; color: #7a2412; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
-.badge-level-gast { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-level-gast, .badge-level-anwaerter { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;

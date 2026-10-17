@@ -41,7 +41,7 @@ function mkl_req( $method, $route, $params = array(), $query = array() ) {
 	return array( $res->get_status(), $res->get_data() );
 }
 
-/** Legt einen Testbenutzer an; $level: gast|mitglied|spiess|admin. */
+/** Legt einen Testbenutzer an; $level: gast|anwaerter|mitglied|spiess|admin. */
 function mkl_test_user( $login, $level = 'mitglied' ) {
 	$existing = get_user_by( 'login', $login );
 	if ( $existing ) {
@@ -305,6 +305,64 @@ mkl_assert( 400 === $s, 'Eigene Rolle nicht änderbar → 400' );
 $admin_other = mkl_test_user( 'mkltest_admin3', 'admin' );
 list( $s ) = mkl_req( 'PATCH', '/members/' . $admin_other . '/role', array( 'level' => 'gast' ) );
 mkl_assert( 400 === $s && 'admin' === MKL_Roles::get_level( $admin_other ), 'Admins sind in der App nicht herabstufbar' );
+
+echo "Anwärter\n";
+$anw = mkl_test_user( 'mkltest_anwaerter', 'anwaerter' );
+mkl_assert( 'anwaerter' === MKL_Roles::get_level( $anw ) && ! MKL_Roles::is_member( $anw ) && MKL_Roles::can_see_calendar( $anw ), 'Anwärter: kein Mitglied, aber interner Kalender' );
+mkl_assert( MKL_Roles::can_see_calendar( $m1 ) && MKL_Roles::can_see_calendar( $spiess ) && MKL_Roles::can_see_calendar( $admin ) && ! MKL_Roles::can_see_calendar( $gast ), 'Interner Kalender: Mitglied/Spieß/Admin ja, Gast nein' );
+wp_set_current_user( $anw );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 200 === $s && 'anwaerter' === $d['level'] && false === $d['is_member'] && true === $d['can_see_calendar'], 'GET /me als Anwärter' );
+// Je nach Kalenderquelle 200 oder 502 – entscheidend ist, dass der Zugriff erlaubt ist.
+list( $s ) = mkl_req( 'GET', '/calendar' );
+mkl_assert( ! in_array( $s, array( 401, 403 ), true ), 'Anwärter darf den internen Kalender abrufen' );
+list( $s ) = mkl_req( 'GET', '/me/points' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Punkte → 403' );
+list( $s ) = mkl_req( 'GET', '/me/penalties' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Strafen → 403' );
+list( $s ) = mkl_req( 'GET', '/members' );
+mkl_assert( 403 === $s, 'Anwärter sieht keine Mitgliederliste → 403' );
+list( $s ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 403 === $s, 'Anwärter kann sich nicht selbst befördern → 403' );
+foreach ( array( 0 => 401, $gast => 403 ) as $uid => $expected ) {
+	wp_set_current_user( $uid );
+	list( $s ) = mkl_req( 'GET', '/calendar' );
+	mkl_assert( $expected === $s, sprintf( 'GET /calendar als %s → %d', $uid ? 'Gast-Konto' : 'anonym', $expected ) );
+}
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 403 === $s, 'Mitglied darf nicht befördern → 403' );
+
+wp_set_current_user( $spiess );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+mkl_assert( ! in_array( $anw, wp_list_pluck( $members, 'id' ), true ), 'Mitgliederliste ohne Anwärter' );
+list( $s, $members ) = mkl_req( 'GET', '/members', array(), array( 'anwaerter' => 1 ) );
+$levels = wp_list_pluck( $members, 'level', 'id' );
+mkl_assert( isset( $levels[ $anw ] ) && 'anwaerter' === $levels[ $anw ] && ! isset( $levels[ $gast ] ), 'Mit anwaerter=1: Anwärter ja, Gäste nein' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $anw ), 'points' => 1, 'reason' => 'x' ) );
+mkl_assert( 400 === $s, 'Anwärter kann keine Punkte bekommen → 400' );
+list( $s ) = mkl_req( 'PATCH', '/members/' . $anw . '/role', array( 'level' => 'mitglied' ) );
+mkl_assert( 403 === $s, 'Spieß darf Rollen nicht frei ändern → 403' );
+list( $s ) = mkl_req( 'POST', '/members/' . $gast . '/promote' );
+mkl_assert( 400 === $s && 'gast' === MKL_Roles::get_level( $gast ), 'Gast lässt sich nicht befördern → 400' );
+list( $s ) = mkl_req( 'POST', '/members/' . $m2 . '/promote' );
+mkl_assert( 400 === $s && 'mitglied' === MKL_Roles::get_level( $m2 ), 'Mitglied lässt sich nicht nochmal befördern → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+clean_user_cache( $anw );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'] && MKL_Roles::is_member( $anw ) && ! in_array( MKL_ROLE_ANWAERTER, get_userdata( $anw )->roles, true ), 'Spieß befördert Anwärter zum Mitglied' );
+list( $s ) = mkl_req( 'POST', '/members/999999/promote' );
+mkl_assert( 404 === $s, 'Unbekanntes Konto → 404' );
+
+wp_set_current_user( $admin );
+list( $s, $d ) = mkl_req( 'PATCH', '/members/' . $anw . '/role', array( 'level' => 'anwaerter' ) );
+mkl_assert( 200 === $s && 'anwaerter' === $d['level'], 'Admin macht Mitglied zum Anwärter' );
+list( $s, $d ) = mkl_req( 'POST', '/members/' . $anw . '/promote' );
+mkl_assert( 200 === $s && 'mitglied' === $d['level'], 'Admin befördert Anwärter zum Mitglied' );
+MKL_Roles::set_level( $anw, 'anwaerter' );
+MKL_Roles::set_level( $anw, 'gast' );
+clean_user_cache( $anw );
+mkl_assert( 'gast' === MKL_Roles::get_level( $anw ) && array( 'subscriber' ) === array_values( get_userdata( $anw )->roles ), 'Anwärter → Gast: Rolle Anwärter entfernt' );
+wp_delete_user( $anw );
 
 echo "Migration\n";
 $old_sub = mkl_test_user( 'mkltest_altabonnent', 'gast' );

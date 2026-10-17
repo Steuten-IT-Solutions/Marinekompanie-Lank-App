@@ -87,7 +87,7 @@ export default function TermineVerwalten({ onToast }: { onToast: (msg: string) =
       </button>
       <p className="muted small">
         Diese Termine sehen Gäste in der App und sie erscheinen auf der Startseite der Webseite (Shortcode
-        <code> [mkl_termine]</code>). Mitglieder sehen weiterhin den Google Kalender.
+        <code> [mkl_termine]</code>). Anwärter und Mitglieder sehen weiterhin den Google Kalender.
       </p>
 
       {editing !== null ? (

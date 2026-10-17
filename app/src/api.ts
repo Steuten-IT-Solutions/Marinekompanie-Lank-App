@@ -1,11 +1,12 @@
 // Zugriff auf die REST-API des WordPress-Plugins (Cookie-Login + REST-Nonce).
 
-export type Level = 'admin' | 'spiess' | 'mitglied' | 'gast';
+export type Level = 'admin' | 'spiess' | 'mitglied' | 'anwaerter' | 'gast';
 
 export const LEVEL_LABELS: Record<Level, string> = {
   admin: 'Admin',
   spiess: 'Spieß',
   mitglied: 'Mitglied',
+  anwaerter: 'Anwärter',
   gast: 'Gast',
 };
 
@@ -15,6 +16,8 @@ export interface AppUser {
   login: string;
   level: Level;
   isMember: boolean;
+  /** Interner Kalender (Anwärter und Mitglieder). */
+  canSeeCalendar: boolean;
   isSpiess: boolean;
   canCreateUsers: boolean;
   canManageEvents: boolean;
@@ -281,7 +284,13 @@ export const api = {
   updateCatalogItem: (id: number, data: Partial<Pick<CatalogItem, 'title' | 'points' | 'active' | 'sort'>>) =>
     request<CatalogItem>('PATCH', `/catalog/${id}`, data),
 
-  members: (all = false) => request<MemberSummary[]>('GET', '/members', undefined, all ? { all: '1' } : undefined),
+  members: (opts: { all?: boolean; anwaerter?: boolean } = {}) =>
+    request<MemberSummary[]>('GET', '/members', undefined, {
+      ...(opts.all ? { all: '1' } : {}),
+      ...(opts.anwaerter ? { anwaerter: '1' } : {}),
+    }),
+  /** Anwärter zum Mitglied befördern (Spieß und Admin). */
+  promote: (id: number) => request<{ id: number; level: Level }>('POST', `/members/${id}/promote`),
   setRole: (id: number, level: Exclude<Level, 'admin'>) =>
     request<{ id: number; level: Level }>('PATCH', `/members/${id}/role`, { level }),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),

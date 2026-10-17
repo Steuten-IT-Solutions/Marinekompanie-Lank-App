@@ -42,6 +42,34 @@ test('Mitglied sieht Termine, aber keinen Spieß-Bereich', async ({ page }) => {
   await expect(page.locator('.topbar-title')).toHaveText('Termine');
 });
 
+test('Anwärter sieht interne Termine, aber weder Meins noch Spieß-Bereich', async ({ page }) => {
+  await login(page, 'anwaerter');
+  // Kompanieabend steht nur im internen Kalender, nicht in der öffentlichen Liste.
+  await expect(page.getByText('Kompanieabend')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Meins' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
+  await page.goto('/app/#/konto');
+  await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
+});
+
+test('Spieß befördert Anwärter, Admin stuft wieder zurück', async ({ page }) => {
+  await login(page, 'spiess');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByText('Anwaerter').click();
+  await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Punkte vergeben' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Zum Mitglied befördern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Zum Mitglied befördert');
+  await expect(page.getByRole('button', { name: 'Punkte vergeben' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zum Mitglied befördern' })).toHaveCount(0);
+
+  await login(page, 'admin', 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByText('Anwaerter').click();
+  await page.getByRole('button', { name: 'Anwärter', exact: true }).click();
+  await expect(page.locator('.toast')).toHaveText('Rolle geändert: Anwärter');
+});
+
 test('Spieß legt Katalog an, vergibt Punkte und Strafen', async ({ page }) => {
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();

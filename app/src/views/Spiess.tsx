@@ -55,7 +55,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 function Members() {
   const canPromote = !!config?.user?.canPromoteUsers;
   const [showGuests, setShowGuests] = useState(false);
-  const { data, error, loading, reload } = useAsync(() => api.members(showGuests), [showGuests]);
+  // Anwärter immer mitladen, damit Spieß und Admins sie befördern können.
+  const { data, error, loading, reload } = useAsync(() => api.members({ all: showGuests, anwaerter: true }), [showGuests]);
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -65,7 +66,7 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).filter((m) => m.level !== 'gast').reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => isMemberLevel(m.level)).reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
@@ -145,7 +146,7 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      {m.level !== 'gast' && (
+      {isMemberLevel(m.level) && (
         <div className="button-row">
           <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
             Punkte vergeben
@@ -236,7 +237,15 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
   );
 }
 
-/** Admins legen hier die Rolle in der App fest (Gast / Mitglied / Spieß). */
+/** Nur Mitglieder (inkl. Spieß/Admin) bekommen Punkte und Strafen. */
+function isMemberLevel(level: Level): boolean {
+  return level !== 'gast' && level !== 'anwaerter';
+}
+
+/**
+ * Admins legen hier die Rolle in der App fest (Gast / Anwärter / Mitglied / Spieß).
+ * Der Spieß kann Anwärter zum Mitglied befördern.
+ */
 function RoleControl({
   id,
   level,
@@ -249,7 +258,29 @@ function RoleControl({
   onToast: (msg: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  async function promote() {
+    setBusy(true);
+    try {
+      await api.promote(id);
+      onToast('Zum Mitglied befördert');
+      onChanged();
+    } catch (e) {
+      onToast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   if (!config?.user?.canPromoteUsers) {
+    if (level === 'anwaerter' && config?.user?.isSpiess) {
+      return (
+        <div className="role-control">
+          <p className="muted small">Rolle: {LEVEL_LABELS[level]}</p>
+          <button className="btn" disabled={busy} onClick={promote}>
+            Zum Mitglied befördern
+          </button>
+        </div>
+      );
+    }
     return <p className="muted small member-level">Rolle: {LEVEL_LABELS[level]}</p>;
   }
   if (level === 'admin' || id === config.user.id) {
@@ -277,7 +308,7 @@ function RoleControl({
     <div className="role-control">
       <span className="field-label">Rolle in der App</span>
       <div className="segmented small" role="group" aria-label="Rolle in der App">
-        {(['gast', 'mitglied', 'spiess'] as const).map((l) => (
+        {(['gast', 'anwaerter', 'mitglied', 'spiess'] as const).map((l) => (
           <button
             key={l}
             className={level === l ? 'active' : ''}
@@ -501,7 +532,7 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
 }
 
 function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(api.members);
+  const { data, error, loading, reload } = useAsync(() => api.members());
   const [selected, setSelected] = useState<number[]>(preselect);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');

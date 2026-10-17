@@ -5,10 +5,12 @@
  * Grundsätze:
  * - Öffentlich (auch Gäste ohne Anmeldung): /events (lesen), /news, /gallery
  *   (Gäste nur öffentliche Bilder).
+ * - Den internen Kalender (/calendar) sehen Anwärter und Mitglieder (mkl_calendar).
  * - Mitglieder (mkl_member) sehen ausschließlich ihre eigenen Daten. Die /me-Routen
  *   lesen die Benutzer-ID immer aus der Sitzung und nehmen keinen user_id-Parameter entgegen.
  * - Punkte/Strafen verwalten erfordert mkl_manage (Spieß), Termine pflegen
  *   mkl_manage_events (Admin), Benutzer anlegen/Rollen ändern create_users/promote_users.
+ *   Anwärter zum Mitglied befördern darf auch der Spieß (mkl_manage).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -25,6 +27,7 @@ class MKL_REST {
 		$public    = '__return_true';
 		$logged_in = array( __CLASS__, 'can_read' );
 		$member    = array( __CLASS__, 'can_member' );
+		$calendar  = array( __CLASS__, 'can_calendar' );
 		$manage    = array( __CLASS__, 'can_manage' );
 		$events    = array( __CLASS__, 'can_manage_events' );
 		$id_arg    = array(
@@ -38,7 +41,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
-		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $member ) );
+		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $calendar ) );
 
 		register_rest_route(
 			self::NS,
@@ -75,6 +78,7 @@ class MKL_REST {
 
 		register_rest_route( self::NS, '/members', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_members' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route( self::NS, '/members/(?P<id>\d+)/promote', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'promote_member' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
@@ -107,6 +111,11 @@ class MKL_REST {
 	/** Mitglied, Spieß oder Admin. */
 	public static function can_member() {
 		return self::require_cap( MKL_CAP_MEMBER, 'Dieser Bereich ist nur für Mitglieder.' );
+	}
+
+	/** Anwärter, Mitglied, Spieß oder Admin. */
+	public static function can_calendar() {
+		return self::require_cap( MKL_CAP_CALENDAR, 'Die internen Termine sind nur für Anwärter und Mitglieder.' );
 	}
 
 	public static function can_manage_events() {
@@ -163,6 +172,7 @@ class MKL_REST {
 				'name'             => $user->display_name,
 				'level'             => MKL_Roles::get_level( $user->ID ),
 				'is_member'         => MKL_Roles::is_member(),
+				'can_see_calendar'  => MKL_Roles::can_see_calendar(),
 				'is_spiess'         => MKL_Roles::is_spiess(),
 				'can_create_users'  => current_user_can( 'create_users' ),
 				'can_manage_events' => current_user_can( MKL_CAP_EVENTS ),
@@ -411,16 +421,18 @@ class MKL_REST {
 	}
 
 	/**
-	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Gast-Konten
-	 * abrufen, um ihnen eine Rolle zu geben.
+	 * Mitglieder (mkl_member) mit Summen. Mit ?anwaerter=1 kommen Anwärter dazu
+	 * (damit der Spieß sie befördern kann). Admins können mit ?all=1 auch
+	 * Gast-Konten abrufen, um ihnen eine Rolle zu geben.
 	 */
 	public static function get_members( WP_REST_Request $req ) {
-		$all    = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
-		$totals = MKL_DB::get_totals_by_user();
-		$out    = array();
+		$all       = $req->get_param( 'all' ) && current_user_can( 'promote_users' );
+		$anwaerter = (bool) $req->get_param( 'anwaerter' );
+		$totals    = MKL_DB::get_totals_by_user();
+		$out       = array();
 		foreach ( self::member_users() as $u ) {
 			$id = (int) $u->ID;
-			if ( ! $all && ! MKL_Roles::is_member( $id ) ) {
+			if ( ! $all && ! MKL_Roles::is_member( $id ) && ! ( $anwaerter && MKL_Roles::LEVEL_ANWAERTER === MKL_Roles::get_level( $id ) ) ) {
 				continue;
 			}
 			$out[] = array(
@@ -452,6 +464,22 @@ class MKL_REST {
 				'penalties'  => MKL_DB::get_penalties_for_user( $user->ID ),
 			)
 		);
+	}
+
+	/** Spieß und Admins befördern Anwärter zu vollen Mitgliedern. */
+	public static function promote_member( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! get_userdata( $id ) ) {
+			return self::error( 'Mitglied nicht gefunden.', 404 );
+		}
+		if ( MKL_Roles::LEVEL_ANWAERTER !== MKL_Roles::get_level( $id ) ) {
+			return self::error( 'Nur Anwärter können zum Mitglied befördert werden.' );
+		}
+		$result = MKL_Roles::set_level( $id, MKL_Roles::LEVEL_MITGLIED );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'id' => $id, 'level' => MKL_Roles::get_level( $id ) ) );
 	}
 
 	public static function set_member_role( WP_REST_Request $req ) {

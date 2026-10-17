@@ -4,22 +4,25 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 
 - **Termine:**
   - Gäste sehen die öffentliche Terminliste, die Admins in der App pflegen. Dieselbe Liste erscheint per Shortcode auf der Startseite.
-  - Mitglieder sehen den Google Kalender mit allen Terminen.
+  - Anwärter und Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog) und Strafen (Geldbeträge, offen/bezahlt).
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten.
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Anwärter zu Mitgliedern befördern.
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen |
-| **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog pflegen, Anwärter zum Mitglied befördern |
+| **Mitglied** | die eigenen Punkte und Strafen sehen, den Google Kalender mit allen Terminen, interne Galeriebilder |
+| **Anwärter** | wie Gast, sieht aber den Google Kalender mit allen Terminen statt der öffentlichen Terminliste |
 | **Gast** | nur öffentliche Termine, News und öffentliche Galeriebilder, auch **ohne Anmeldung** |
 
-Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Ein WordPress-Konto ohne die Rolle Mitglied (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
+Mitglieder sehen **ausschließlich ihre eigenen** Punkte und Strafen. Anwärter haben keinen Bereich „Meins“, bekommen keine Punkte oder Strafen und sehen keine internen Galeriebilder. Ein WordPress-Konto ohne die Rolle Mitglied oder Anwärter (z. B. ein reines Webseiten-Konto) zählt in der App als Gast.
+
+**Anwärter befördern:** Im Spieß-Bereich stehen Anwärter mit eigenem Abzeichen in der Mitgliederliste. In ihrer Detailansicht gibt es für den Spieß den Knopf **„Zum Mitglied befördern“**. Admins wählen die Rolle dort frei (Gast, Anwärter, Mitglied, Spieß), alternativ im WordPress-Profil unter „Rolle in der App“.
 
 ## Warum kein Apple Developer Account nötig ist
 
@@ -52,7 +55,7 @@ app/                       React + TypeScript (Vite) – Quellcode der PWA
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
-  includes/class-mkl-roles.php     Rollen Gast/Mitglied/Spieß/Admin, Migration
+  includes/class-mkl-roles.php     Rollen Gast/Anwärter/Mitglied/Spieß/Admin, Migration
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
   includes/class-mkl-drive.php     Google Drive über Dienstkonto (JWT, ohne Bibliothek)
@@ -67,10 +70,11 @@ scripts/                   Build- und Test-Skripte
 
 - **Login:** Es gilt der normale WordPress-Login. Ohne Anmeldung zeigt `/app/` die Gast-Ansicht. Über „Anmelden“ geht es zum WordPress-Login und danach zurück in die App.
 - **Rechte:** Die `/me`-Endpunkte lesen die Benutzer-ID immer aus der Sitzung, nie aus der Anfrage. Die Capabilities sind:
+  - `mkl_calendar`: interner Kalender (Anwärter und Mitglied)
   - `mkl_member`: Mitglied
   - `mkl_manage`: Spieß
   - `mkl_manage_events`: Admin
-  - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden.
+  - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden. Ausnahme: Anwärter zum Mitglied befördern (`POST /members/{id}/promote`) darf auch der Spieß (`mkl_manage`).
 - **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet.
 
 ## Installation auf der Webseite
@@ -143,7 +147,7 @@ scripts/setup-test-wp.sh
 PHP_CLI_SERVER_WORKERS=4 php -S localhost:8888 -t .wp-test/wp .wp-test/router.php
 ```
 
-- App: http://localhost:8888/app/. Benutzer `spiess`, `mariner1`, `mariner2`, Passwort `test1234`.
+- App: http://localhost:8888/app/. Benutzer `spiess`, `mariner1`, `mariner2`, `anwaerter`, Passwort `test1234`.
 - WP-Admin: http://localhost:8888/wp-admin/ mit `admin` / `admin`.
 
 Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu laden.
