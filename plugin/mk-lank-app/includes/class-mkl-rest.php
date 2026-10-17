@@ -411,7 +411,7 @@ class MKL_REST {
 	}
 
 	/**
-	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Gast-Konten
+	 * Mitglieder (mkl_member) mit Summen. Admins können mit ?all=1 auch Konten ohne Rolle
 	 * abrufen, um ihnen eine Rolle zu geben.
 	 */
 	public static function get_members( WP_REST_Request $req ) {
@@ -471,7 +471,7 @@ class MKL_REST {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
+	 * Legt ein Mitglied (Rolle Mitglied) mit zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 */
@@ -678,7 +678,7 @@ class MKL_REST {
 				return self::error( 'Unbekanntes Mitglied.' );
 			}
 			if ( ! MKL_Roles::is_member( $id ) ) {
-				return self::error( 'Gäste können keine Punkte oder Strafen bekommen.' );
+				return self::error( 'Nur Mitglieder können Punkte oder Strafen bekommen.' );
 			}
 		}
 		return $ids;
