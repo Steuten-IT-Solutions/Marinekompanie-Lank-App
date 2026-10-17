@@ -3,6 +3,7 @@
  * Liefert die PWA unter /app/ aus.
  *
  * /app/                      → App (Gäste sehen die öffentliche Ansicht)
+ * /app/installieren/         → App mit der Installationsanleitung (Link zum Weitergeben)
  * /app/manifest.webmanifest  → Web-App-Manifest
  * /app/sw.js                 → Service Worker (Scope /app/)
  * /app/foto/<id>/<größe>     → Galeriebild (interne nur für Mitglieder)
