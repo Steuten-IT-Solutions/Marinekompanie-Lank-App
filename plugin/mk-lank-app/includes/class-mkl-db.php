@@ -130,6 +130,36 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$ranks = self::table( 'ranks' );
+		dbDelta(
+			"CREATE TABLE $ranks (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  min_points int(11) NOT NULL DEFAULT 0,
+  active tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
+		$history = self::table( 'rank_history' );
+		dbDelta(
+			"CREATE TABLE $history (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NOT NULL,
+  from_rank_id bigint(20) unsigned DEFAULT NULL,
+  to_rank_id bigint(20) unsigned DEFAULT NULL,
+  from_title varchar(191) NOT NULL DEFAULT '',
+  to_title varchar(191) NOT NULL DEFAULT '',
+  kind varchar(15) NOT NULL DEFAULT '',
+  points_at_change int(11) NOT NULL DEFAULT 0,
+  reason varchar(255) NOT NULL DEFAULT '',
+  changed_by bigint(20) unsigned NOT NULL,
+  changed_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY user_id (user_id)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
@@ -177,6 +207,26 @@ class MKL_DB {
 		return (int) $wpdb->get_var(
 			$wpdb->prepare( "SELECT COALESCE(SUM(points), 0) FROM $t WHERE user_id = %d AND deleted_at IS NULL", $user_id )
 		);
+	}
+
+	/**
+	 * Alle gültigen Buchungen, chronologisch je Benutzer (für die Rang-Auswertung).
+	 *
+	 * @return array<int, array<int, array{points:int, date:string}>>
+	 */
+	public static function get_point_timeline( $user_id = null ) {
+		global $wpdb;
+		$t     = self::table( 'points' );
+		$where = $user_id ? $wpdb->prepare( 'AND user_id = %d', $user_id ) : '';
+		$rows  = $wpdb->get_results( "SELECT user_id, points, entry_date FROM $t WHERE deleted_at IS NULL $where ORDER BY user_id ASC, entry_date ASC, id ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$out   = array();
+		foreach ( $rows as $r ) {
+			$out[ (int) $r['user_id'] ][] = array(
+				'points' => (int) $r['points'],
+				'date'   => $r['entry_date'],
+			);
+		}
+		return $out;
 	}
 
 	public static function get_points_row( $id ) {

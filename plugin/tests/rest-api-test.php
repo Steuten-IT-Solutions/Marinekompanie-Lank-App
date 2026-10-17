@@ -263,6 +263,14 @@ $matrix = array(
 	array( 'POST', '/events', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'GET', '/ranks', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'POST', '/ranks', array( 'title' => '', 'min_points' => 1 ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'GET', '/promotions', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'GET', '/me/rank-history', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'PUT', '/members/' . $m2 . '/rank', array( 'rank_id' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'GET', '/documents', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'POST', '/documents/satzung', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'DELETE', '/documents/unbekannt', array(), array( 401, 403, 403, 403, 404 ) ),
 );
 $who = array( 0, $gast, $m1, $spiess, $admin );
 foreach ( $matrix as $row ) {
@@ -375,6 +383,266 @@ $events = MKL_Calendar::parse_ics( $ics );
 mkl_assert( 2 === count( $events ), 'ICS: vergangene Termine gefiltert' );
 mkl_assert( 'Schützenfest, Lank' === $events[0]['title'] && $events[0]['all_day'], 'ICS: ganztägig + Escapes' );
 mkl_assert( 'Kompanieabend' === $events[1]['title'] && false === $events[1]['all_day'] && strtotime( $events[1]['start'] ) === ( new DateTimeImmutable( gmdate( 'Y-m-d', time() + 20 * DAY_IN_SECONDS ) . ' 19:00:00', new DateTimeZone( 'Europe/Berlin' ) ) )->getTimestamp(), 'ICS: Zeilenfaltung + TZID' );
+
+echo "Ränge\n";
+global $wpdb;
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Ranks::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+$r1   = mkl_test_user( 'mkltest_rang1' );
+$r2   = mkl_test_user( 'mkltest_rang2' );
+$r3   = mkl_test_user( 'mkltest_rang3' );
+$gast = mkl_test_user( 'mkltest_ranggast', 'gast' );
+$boss = mkl_test_user( 'mkltest_rangadmin', 'admin' );
+
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Selbst', 'min_points' => 1 ) );
+mkl_assert( 403 === $s, 'Mitglied darf keine Ränge anlegen → 403' );
+
+wp_set_current_user( $spiess );
+list( $s, $gefreiter ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Gefreiter', 'min_points' => 10 ) );
+mkl_assert( 201 === $s && 10 === $gefreiter['min_points'] && true === $gefreiter['active'], 'Spieß legt Rang an' );
+list( $s, $maat ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Maat', 'min_points' => 20 ) );
+wp_set_current_user( $boss );
+list( $s, $bootsmann ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Bootsmann', 'min_points' => 40 ) );
+mkl_assert( 201 === $s, 'Admin legt Rang an' );
+wp_set_current_user( $spiess );
+list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Doppelt', 'min_points' => 20 ) );
+mkl_assert( 400 === $s, 'Gleiche Schwelle wie ein aktiver Rang → 400' );
+list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Negativ', 'min_points' => -1 ) );
+mkl_assert( 400 === $s, 'Negative Schwelle → 400' );
+list( $s, $inaktiv ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Inaktiv', 'min_points' => 5 ) );
+list( $s, $d ) = mkl_req( 'PATCH', '/ranks/' . $inaktiv['id'], array( 'active' => false ) );
+mkl_assert( 200 === $s && false === $d['active'], 'Rang deaktivieren' );
+list( $s ) = mkl_req( 'PATCH', '/ranks/' . $maat['id'], array( 'min_points' => 10 ) );
+mkl_assert( 400 === $s, 'Schwelle auf die eines anderen aktiven Rangs ändern → 400' );
+
+wp_set_current_user( $r1 );
+list( $s, $list ) = mkl_req( 'GET', '/ranks', array(), array( 'all' => 1 ) );
+$titles = wp_list_pluck( $list, 'title' );
+mkl_assert( 200 === $s && in_array( 'Mkltest Maat', $titles, true ) && ! in_array( 'Mkltest Inaktiv', $titles, true ) && ! isset( $list[0]['member_count'] ), 'Mitglied sieht nur aktive Ränge (auch mit all=1)' );
+list( $s, $me ) = mkl_req( 'GET', '/me' );
+mkl_assert( null === $me['rank'] && 0 === $me['points'], 'Neues Mitglied: kein Rang, 0 Punkte' );
+mkl_assert( $gefreiter['id'] === $me['next_rank']['id'] && 10 === $me['points_to_next'], 'Ohne Rang ist der nächste Rang der niedrigste aktive' );
+
+// Für die folgenden Prüfungen nur die Test-Ränge betrachten.
+$status = function ( $uid, $points ) use ( $gefreiter, $maat, $bootsmann, $inaktiv ) {
+	$timeline = MKL_DB::get_point_timeline( $uid );
+	$mine     = array();
+	foreach ( MKL_Ranks::all( false ) as $r ) {
+		if ( in_array( $r['id'], array( $gefreiter['id'], $maat['id'], $bootsmann['id'], $inaktiv['id'] ), true ) ) {
+			$mine[] = $r;
+		}
+	}
+	return MKL_Ranks::status( MKL_Ranks::user_rank_id( $uid ), $points, isset( $timeline[ $uid ] ) ? $timeline[ $uid ] : array(), $mine, null );
+};
+$st = $status( $r1, 0 );
+mkl_assert( $gefreiter['id'] === $st['next_rank']['id'] && 10 === $st['points_to_next'] && null === $st['threshold_reached_since'], 'Ohne Rang: nächster Rang ist der niedrigste aktive (deaktivierter übersprungen)' );
+
+wp_set_current_user( $spiess );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 12, 'reason' => 'Mkltest', 'date' => '2026-01-10' ) );
+$st = $status( $r1, 12 );
+mkl_assert( -2 === $st['points_to_next'] && '2026-01-10' === $st['threshold_reached_since'] && $gefreiter['id'] === $st['reachable_rank']['id'], 'Schwelle überschritten: −2 fehlende Punkte, erreicht am 10.01.' );
+mkl_assert( null === MKL_Ranks::user_rank_id( $r1 ), 'Punkte allein vergeben keinen Rang' );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => -5, 'reason' => 'Mkltest', 'date' => '2026-02-01' ) );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 5, 'reason' => 'Mkltest', 'date' => '2026-03-01' ) );
+$st = $status( $r1, 12 );
+mkl_assert( '2026-03-01' === $st['threshold_reached_since'], 'Nach Unterschreiten und erneutem Erreichen zählt das spätere Datum' );
+mkl_assert( null === MKL_Ranks::threshold_reached_since( array( array( 'points' => 5, 'date' => '2026-01-01' ) ), 10 ), 'Unter der Schwelle → kein Datum' );
+mkl_assert( '2026-01-02' === MKL_Ranks::threshold_reached_since( array( array( 'points' => 5, 'date' => '2026-01-01' ), array( 'points' => 5, 'date' => '2026-01-02' ) ), 10 ), 'Genau auf der Schwelle zählt als erreicht' );
+
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], '8 Punkte' ), 'Befördern ohne erreichte Schwelle → 400 mit fehlenden Punkten' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $inaktiv['id'] ) );
+mkl_assert( 400 === $s, 'Befördern auf deaktivierten Rang → 400' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $gast . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
+mkl_assert( 400 === $s, 'Gast kann keinen Rang bekommen → 400' );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $gefreiter['id'], 'reason' => 'Schützenfest' ) );
+mkl_assert( 200 === $s && $gefreiter['id'] === $d['rank_status']['rank']['id'] && 1 === count( $d['rank_history'] ), 'Spieß befördert zum Gefreiten' );
+mkl_assert( 'befoerderung' === $d['rank_history'][0]['kind'] && 'Schützenfest' === $d['rank_history'][0]['reason'] && 'Mkltest_spiess' === $d['rank_history'][0]['changed_by_name'] && 12 === $d['rank_history'][0]['points'], 'Verlauf mit Begründung, Spieß und Punktestand' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
+mkl_assert( 400 === $s, 'Gleicher Rang noch einmal → 400' );
+
+wp_set_current_user( $r1 );
+list( $s, $me ) = mkl_req( 'GET', '/me' );
+mkl_assert( $gefreiter['id'] === $me['rank']['id'] && $maat['id'] === $me['next_rank']['id'] && 8 === $me['points_to_next'], 'Mitglied sieht eigenen Rang und fehlende Punkte zum nächsten' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $bootsmann['id'] ) );
+mkl_assert( 403 === $s, 'Mitglied kann sich nicht selbst befördern → 403' );
+
+wp_set_current_user( $spiess );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 30, 'reason' => 'Mkltest', 'date' => '2026-04-01' ) );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $bootsmann['id'] ) );
+mkl_assert( 200 === $s && $bootsmann['id'] === $d['rank_status']['rank']['id'], 'Mehrere Ränge auf einmal überspringen (42 Punkte → Bootsmann)' );
+mkl_assert( null === $d['rank_status']['next_rank'] || ! in_array( $d['rank_status']['next_rank']['id'], array( $gefreiter['id'], $maat['id'], $bootsmann['id'] ), true ), 'Über dem höchsten Test-Rang gibt es keinen nächsten Test-Rang' );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Degradieren' ), 'Degradieren bei ausreichenden Punkten → 400' );
+wp_set_current_user( $boss );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
+mkl_assert( 400 === $s, 'Auch ein Admin kann bei ausreichenden Punkten nicht degradieren' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r2 . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
+mkl_assert( 400 === $s, 'Auch ein Admin kann ohne erreichte Schwelle nicht befördern' );
+
+wp_set_current_user( $spiess );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => -10, 'reason' => 'Mkltest', 'date' => '2026-05-01' ) );
+$st = $status( $r1, 32 );
+mkl_assert( true === $st['below_current_threshold'] && $bootsmann['id'] === MKL_Ranks::user_rank_id( $r1 ), 'Unter die Schwelle gerutscht: Rang bleibt, Hinweis „unter Schwelle“' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => null ) );
+mkl_assert( 200 === $s && null === MKL_Ranks::user_rank_id( $r1 ), 'Degradieren auf „kein Rang“ bei Punkten unter der Schwelle' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
+mkl_assert( 200 === $s, 'Wieder befördern (32 Punkte → Maat)' );
+
+list( $s, $d ) = mkl_req( 'DELETE', '/ranks/' . $maat['id'] );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'deaktivieren' ), 'Zugewiesenen Rang löschen → 400' );
+list( $s ) = mkl_req( 'PATCH', '/ranks/' . $maat['id'], array( 'title' => 'Mkltest Obermaat' ) );
+mkl_assert( 200 === $s, 'Rang umbenennen' );
+list( $s, $list ) = mkl_req( 'GET', '/ranks', array(), array( 'all' => 1 ) );
+$counts = wp_list_pluck( $list, 'member_count', 'id' );
+mkl_assert( 1 === $counts[ $maat['id'] ] && isset( $counts[ $inaktiv['id'] ] ), 'Spieß sieht mit all=1 inaktive Ränge und Anzahl Zugewiesener' );
+
+// Zweites Mitglied für Verlauf und Übersicht.
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r2 ), 'points' => 10, 'reason' => 'Mkltest', 'date' => '2026-01-01' ) );
+mkl_req( 'PUT', '/members/' . $r2 . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
+mkl_req( 'POST', '/points', array( 'user_ids' => array( $r3 ), 'points' => 18, 'reason' => 'Mkltest', 'date' => '2026-02-15' ) );
+
+wp_set_current_user( $r1 );
+list( $s, $hist ) = mkl_req( 'GET', '/me/rank-history', array(), array( 'user_id' => $r2 ) );
+mkl_assert( 200 === $s && 4 === count( $hist ), 'Eigener Verlauf: 4 Einträge (fremde nicht enthalten)' );
+mkl_assert( 'Mkltest Maat' === $hist[0]['to_title'] && 'befoerderung' === $hist[0]['kind'] && 'degradierung' === $hist[1]['kind'] && null === $hist[1]['to_title'], 'Verlauf: neueste zuerst, Titel als Momentaufnahme, Degradierung erkannt' );
+list( $s, $me ) = mkl_req( 'GET', '/me' );
+mkl_assert( ! isset( $me['reachable_rank'] ) && ! isset( $me['threshold_reached_since'] ), '/me enthält nur eigene Rangdaten ohne Spieß-Auswertung' );
+
+wp_set_current_user( $spiess );
+list( $s, $promo ) = mkl_req( 'GET', '/promotions' );
+$pos = array_flip( wp_list_pluck( $promo, 'user_id' ) );
+mkl_assert( 200 === $s && ! isset( $pos[ $gast ] ), 'Beförderungsübersicht ohne Gäste' );
+$e3 = $promo[ $pos[ $r3 ] ];
+mkl_assert( $e3['points_to_next'] <= 0 && '2026-02-15' === $e3['threshold_reached_since'], 'Übersicht: Mitglied ohne Rang mit 18 Punkten ist fällig seit 15.02.' );
+$order_ok = true;
+$prev     = null;
+foreach ( $promo as $e ) {
+	$g = null === $e['points_to_next'] ? 2 : ( $e['points_to_next'] <= 0 ? 0 : 1 );
+	if ( $prev && ( $g < $prev[0] || ( $g === $prev[0] && 0 === $g && strcmp( (string) $e['threshold_reached_since'], (string) $prev[1] ) < 0 ) || ( $g === $prev[0] && 1 === $g && $e['points_to_next'] < $prev[2] ) ) ) {
+		$order_ok = false;
+	}
+	$prev = array( $g, $e['threshold_reached_since'], $e['points_to_next'] );
+}
+mkl_assert( $order_ok, 'Übersicht sortiert: fällige (älteste zuerst), dann nach fehlenden Punkten, höchster Rang zuletzt' );
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $r1 );
+mkl_assert( 200 === $s && $maat['id'] === $d['rank_status']['rank']['id'] && 4 === count( $d['rank_history'] ), 'Mitgliedsdetails mit Rang-Stand und Verlauf' );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+$ranks_by_user = wp_list_pluck( $members, 'rank', 'id' );
+mkl_assert( 'Mkltest Obermaat' === $ranks_by_user[ $r1 ]['title'] && null === $ranks_by_user[ $r3 ], 'Mitgliederliste zeigt den zugewiesenen Rang' );
+
+echo "Mitglied mit Anfangsbestand und Rang anlegen\n";
+wp_set_current_user( $boss );
+foreach ( array( 'mkltest.uebernahme', 'mkltest.zuwenig', 'mkltest.ohne' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+list( $s, $d ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ) );
+mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Rang mit zu wenig Anfangspunkten → 400, kein Konto angelegt' );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) );
+mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Deaktivierter Rang → 400' );
+list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => -3 ) );
+mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Negativer Anfangsbestand → 400' );
+list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Übernahme', 'username' => 'mkltest.uebernahme', 'initial_points' => 45, 'initial_points_date' => '2025-12-31', 'rank_id' => $bootsmann['id'] ) );
+mkl_assert( 201 === $s && 45 === $u['points'] && $bootsmann['id'] === $u['rank']['id'], 'Mitglied mit 45 Punkten und Rang Bootsmann angelegt' );
+$entries = MKL_DB::get_points_for_user( $u['id'] );
+mkl_assert( 1 === count( $entries ) && 45 === $entries[0]['points'] && 'Anfangsbestand bei Übernahme' === $entries[0]['reason'] && '2025-12-31' === $entries[0]['date'], 'Anfangsbestand als normale Buchung mit Datum' );
+$hist = MKL_Ranks::history( $u['id'] );
+mkl_assert( $bootsmann['id'] === MKL_Ranks::user_rank_id( $u['id'] ) && 1 === count( $hist ) && 'Ersteinstufung bei Anlage' === $hist[0]['reason'] && 45 === $hist[0]['points'], 'Ersteinstufung im Verlauf' );
+list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ohne', 'username' => 'mkltest.ohne' ) );
+mkl_assert( 201 === $s && 0 === $u2['points'] && null === $u2['rank'] && ! MKL_DB::get_points_for_user( $u2['id'] ), 'Ohne Angaben: kein Rang, keine Buchung' );
+foreach ( array( $u['id'], $u2['id'] ) as $uid ) {
+	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
+	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $uid ) );
+	wp_delete_user( $uid );
+}
+
+list( $s ) = mkl_req( 'DELETE', '/ranks/' . $inaktiv['id'] );
+mkl_assert( 200 === $s && ! MKL_Ranks::get( $inaktiv['id'] ), 'Nicht zugewiesenen Rang löschen' );
+
+foreach ( array( $r1, $r2, $r3, $gast, $boss ) as $uid ) {
+	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
+	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $uid ) );
+	wp_delete_user( $uid );
+}
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Ranks::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+
+echo "Dokumente (Satzung)\n";
+$doc_admin = mkl_test_user( 'mkltest_docadmin', 'admin' );
+$doc_gast  = mkl_test_user( 'mkltest_docgast', 'gast' );
+MKL_Documents::delete( 'satzung' );
+
+function mkl_upload( $bytes, $date = '2026-03-01', $type = 'application/pdf' ) {
+	$req = new WP_REST_Request( 'POST', '/mk-lank/v1/documents/satzung' );
+	$req->set_header( 'content-type', $type );
+	$req->set_query_params( array( 'date' => $date ) );
+	$req->set_body( $bytes );
+	$res = rest_do_request( $req );
+	return array( $res->get_status(), $res->get_data() );
+}
+$pdf1 = "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n";
+$pdf2 = "%PDF-1.7\n% Neue Fassung\n%%EOF\n";
+
+wp_set_current_user( $m1 );
+list( $s, $d ) = mkl_req( 'GET', '/documents' );
+mkl_assert( 200 === $s && array() === $d, 'Ohne Satzung: leere Liste' );
+list( $s ) = mkl_upload( $pdf1 );
+mkl_assert( 403 === $s, 'Mitglied darf nicht hochladen → 403' );
+wp_set_current_user( $spiess );
+list( $s ) = mkl_upload( $pdf1 );
+mkl_assert( 403 === $s, 'Spieß darf nicht hochladen → 403' );
+
+wp_set_current_user( $doc_admin );
+list( $s ) = mkl_upload( 'Hallo Welt', '2026-03-01', 'text/plain' );
+mkl_assert( 400 === $s, 'Falscher Content-Type → 400' );
+list( $s ) = mkl_upload( $pdf1, '2026-03-01', '' );
+mkl_assert( 400 === $s, 'Ohne Content-Type → 400' );
+list( $s, $d ) = mkl_upload( 'Keine PDF, nur umbenannt' );
+mkl_assert( 400 === $s && 'Die Datei ist keine PDF.' === $d['message'], 'Datei ohne %PDF-Signatur → 400' );
+list( $s ) = mkl_upload( '' );
+mkl_assert( 400 === $s, 'Leere Datei → 400' );
+list( $s ) = mkl_upload( $pdf1, '2026-02-30' );
+mkl_assert( 400 === $s, 'Ungültiger Stand → 400' );
+list( $s, $doc1 ) = mkl_upload( $pdf1 );
+mkl_assert( 201 === $s && 'satzung' === $doc1['key'] && '2026-03-01' === $doc1['date'] && strlen( $pdf1 ) === $doc1['size'], 'Admin lädt Satzung hoch' );
+mkl_assert( false !== strpos( $doc1['url'], '/app/dokument/satzung?v=' . $doc1['version'] ) && false === strpos( $doc1['url'], 'mkl-private' ), 'URL zeigt auf den geschützten Abruf, nicht auf die Datei' );
+$dir = MKL_Documents::dir();
+mkl_assert( file_exists( $dir . '/.htaccess' ) && false !== strpos( file_get_contents( $dir . '/.htaccess' ), 'Require all denied' ) && file_exists( $dir . '/index.php' ), 'Ablage gegen direkten Zugriff gesperrt' );
+list( $s, $doc2 ) = mkl_upload( $pdf2, '2026-04-15' );
+$files = glob( $dir . '/satzung-*.pdf' );
+mkl_assert( 201 === $s && $doc2['version'] !== $doc1['version'] && 1 === count( $files ) && file_get_contents( $files[0] ) === $pdf2, 'Neue Fassung ersetzt die alte (alte Datei gelöscht)' );
+list( $s, $d ) = mkl_req( 'PATCH', '/documents/satzung', array( 'date' => '2026-04-20' ) );
+mkl_assert( 200 === $s && '2026-04-20' === $d['date'] && $doc2['version'] === $d['version'], 'Stand ändern' );
+list( $s ) = mkl_req( 'PATCH', '/documents/satzung', array( 'date' => 'morgen' ) );
+mkl_assert( 400 === $s, 'Ungültiger Stand beim Ändern → 400' );
+
+$serve = function ( $uid ) {
+	wp_set_current_user( $uid );
+	ob_start();
+	// Auf der Kommandozeile sind schon Ausgaben erfolgt; header() warnt dann nur.
+	set_error_handler( '__return_true', E_WARNING );
+	MKL_Documents::serve( 'satzung' );
+	restore_error_handler();
+	return ob_get_clean();
+};
+mkl_assert( $pdf2 === $serve( $m1 ), 'Mitglied bekommt die PDF über /app/dokument/satzung' );
+mkl_assert( '' === $serve( $doc_gast ) && '' === $serve( 0 ), 'Gast-Konto und nicht Angemeldete bekommen keine PDF' );
+
+wp_set_current_user( $m1 );
+list( $s, $d ) = mkl_req( 'GET', '/documents' );
+mkl_assert( 200 === $s && 1 === count( $d ) && 'Satzung' === $d[0]['title'] && '2026-04-20' === $d[0]['date'], 'Mitglied sieht die Satzung mit Stand' );
+list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
+mkl_assert( 403 === $s, 'Mitglied darf nicht löschen → 403' );
+
+wp_set_current_user( $doc_admin );
+list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
+mkl_assert( 200 === $s && ! glob( $dir . '/satzung-*.pdf' ), 'Admin entfernt die Satzung samt Datei' );
+list( $s ) = mkl_req( 'DELETE', '/documents/satzung' );
+mkl_assert( 404 === $s, 'Erneutes Entfernen → 404' );
+wp_delete_user( $doc_admin );
+wp_delete_user( $doc_gast );
 
 // Aufräumen.
 global $wpdb;

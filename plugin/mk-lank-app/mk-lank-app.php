@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Marinekompanie Lank – App
- * Description:       Mitglieder-App (PWA) mit Terminen, Punkten und Strafen. Erreichbar unter /app/.
- * Version:           0.3.0
+ * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Rängen, Strafen und Dokumenten. Erreichbar unter /app/.
+ * Version:           0.4.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marinekompanie 1973 Lank
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MKL_VERSION', '0.3.0' );
-define( 'MKL_DB_VERSION', '3' );
+define( 'MKL_VERSION', '0.4.0' );
+define( 'MKL_DB_VERSION', '4' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
@@ -24,6 +24,8 @@ define( 'MKL_CAP_MANAGE', 'mkl_manage' );
 define( 'MKL_CAP_MEMBER', 'mkl_member' );
 /** Capability zum Pflegen der öffentlichen Terminliste (Admin). */
 define( 'MKL_CAP_EVENTS', 'mkl_manage_events' );
+/** Capability zum Pflegen der Dokumente, z. B. der Satzung (Admin). */
+define( 'MKL_CAP_DOCS', 'mkl_manage_documents' );
 /** Rolle „Spieß“. Wird Benutzern zusätzlich zu ihrer bisherigen Rolle gegeben. */
 define( 'MKL_ROLE_SPIESS', 'mkl_spiess' );
 /** Rolle „Mitglied“. Ohne sie (und ohne Spieß/Admin) ist ein Konto in der App „Gast“. */
@@ -31,6 +33,8 @@ define( 'MKL_ROLE_MITGLIED', 'mkl_mitglied' );
 
 require_once MKL_DIR . 'includes/class-mkl-db.php';
 require_once MKL_DIR . 'includes/class-mkl-roles.php';
+require_once MKL_DIR . 'includes/class-mkl-ranks.php';
+require_once MKL_DIR . 'includes/class-mkl-documents.php';
 require_once MKL_DIR . 'includes/class-mkl-session.php';
 require_once MKL_DIR . 'includes/class-mkl-calendar.php';
 require_once MKL_DIR . 'includes/class-mkl-events.php';
