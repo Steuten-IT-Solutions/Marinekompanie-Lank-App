@@ -31,6 +31,7 @@ define( 'MKL_ROLE_MITGLIED', 'mkl_mitglied' );
 
 require_once MKL_DIR . 'includes/class-mkl-db.php';
 require_once MKL_DIR . 'includes/class-mkl-roles.php';
+require_once MKL_DIR . 'includes/class-mkl-session.php';
 require_once MKL_DIR . 'includes/class-mkl-calendar.php';
 require_once MKL_DIR . 'includes/class-mkl-events.php';
 require_once MKL_DIR . 'includes/class-mkl-shortcodes.php';
@@ -58,6 +59,7 @@ function mkl_deactivate() {
 add_action( 'plugins_loaded', array( 'MKL_DB', 'maybe_upgrade' ) );
 add_action( 'rest_api_init', array( 'MKL_REST', 'register_routes' ) );
 MKL_Roles::init();
+MKL_Session::init();
 MKL_App_Page::init();
 MKL_Settings::init();
 MKL_Shortcodes::init();
