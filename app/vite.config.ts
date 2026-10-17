@@ -11,5 +11,15 @@ export default defineConfig({
     outDir: '../plugin/mk-lank-app/app-dist',
     emptyOutDir: true,
     assetsDir: 'assets',
+    // Die PDF-Anzeige (pdf.js) wird erst beim Öffnen eines Dokuments nachgeladen.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Der pdf.js-Worker heißt sonst *.mjs; manche Webserver liefern .mjs ohne
+        // JavaScript-Typ aus, dann startet der Worker nicht.
+        assetFileNames: (info) =>
+          info.names?.[0]?.endsWith('.mjs') ? 'assets/[name]-[hash].js' : 'assets/[name]-[hash][extname]',
+      },
+    },
   },
 });

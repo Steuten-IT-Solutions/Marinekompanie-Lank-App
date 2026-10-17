@@ -24,6 +24,11 @@ export function formatPoints(points: number): string {
   return (points > 0 ? '+' : '') + points.toLocaleString('de-DE');
 }
 
+/** Hinweis für halbierte Einträge (Jungmariner), sonst leer. */
+export function halvedNote(p: { halved: boolean; full_points: number }): string {
+  return p.halved ? ` · Jungmariner: halbe Punktzahl von ${formatPoints(p.full_points)}` : '';
+}
+
 /** "2,50" / "2.50" / "2" → 250 Cent; null bei ungültiger Eingabe. */
 export function parseEuroToCents(input: string): number | null {
   const s = input.trim().replace(/\s|€/g, '').replace(',', '.');
@@ -65,3 +70,10 @@ export const formatMonth = (d: Date) => monthFmt.format(d);
  * Browser machen daraus sonst „SS“ (Spieß → SPIESS). Mit dem großen ẞ bleibt es „SPIEẞ“.
  */
 export const caps = (s: string) => s.replace(/ß/g, 'ẞ');
+
+/** Dateigröße, z. B. „245 KB“ oder „1,2 MB“. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
+}

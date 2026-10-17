@@ -43,6 +43,7 @@ class MKL_DB {
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   user_id bigint(20) unsigned NOT NULL,
   points int(11) NOT NULL,
+  halved tinyint(1) NOT NULL DEFAULT 0,
   reason varchar(255) NOT NULL DEFAULT '',
   catalog_id bigint(20) unsigned DEFAULT NULL,
   entry_date date NOT NULL,
@@ -130,6 +131,76 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		$ranks = self::table( 'ranks' );
+		dbDelta(
+			"CREATE TABLE $ranks (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  min_points int(11) NOT NULL DEFAULT 0,
+  active tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
+		$history = self::table( 'rank_history' );
+		dbDelta(
+			"CREATE TABLE $history (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NOT NULL,
+  from_rank_id bigint(20) unsigned DEFAULT NULL,
+  to_rank_id bigint(20) unsigned DEFAULT NULL,
+  from_title varchar(191) NOT NULL DEFAULT '',
+  to_title varchar(191) NOT NULL DEFAULT '',
+  kind varchar(15) NOT NULL DEFAULT '',
+  points_at_change decimal(10,1) NOT NULL DEFAULT 0,
+  reason varchar(255) NOT NULL DEFAULT '',
+  changed_by bigint(20) unsigned NOT NULL,
+  changed_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY user_id (user_id)
+) $charset;"
+		);
+
+		$docs = self::table( 'documents' );
+		dbDelta(
+			"CREATE TABLE $docs (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  category_id bigint(20) unsigned DEFAULT NULL,
+  doc_date date NOT NULL,
+  visibility varchar(15) NOT NULL DEFAULT 'mitglieder',
+  file varchar(64) NOT NULL,
+  ext varchar(10) NOT NULL,
+  size int(11) NOT NULL DEFAULT 0,
+  version varchar(32) NOT NULL DEFAULT '',
+  uploaded_by bigint(20) unsigned NOT NULL DEFAULT 0,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY category_id (category_id)
+) $charset;"
+		);
+
+		$doc_cats = self::table( 'doc_categories' );
+		dbDelta(
+			"CREATE TABLE $doc_cats (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  sort int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
+		$titles = self::table( 'titles' );
+		dbDelta(
+			"CREATE TABLE $titles (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(191) NOT NULL,
+  sort int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id)
+) $charset;"
+		);
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
@@ -148,6 +219,13 @@ class MKL_DB {
 		if ( $installed && version_compare( $installed, '2', '<' ) ) {
 			MKL_Roles::migrate_subscribers_to_members();
 		}
+		if ( $installed && version_compare( $installed, '5', '<' ) ) {
+			MKL_Documents::migrate_statute();
+		}
+		// Standardtitel nur einmal anlegen, damit gelöschte Titel nicht wiederkommen.
+		if ( ! $installed || version_compare( $installed, '7', '<' ) ) {
+			MKL_Titles::seed_defaults();
+		}
 	}
 
 	private static function now() {
@@ -157,6 +235,32 @@ class MKL_DB {
 	/* ------------------------------------------------------------------ */
 	/* Punkte                                                              */
 	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Gutgeschriebene Punkte eines Eintrags. points enthält immer die vergebene
+	 * Punktzahl; bei halved = 1 (Jungmariner) zählt davon die Hälfte.
+	 */
+	const EFFECTIVE_POINTS_SQL = 'CASE WHEN halved = 1 THEN points / 2.0 ELSE points END';
+
+	/** Ganze Zahlen als int, halbe Punkte als float (z. B. 2.5). */
+	public static function points_value( $value ) {
+		$value = round( (float) $value, 1 );
+		return floor( $value ) == $value ? (int) $value : $value; // phpcs:ignore WordPress.PHP.StrictComparisons
+	}
+
+	/** Punktzahl für Texte: „12“ bzw. „2,5“. */
+	public static function format_points( $value ) {
+		$value = self::points_value( $value );
+		return number_format_i18n( $value, is_int( $value ) ? 0 : 1 );
+	}
+
+	/**
+	 * Jungmariner erhalten laut Satzung nur die halbe Punktzahl. Abzüge (negative
+	 * Punkte) zählen auch für Jungmariner voll.
+	 */
+	public static function halves_points( $user_id, $points ) {
+		return $points > 0 && MKL_Roles::is_jungmariner( $user_id );
+	}
 
 	public static function get_points_for_user( $user_id ) {
 		global $wpdb;
@@ -174,9 +278,31 @@ class MKL_DB {
 	public static function get_points_total( $user_id ) {
 		global $wpdb;
 		$t = self::table( 'points' );
-		return (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COALESCE(SUM(points), 0) FROM $t WHERE user_id = %d AND deleted_at IS NULL", $user_id )
+		return self::points_value(
+			$wpdb->get_var(
+				$wpdb->prepare( 'SELECT COALESCE(SUM(' . self::EFFECTIVE_POINTS_SQL . "), 0) FROM $t WHERE user_id = %d AND deleted_at IS NULL", $user_id )
+			)
 		);
+	}
+
+	/**
+	 * Alle gültigen Buchungen, chronologisch je Benutzer (für die Dienstgrad-Auswertung).
+	 *
+	 * @return array<int, array<int, array{points:int, date:string}>>
+	 */
+	public static function get_point_timeline( $user_id = null ) {
+		global $wpdb;
+		$t     = self::table( 'points' );
+		$where = $user_id ? $wpdb->prepare( 'AND user_id = %d', $user_id ) : '';
+		$rows  = $wpdb->get_results( "SELECT user_id, points, halved, entry_date FROM $t WHERE deleted_at IS NULL $where ORDER BY user_id ASC, entry_date ASC, id ASC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$out   = array();
+		foreach ( $rows as $r ) {
+			$out[ (int) $r['user_id'] ][] = array(
+				'points' => self::points_value( $r['halved'] ? $r['points'] / 2 : $r['points'] ),
+				'date'   => $r['entry_date'],
+			);
+		}
+		return $out;
 	}
 
 	public static function get_points_row( $id ) {
@@ -187,7 +313,8 @@ class MKL_DB {
 	}
 
 	/**
-	 * Legt für jeden Benutzer einen Punkte-Eintrag an.
+	 * Legt für jeden Benutzer einen Punkte-Eintrag an. Ob der Eintrag halbiert
+	 * zählt, wird bei der Vergabe festgehalten und ändert sich später nicht mehr.
 	 *
 	 * @return int[] IDs der angelegten Einträge.
 	 */
@@ -201,13 +328,14 @@ class MKL_DB {
 				array(
 					'user_id'    => $user_id,
 					'points'     => $points,
+					'halved'     => self::halves_points( $user_id, $points ) ? 1 : 0,
 					'reason'     => $reason,
 					'catalog_id' => $catalog_id,
 					'entry_date' => $entry_date,
 					'created_by' => $created_by,
 					'created_at' => self::now(),
 				),
-				array( '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
+				array( '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
 			);
 			$ids[] = (int) $wpdb->insert_id;
 		}
@@ -312,7 +440,7 @@ class MKL_DB {
 	/**
 	 * Summen je Benutzer für die Spieß-Übersicht.
 	 *
-	 * @return array<int, array{points:int, open_cents:int}>
+	 * @return array<int, array{points:int|float, open_cents:int}>
 	 */
 	public static function get_totals_by_user() {
 		global $wpdb;
@@ -320,9 +448,9 @@ class MKL_DB {
 		$s   = self::table( 'penalties' );
 		$out = array();
 
-		$rows = $wpdb->get_results( "SELECT user_id, SUM(points) AS total FROM $p WHERE deleted_at IS NULL GROUP BY user_id", ARRAY_A );
+		$rows = $wpdb->get_results( 'SELECT user_id, SUM(' . self::EFFECTIVE_POINTS_SQL . ") AS total FROM $p WHERE deleted_at IS NULL GROUP BY user_id", ARRAY_A );
 		foreach ( $rows as $r ) {
-			$out[ (int) $r['user_id'] ]['points'] = (int) $r['total'];
+			$out[ (int) $r['user_id'] ]['points'] = self::points_value( $r['total'] );
 		}
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -380,6 +508,17 @@ class MKL_DB {
 		return false !== $wpdb->update( self::table( 'point_catalog' ), $data, array( 'id' => $id ), $formats, array( '%d' ) );
 	}
 
+	/** Löscht die Vorlage und löst den Verweis in bereits vergebenen Punkten. */
+	public static function delete_catalog_item( $id ) {
+		global $wpdb;
+		if ( ! $wpdb->delete( self::table( 'point_catalog' ), array( 'id' => $id ), array( '%d' ) ) ) {
+			return false;
+		}
+		$t = self::table( 'points' );
+		$wpdb->query( $wpdb->prepare( "UPDATE $t SET catalog_id = NULL WHERE catalog_id = %d", $id ) );
+		return true;
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Formatierung                                                        */
 	/* ------------------------------------------------------------------ */
@@ -397,10 +536,13 @@ class MKL_DB {
 	}
 
 	public static function format_points_row( array $r ) {
+		$halved = ! empty( $r['halved'] );
 		return array(
 			'id'              => (int) $r['id'],
 			'user_id'         => (int) $r['user_id'],
-			'points'          => (int) $r['points'],
+			'points'          => self::points_value( $halved ? $r['points'] / 2 : $r['points'] ),
+			'full_points'     => (int) $r['points'],
+			'halved'          => $halved,
 			'reason'          => $r['reason'],
 			'catalog_id'      => $r['catalog_id'] ? (int) $r['catalog_id'] : null,
 			'date'            => $r['entry_date'],
