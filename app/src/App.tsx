@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { caps } from './format';
+import { detectPlatform, isStandalone, promptInstall, useCanPrompt } from './install';
 import { navigate, useRoute } from './router';
 import Galerie from './views/Galerie';
+import Installieren from './views/Installieren';
 import Konto from './views/Konto';
 import Meins from './views/Meins';
 import News from './views/News';
@@ -12,7 +14,7 @@ import Termine from './views/Termine';
 import TermineVerwalten from './views/TermineVerwalten';
 
 type Tab = 'termine' | 'news' | 'galerie' | 'meins' | 'spiess';
-type View = Tab | 'konto';
+type View = Tab | 'konto' | 'installieren';
 
 const TITLES: Record<View, string> = {
   termine: 'Termine',
@@ -21,6 +23,7 @@ const TITLES: Record<View, string> = {
   meins: 'Meins',
   spiess: 'Spieß',
   konto: 'Mein Konto',
+  installieren: 'App installieren',
 };
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -52,15 +55,10 @@ function Icon({ name }: { name: Tab }) {
   );
 }
 
-function isStandalone(): boolean {
-  return (
-    window.matchMedia?.('(display-mode: standalone)').matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
-
-function InstallHint() {
+/** Banner „App aufs Handy holen“: auf Android ein Knopf, sonst Link zur bebilderten Anleitung. */
+function InstallBanner({ onToast }: { onToast: (msg: string) => void }) {
   const key = 'mkl-install-hint-dismissed';
+  const canPrompt = useCanPrompt();
   const [hidden, setHidden] = useState(() => {
     try {
       return isStandalone() || localStorage.getItem(key) === '1';
@@ -68,8 +66,8 @@ function InstallHint() {
       return isStandalone();
     }
   });
-  if (hidden) return null;
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  // Am Computer nur anzeigen, wenn der Browser die Installation direkt anbietet.
+  if (hidden || (!canPrompt && detectPlatform() === 'other')) return null;
   const dismiss = () => {
     try {
       localStorage.setItem(key, '1');
@@ -78,17 +76,27 @@ function InstallHint() {
     }
     setHidden(true);
   };
+  async function install() {
+    const result = await promptInstall();
+    if (result === 'accepted') onToast('Die App wird installiert – gleich ist sie auf dem Startbildschirm');
+  }
   return (
     <div className="install-hint" role="note">
-      <span>
-        <strong>Als App installieren:</strong>{' '}
-      {ios ? (
-        <>In Safari unten auf „Teilen“ <span aria-hidden="true">⬆︎</span> tippen und „Zum Home-Bildschirm“ wählen.</>
+      <img src={logoUrl} alt="" className="install-hint-logo" />
+      <div className="install-hint-text">
+        <strong>Die App aufs Handy holen</strong>
+        <span>Mit dem Wappen auf dem Startbildschirm – wie jede andere App.</span>
+      </div>
+      {canPrompt ? (
+        <button className="btn btn-small install-hint-btn" onClick={install}>
+          Installieren
+        </button>
       ) : (
-        <>Im Browser-Menü <span aria-hidden="true">⋮</span> „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.</>
+        <button className="btn btn-small install-hint-btn" onClick={() => navigate('installieren')}>
+          So geht's
+        </button>
       )}
-      </span>
-      <button className="btn btn-link" onClick={dismiss} aria-label="Hinweis schließen">
+      <button className="btn btn-link install-hint-close" onClick={dismiss} aria-label="Hinweis schließen">
         ✕
       </button>
     </div>
@@ -119,6 +127,7 @@ export default function App() {
     meins: isMember,
     spiess: isSpiess,
     konto: !!user,
+    installieren: true,
   };
   const requested = (path[0] as View) || 'termine';
   const tab: View = requested in TITLES && allowed[requested] ? requested : 'termine';
@@ -180,7 +189,7 @@ export default function App() {
       </header>
 
       {!online && <div className="offline">Offline – angezeigt werden die zuletzt geladenen Daten.</div>}
-      <InstallHint />
+      {tab !== 'installieren' && <InstallBanner onToast={showToast} />}
 
       <main className="content">
         {tab === 'termine' &&
@@ -190,6 +199,7 @@ export default function App() {
         {tab === 'meins' && <Meins sub={path[1]} />}
         {tab === 'spiess' && <Spiess path={path.slice(1)} onToast={showToast} />}
         {tab === 'konto' && <Konto onToast={showToast} onLogout={logout} />}
+        {tab === 'installieren' && <Installieren onToast={showToast} />}
       </main>
 
       {toast && (

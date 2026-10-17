@@ -1,5 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+// Früh laden: fängt das Android-Installationsangebot ab, bevor React startet.
+import { isStandalone } from './install';
 import App from './App';
 import { config } from './api';
 // Schrift lokal gebündelt (kein Abruf von Google-Servern, DSGVO).
@@ -11,6 +13,15 @@ import '@fontsource/oswald/latin-ext-500.css';
 import '@fontsource/oswald/latin-ext-600.css';
 import '@fontsource/oswald/latin-ext-700.css';
 import './styles.css';
+
+// Teilbarer Link /app/installieren/ → Anleitung in der App (#/installieren).
+if (/\/installieren\/?$/.test(window.location.pathname) && config) {
+  history.replaceState(null, '', config.appUrl + '#/installieren');
+}
+// Vom Home-Bildschirm gestartet: nicht auf der Anleitung landen, sondern bei den Terminen.
+if (isStandalone() && window.location.hash.startsWith('#/installieren')) {
+  history.replaceState(null, '', window.location.pathname);
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

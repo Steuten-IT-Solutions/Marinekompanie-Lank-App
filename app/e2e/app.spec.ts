@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Page } from '@playwright/test';
 
 const PASSWORD = process.env.MKL_TEST_PASSWORD ?? 'test1234';
 const SHOTS = process.env.MKL_SCREENSHOT_DIR;
@@ -264,4 +264,72 @@ test('Galerie: Gäste sehen öffentliche Bilder, Mitglieder zusätzlich interne'
   await page.context().clearCookies();
   const asGuest = await page.request.get(internSrc!);
   expect(asGuest.status()).toBe(401);
+});
+
+test('iPhone: Banner führt zur bebilderten Installationsanleitung', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/app/');
+  await page.evaluate(() => localStorage.removeItem('mkl-install-hint-dismissed'));
+  await page.reload();
+  const banner = page.locator('.install-hint');
+  await expect(banner).toContainText('Die App aufs Handy holen');
+  await shot(page, '12-install-banner');
+  await banner.getByRole('button', { name: "So geht's" }).click();
+  await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+  await expect(page.getByText('Zum Home-Bildschirm', { exact: false }).first()).toBeVisible();
+  await expect(page.locator('.install-step')).toHaveCount(4);
+  await expect(page.getByRole('button', { name: 'iPhone / iPad' })).toHaveAttribute('aria-pressed', 'true');
+  await shot(page, '13-install-ios');
+  await page.getByRole('button', { name: 'Android' }).click();
+  await expect(page.locator('.install-step')).toHaveCount(3);
+
+  // Eigene Adresse zum Weitergeben öffnet direkt die Anleitung.
+  await page.goto('/app/installieren/');
+  await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+  await expect(page).toHaveURL(/\/app\/#\/installieren$/);
+  await expect(page.locator('.install-share code')).toHaveText(/\/app\/installieren\/$/);
+
+  // Ausblenden bleibt gespeichert.
+  await page.goto('/app/#/termine');
+  await page.getByRole('button', { name: 'Hinweis schließen' }).click();
+  await page.reload();
+  await expect(page.locator('.topbar')).toBeVisible();
+  await expect(page.locator('.install-hint')).toHaveCount(0);
+
+  // Angemeldete finden die Anleitung zusätzlich im Konto.
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Konto' }).click();
+  await page.getByRole('button', { name: 'App installieren' }).click();
+  await expect(page.locator('.topbar-title')).toHaveText('App installieren');
+});
+
+test.describe('Android', () => {
+  const { defaultBrowserType: _ignored, ...pixel } = devices['Pixel 7'];
+  test.use(pixel);
+
+  test('Installieren-Knopf öffnet den Installationsdialog des Browsers', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/app/');
+    await expect(page.locator('.topbar')).toBeVisible();
+    // Chrome meldet die Installierbarkeit über „beforeinstallprompt“ – hier nachgestellt.
+    await page.evaluate(() => {
+      const w = window as unknown as { __prompted: number };
+      w.__prompted = 0;
+      const ev = new Event('beforeinstallprompt', { cancelable: true }) as Event & Record<string, unknown>;
+      ev.prompt = () => {
+        w.__prompted++;
+        return Promise.resolve();
+      };
+      ev.userChoice = Promise.resolve({ outcome: 'accepted' });
+      window.dispatchEvent(ev);
+    });
+    const button = page.locator('.install-hint').getByRole('button', { name: 'Installieren' });
+    await expect(button).toBeVisible();
+    await shot(page, '14-install-android');
+    await button.click();
+    await expect(page.locator('.toast')).toContainText('Die App wird installiert');
+    expect(await page.evaluate(() => (window as unknown as { __prompted: number }).__prompted)).toBe(1);
+    // Das Angebot gilt nur einmal: danach wieder die Anleitung.
+    await expect(page.locator('.install-hint').getByRole('button', { name: "So geht's" })).toBeVisible();
+  });
 });
