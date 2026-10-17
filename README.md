@@ -19,6 +19,14 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 | **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog und Rangliste pflegen, befördern und degradieren |
 | **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
 
+**Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
+
+- Bei jeder Punktevergabe wird für Jungmariner automatisch nur die Hälfte gutgeschrieben, z. B. 5 → 2,5. Dafür sind halbe Punkte möglich.
+- Abzüge (negative Punkte) zählen auch für Jungmariner voll.
+- Der Anfangsbestand beim Anlegen wird nicht halbiert, weil er ein bereits erreichter Punktestand ist.
+- Für Ränge und die Beförderungsübersicht zählen die gutgeschriebenen (halbierten) Punkte.
+- Ob ein Eintrag halbiert wurde, wird bei der Vergabe gespeichert und im Verlauf angezeigt („Jungmariner: halbe Punktzahl von +5“). Wird der Haken später entfernt, gelten nur künftige Vergaben wieder voll. Bereits vergebene Punkte bleiben unverändert.
+
 **Gäste** sind Besucher **ohne Anmeldung** und haben keine Rolle. Sie sehen nur öffentliche Termine, News und öffentliche Galeriebilder.
 
 Mitglieder sehen **ausschließlich ihre eigenen** Punkte, Ränge und Strafen. Ein angemeldetes WordPress-Konto ohne App-Rolle (z. B. ein reines Webseiten-Konto) steht in der App als **„Ohne Rolle“** und sieht dasselbe wie ein Gast.

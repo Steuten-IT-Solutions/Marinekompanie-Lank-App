@@ -215,7 +215,7 @@ class MKL_Ranks {
 					sprintf(
 						'Die Schwelle für „%s“ ist noch nicht erreicht: Es fehlen %s Punkte.',
 						$target['title'],
-						number_format_i18n( $target['min_points'] - $points )
+						MKL_DB::format_points( $target['min_points'] - $points )
 					)
 				);
 			}
@@ -261,7 +261,7 @@ class MKL_Ranks {
 				'changed_by'       => $by,
 				'changed_at'       => current_time( 'mysql', true ),
 			),
-			array( '%d', '%d', '%d', '%s', '%s', '%s', '%d', '%s', '%d', '%s' )
+			array( '%d', '%d', '%d', '%s', '%s', '%s', '%f', '%s', '%d', '%s' )
 		);
 	}
 
@@ -283,7 +283,7 @@ class MKL_Ranks {
 					'from_title'      => $from,
 					'to_title'        => $to,
 					'kind'            => self::KIND_DEMOTION === $r['kind'] ? self::KIND_DEMOTION : self::KIND_PROMOTION,
-					'points'          => (int) $r['points_at_change'],
+					'points'          => MKL_DB::points_value( $r['points_at_change'] ),
 					'reason'          => $r['reason'],
 					'changed_at'      => gmdate( 'c', strtotime( $r['changed_at'] . ' UTC' ) ),
 					'changed_by_name' => $by ? $by->display_name : null,
@@ -301,7 +301,7 @@ class MKL_Ranks {
 	 * Rang-Stand eines Mitglieds.
 	 *
 	 * @param int|null   $rank_id   Zugewiesener Rang.
-	 * @param int        $points    Gesamtpunkte.
+	 * @param int|float  $points    Gesamtpunkte (Jungmariner: auch halbe Punkte).
 	 * @param array      $timeline  Buchungen chronologisch (points, date).
 	 * @param array      $ranks     Alle Ränge (auch inaktive), aufsteigend nach Schwelle.
 	 * @param string|null $joined   Datum der Anlage (Y-m-d), falls eine Schwelle von 0 Punkten gilt.
@@ -431,7 +431,7 @@ class MKL_Ranks {
 			}
 		}
 		if ( 2 !== $ga && $a['points_to_next'] !== $b['points_to_next'] ) {
-			return $a['points_to_next'] - $b['points_to_next'];
+			return $a['points_to_next'] <=> $b['points_to_next'];
 		}
 		return strcasecmp( $a['name'], $b['name'] );
 	}

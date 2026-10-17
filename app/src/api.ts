@@ -49,6 +49,8 @@ export interface Me {
   id: number;
   name: string;
   is_spiess: boolean;
+  is_jungmariner: boolean;
+  /** Kann halbe Punkte enthalten (Jungmariner), z. B. 2.5. */
   points: number;
   open_cents: number;
   /** Zugewiesener Rang (setzen die Spieße), null = noch kein Rang. */
@@ -134,7 +136,12 @@ export interface DocumentMeta {
 export interface PointEntry {
   id: number;
   user_id: number;
+  /** Gutgeschriebene Punkte; bei halved die Hälfte von full_points. */
   points: number;
+  /** Vergebene Punktzahl vor der Halbierung. */
+  full_points: number;
+  /** Jungmariner: es zählt nur die halbe Punktzahl. */
+  halved: boolean;
   reason: string;
   catalog_id: number | null;
   date: string;
@@ -235,6 +242,7 @@ export interface MemberSummary {
   name: string;
   level: Level;
   is_spiess: boolean;
+  is_jungmariner: boolean;
   points: number;
   open_cents: number;
   rank: RankRef | null;
@@ -256,6 +264,7 @@ export interface CreatedUser {
   password: string;
   points: number;
   rank: RankRef | null;
+  is_jungmariner: boolean;
 }
 
 export interface NewUserInput {
@@ -265,6 +274,7 @@ export interface NewUserInput {
   initial_points?: number;
   initial_points_date?: string;
   rank_id?: number;
+  jungmariner?: boolean;
 }
 
 export class ApiError extends Error {
@@ -385,6 +395,8 @@ export const api = {
   setRole: (id: number, level: Exclude<Level, 'admin'>) =>
     request<{ id: number; level: Level }>('PATCH', `/members/${id}/role`, { level }),
   member: (id: number) => request<MemberDetail>('GET', `/members/${id}`),
+  setJungmariner: (id: number, jungmariner: boolean) =>
+    request<{ id: number; is_jungmariner: boolean }>('PATCH', `/members/${id}/jungmariner`, { jungmariner }),
   /** Ändert das eigene Passwort; danach gilt ein neues Anmelde-Cookie, daher Nonce erneuern. */
   changePassword: async (current_password: string, new_password: string) => {
     await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
