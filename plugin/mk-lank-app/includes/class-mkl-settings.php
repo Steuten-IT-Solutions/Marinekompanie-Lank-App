@@ -236,7 +236,7 @@ class MKL_Settings {
 			<?php endif; ?>
 			<?php wp_nonce_field( 'mkl_gallery_sync' ); ?>
 			<?php submit_button( 'Jetzt synchronisieren', 'primary', 'submit', false, MKL_Drive::is_configured() && $root ? array() : array( 'disabled' => 'disabled' ) ); ?>
-			<p class="description">Neue Bilder werden danach automatisch stündlich übernommen. Beim ersten Mal kann das Aufbereiten etwas dauern; die Seite lädt dann selbstständig weiter.</p>
+			<p class="description">Neue Bilder werden danach automatisch alle 15 Minuten übernommen. Beim ersten Mal kann das Aufbereiten etwas dauern; die Seite lädt dann selbstständig weiter.</p>
 		</form>
 		<?php if ( $continue ) : ?>
 			<p><em>Bereite weitere Bilder auf …</em></p>
