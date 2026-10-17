@@ -77,7 +77,14 @@ class MKL_REST {
 				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_catalog_item' ), 'permission_callback' => $manage ),
 			)
 		);
-		register_rest_route( self::NS, '/catalog/(?P<id>\d+)', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
+		register_rest_route(
+			self::NS,
+			'/catalog/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_catalog_item' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
 
 		register_rest_route(
 			self::NS,
@@ -457,6 +464,14 @@ class MKL_REST {
 			MKL_DB::update_catalog_item( $id, $data );
 		}
 		return rest_ensure_response( MKL_DB::get_catalog_item( $id ) );
+	}
+
+	/** Bereits vergebene Punkte bleiben erhalten: Punktzahl und Grund stehen im Punkte-Eintrag selbst. */
+	public static function delete_catalog_item( WP_REST_Request $req ) {
+		if ( ! MKL_DB::delete_catalog_item( (int) $req['id'] ) ) {
+			return self::error( 'Eintrag nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( array( 'deleted' => true ) );
 	}
 
 	/* ------------------------------------------------------------------ */

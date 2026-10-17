@@ -430,6 +430,17 @@ class MKL_DB {
 		return false !== $wpdb->update( self::table( 'point_catalog' ), $data, array( 'id' => $id ), $formats, array( '%d' ) );
 	}
 
+	/** Löscht die Vorlage und löst den Verweis in bereits vergebenen Punkten. */
+	public static function delete_catalog_item( $id ) {
+		global $wpdb;
+		if ( ! $wpdb->delete( self::table( 'point_catalog' ), array( 'id' => $id ), array( '%d' ) ) ) {
+			return false;
+		}
+		$t = self::table( 'points' );
+		$wpdb->query( $wpdb->prepare( "UPDATE $t SET catalog_id = NULL WHERE catalog_id = %d", $id ) );
+		return true;
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Formatierung                                                        */
 	/* ------------------------------------------------------------------ */
