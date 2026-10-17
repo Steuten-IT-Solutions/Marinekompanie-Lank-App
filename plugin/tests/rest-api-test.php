@@ -339,6 +339,12 @@ $matrix = array(
 	array( 'GET', '/promotions', array(), array( 401, 403, 403, 200, 200 ) ),
 	array( 'GET', '/me/rank-history', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'PUT', '/members/' . $m2 . '/rank', array( 'rank_id' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'GET', '/titles', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'GET', '/accounts', array(), array( 401, 403, 403, 403, 200 ) ),
+	array( 'PATCH', '/accounts/' . $m2, array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'POST', '/accounts/999999/password', array(), array( 401, 403, 403, 403, 404 ) ),
+	array( 'POST', '/titles', array( 'title' => '' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'PUT', '/members/' . $m2 . '/titles', array( 'title_ids' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
 	array( 'GET', '/documents', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'POST', '/documents', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'DELETE', '/documents/999999', array(), array( 401, 403, 403, 403, 404 ) ),
@@ -458,7 +464,7 @@ mkl_assert( 2 === count( $events ), 'ICS: vergangene Termine gefiltert' );
 mkl_assert( 'Schützenfest, Lank' === $events[0]['title'] && $events[0]['all_day'], 'ICS: ganztägig + Escapes' );
 mkl_assert( 'Kompanieabend' === $events[1]['title'] && false === $events[1]['all_day'] && strtotime( $events[1]['start'] ) === ( new DateTimeImmutable( gmdate( 'Y-m-d', time() + 20 * DAY_IN_SECONDS ) . ' 19:00:00', new DateTimeZone( 'Europe/Berlin' ) ) )->getTimestamp(), 'ICS: Zeilenfaltung + TZID' );
 
-echo "Ränge\n";
+echo "Dienstgrade\n";
 global $wpdb;
 $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Ranks::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
 $r1   = mkl_test_user( 'mkltest_rang1' );
@@ -469,35 +475,35 @@ $boss = mkl_test_user( 'mkltest_rangadmin', 'admin' );
 
 wp_set_current_user( $m1 );
 list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Selbst', 'min_points' => 1 ) );
-mkl_assert( 403 === $s, 'Mitglied darf keine Ränge anlegen → 403' );
+mkl_assert( 403 === $s, 'Mitglied darf keine Dienstgrade anlegen → 403' );
 
 wp_set_current_user( $spiess );
 list( $s, $gefreiter ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Gefreiter', 'min_points' => 10 ) );
-mkl_assert( 201 === $s && 10 === $gefreiter['min_points'] && true === $gefreiter['active'], 'Spieß legt Rang an' );
+mkl_assert( 201 === $s && 10 === $gefreiter['min_points'] && true === $gefreiter['active'], 'Spieß legt Dienstgrad an' );
 list( $s, $maat ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Maat', 'min_points' => 20 ) );
 wp_set_current_user( $boss );
 list( $s, $bootsmann ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Bootsmann', 'min_points' => 40 ) );
-mkl_assert( 201 === $s, 'Admin legt Rang an' );
+mkl_assert( 201 === $s, 'Admin legt Dienstgrad an' );
 wp_set_current_user( $spiess );
 list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Doppelt', 'min_points' => 20 ) );
-mkl_assert( 400 === $s, 'Gleiche Schwelle wie ein aktiver Rang → 400' );
+mkl_assert( 400 === $s, 'Gleiche Schwelle wie ein aktiver Dienstgrad → 400' );
 list( $s ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Negativ', 'min_points' => -1 ) );
 mkl_assert( 400 === $s, 'Negative Schwelle → 400' );
 list( $s, $inaktiv ) = mkl_req( 'POST', '/ranks', array( 'title' => 'Mkltest Inaktiv', 'min_points' => 5 ) );
 list( $s, $d ) = mkl_req( 'PATCH', '/ranks/' . $inaktiv['id'], array( 'active' => false ) );
-mkl_assert( 200 === $s && false === $d['active'], 'Rang deaktivieren' );
+mkl_assert( 200 === $s && false === $d['active'], 'Dienstgrad deaktivieren' );
 list( $s ) = mkl_req( 'PATCH', '/ranks/' . $maat['id'], array( 'min_points' => 10 ) );
-mkl_assert( 400 === $s, 'Schwelle auf die eines anderen aktiven Rangs ändern → 400' );
+mkl_assert( 400 === $s, 'Schwelle auf die eines anderen aktiven Dienstgrads ändern → 400' );
 
 wp_set_current_user( $r1 );
 list( $s, $list ) = mkl_req( 'GET', '/ranks', array(), array( 'all' => 1 ) );
 $titles = wp_list_pluck( $list, 'title' );
-mkl_assert( 200 === $s && in_array( 'Mkltest Maat', $titles, true ) && ! in_array( 'Mkltest Inaktiv', $titles, true ) && ! isset( $list[0]['member_count'] ), 'Mitglied sieht nur aktive Ränge (auch mit all=1)' );
+mkl_assert( 200 === $s && in_array( 'Mkltest Maat', $titles, true ) && ! in_array( 'Mkltest Inaktiv', $titles, true ) && ! isset( $list[0]['member_count'] ), 'Mitglied sieht nur aktive Dienstgrade (auch mit all=1)' );
 list( $s, $me ) = mkl_req( 'GET', '/me' );
-mkl_assert( null === $me['rank'] && 0 === $me['points'], 'Neues Mitglied: kein Rang, 0 Punkte' );
-mkl_assert( $gefreiter['id'] === $me['next_rank']['id'] && 10 === $me['points_to_next'], 'Ohne Rang ist der nächste Rang der niedrigste aktive' );
+mkl_assert( null === $me['rank'] && 0 === $me['points'], 'Neues Mitglied: kein Dienstgrad, 0 Punkte' );
+mkl_assert( $gefreiter['id'] === $me['next_rank']['id'] && 10 === $me['points_to_next'], 'Ohne Dienstgrad ist der nächste Dienstgrad der niedrigste aktive' );
 
-// Für die folgenden Prüfungen nur die Test-Ränge betrachten.
+// Für die folgenden Prüfungen nur die Test-Dienstgrade betrachten.
 $status = function ( $uid, $points ) use ( $gefreiter, $maat, $bootsmann, $inaktiv ) {
 	$timeline = MKL_DB::get_point_timeline( $uid );
 	$mine     = array();
@@ -509,13 +515,13 @@ $status = function ( $uid, $points ) use ( $gefreiter, $maat, $bootsmann, $inakt
 	return MKL_Ranks::status( MKL_Ranks::user_rank_id( $uid ), $points, isset( $timeline[ $uid ] ) ? $timeline[ $uid ] : array(), $mine, null );
 };
 $st = $status( $r1, 0 );
-mkl_assert( $gefreiter['id'] === $st['next_rank']['id'] && 10 === $st['points_to_next'] && null === $st['threshold_reached_since'], 'Ohne Rang: nächster Rang ist der niedrigste aktive (deaktivierter übersprungen)' );
+mkl_assert( $gefreiter['id'] === $st['next_rank']['id'] && 10 === $st['points_to_next'] && null === $st['threshold_reached_since'], 'Ohne Dienstgrad: nächster Dienstgrad ist der niedrigste aktive (deaktivierter übersprungen)' );
 
 wp_set_current_user( $spiess );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 12, 'reason' => 'Mkltest', 'date' => '2026-01-10' ) );
 $st = $status( $r1, 12 );
 mkl_assert( -2 === $st['points_to_next'] && '2026-01-10' === $st['threshold_reached_since'] && $gefreiter['id'] === $st['reachable_rank']['id'], 'Schwelle überschritten: −2 fehlende Punkte, erreicht am 10.01.' );
-mkl_assert( null === MKL_Ranks::user_rank_id( $r1 ), 'Punkte allein vergeben keinen Rang' );
+mkl_assert( null === MKL_Ranks::user_rank_id( $r1 ), 'Punkte allein vergeben keinen Dienstgrad' );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => -5, 'reason' => 'Mkltest', 'date' => '2026-02-01' ) );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 5, 'reason' => 'Mkltest', 'date' => '2026-03-01' ) );
 $st = $status( $r1, 12 );
@@ -526,26 +532,26 @@ mkl_assert( '2026-01-02' === MKL_Ranks::threshold_reached_since( array( array( '
 list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
 mkl_assert( 400 === $s && false !== strpos( $d['message'], '8 Punkte' ), 'Befördern ohne erreichte Schwelle → 400 mit fehlenden Punkten' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $inaktiv['id'] ) );
-mkl_assert( 400 === $s, 'Befördern auf deaktivierten Rang → 400' );
+mkl_assert( 400 === $s, 'Befördern auf deaktivierten Dienstgrad → 400' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $gast . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
-mkl_assert( 400 === $s, 'Konto ohne Rolle kann keinen Rang bekommen → 400' );
+mkl_assert( 400 === $s, 'Konto ohne Rolle kann keinen Dienstgrad bekommen → 400' );
 list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $gefreiter['id'], 'reason' => 'Schützenfest' ) );
 mkl_assert( 200 === $s && $gefreiter['id'] === $d['rank_status']['rank']['id'] && 1 === count( $d['rank_history'] ), 'Spieß befördert zum Gefreiten' );
 mkl_assert( 'befoerderung' === $d['rank_history'][0]['kind'] && 'Schützenfest' === $d['rank_history'][0]['reason'] && 'Mkltest_spiess' === $d['rank_history'][0]['changed_by_name'] && 12 === $d['rank_history'][0]['points'], 'Verlauf mit Begründung, Spieß und Punktestand' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $gefreiter['id'] ) );
-mkl_assert( 400 === $s, 'Gleicher Rang noch einmal → 400' );
+mkl_assert( 400 === $s, 'Gleicher Dienstgrad noch einmal → 400' );
 
 wp_set_current_user( $r1 );
 list( $s, $me ) = mkl_req( 'GET', '/me' );
-mkl_assert( $gefreiter['id'] === $me['rank']['id'] && $maat['id'] === $me['next_rank']['id'] && 8 === $me['points_to_next'], 'Mitglied sieht eigenen Rang und fehlende Punkte zum nächsten' );
+mkl_assert( $gefreiter['id'] === $me['rank']['id'] && $maat['id'] === $me['next_rank']['id'] && 8 === $me['points_to_next'], 'Mitglied sieht eigenen Dienstgrad und fehlende Punkte zum nächsten' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $bootsmann['id'] ) );
 mkl_assert( 403 === $s, 'Mitglied kann sich nicht selbst befördern → 403' );
 
 wp_set_current_user( $spiess );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => 30, 'reason' => 'Mkltest', 'date' => '2026-04-01' ) );
 list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $bootsmann['id'] ) );
-mkl_assert( 200 === $s && $bootsmann['id'] === $d['rank_status']['rank']['id'], 'Mehrere Ränge auf einmal überspringen (42 Punkte → Bootsmann)' );
-mkl_assert( null === $d['rank_status']['next_rank'] || ! in_array( $d['rank_status']['next_rank']['id'], array( $gefreiter['id'], $maat['id'], $bootsmann['id'] ), true ), 'Über dem höchsten Test-Rang gibt es keinen nächsten Test-Rang' );
+mkl_assert( 200 === $s && $bootsmann['id'] === $d['rank_status']['rank']['id'], 'Mehrere Dienstgrade auf einmal überspringen (42 Punkte → Bootsmann)' );
+mkl_assert( null === $d['rank_status']['next_rank'] || ! in_array( $d['rank_status']['next_rank']['id'], array( $gefreiter['id'], $maat['id'], $bootsmann['id'] ), true ), 'Über dem höchsten Test-Dienstgrad gibt es keinen nächsten Test-Dienstgrad' );
 list( $s, $d ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
 mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Degradieren' ), 'Degradieren bei ausreichenden Punkten → 400' );
 wp_set_current_user( $boss );
@@ -557,19 +563,19 @@ mkl_assert( 400 === $s, 'Auch ein Admin kann ohne erreichte Schwelle nicht befö
 wp_set_current_user( $spiess );
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r1 ), 'points' => -10, 'reason' => 'Mkltest', 'date' => '2026-05-01' ) );
 $st = $status( $r1, 32 );
-mkl_assert( true === $st['below_current_threshold'] && $bootsmann['id'] === MKL_Ranks::user_rank_id( $r1 ), 'Unter die Schwelle gerutscht: Rang bleibt, Hinweis „unter Schwelle“' );
+mkl_assert( true === $st['below_current_threshold'] && $bootsmann['id'] === MKL_Ranks::user_rank_id( $r1 ), 'Unter die Schwelle gerutscht: Dienstgrad bleibt, Hinweis „unter Schwelle“' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => null ) );
-mkl_assert( 200 === $s && null === MKL_Ranks::user_rank_id( $r1 ), 'Degradieren auf „kein Rang“ bei Punkten unter der Schwelle' );
+mkl_assert( 200 === $s && null === MKL_Ranks::user_rank_id( $r1 ), 'Degradieren auf „kein Dienstgrad“ bei Punkten unter der Schwelle' );
 list( $s ) = mkl_req( 'PUT', '/members/' . $r1 . '/rank', array( 'rank_id' => $maat['id'] ) );
 mkl_assert( 200 === $s, 'Wieder befördern (32 Punkte → Maat)' );
 
 list( $s, $d ) = mkl_req( 'DELETE', '/ranks/' . $maat['id'] );
-mkl_assert( 400 === $s && false !== strpos( $d['message'], 'deaktivieren' ), 'Zugewiesenen Rang löschen → 400' );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'deaktivieren' ), 'Zugewiesenen Dienstgrad löschen → 400' );
 list( $s ) = mkl_req( 'PATCH', '/ranks/' . $maat['id'], array( 'title' => 'Mkltest Obermaat' ) );
-mkl_assert( 200 === $s, 'Rang umbenennen' );
+mkl_assert( 200 === $s, 'Dienstgrad umbenennen' );
 list( $s, $list ) = mkl_req( 'GET', '/ranks', array(), array( 'all' => 1 ) );
 $counts = wp_list_pluck( $list, 'member_count', 'id' );
-mkl_assert( 1 === $counts[ $maat['id'] ] && isset( $counts[ $inaktiv['id'] ] ), 'Spieß sieht mit all=1 inaktive Ränge und Anzahl Zugewiesener' );
+mkl_assert( 1 === $counts[ $maat['id'] ] && isset( $counts[ $inaktiv['id'] ] ), 'Spieß sieht mit all=1 inaktive Dienstgrade und Anzahl Zugewiesener' );
 
 // Zweites Mitglied für Verlauf und Übersicht.
 mkl_req( 'POST', '/points', array( 'user_ids' => array( $r2 ), 'points' => 10, 'reason' => 'Mkltest', 'date' => '2026-01-01' ) );
@@ -581,14 +587,14 @@ list( $s, $hist ) = mkl_req( 'GET', '/me/rank-history', array(), array( 'user_id
 mkl_assert( 200 === $s && 4 === count( $hist ), 'Eigener Verlauf: 4 Einträge (fremde nicht enthalten)' );
 mkl_assert( 'Mkltest Maat' === $hist[0]['to_title'] && 'befoerderung' === $hist[0]['kind'] && 'degradierung' === $hist[1]['kind'] && null === $hist[1]['to_title'], 'Verlauf: neueste zuerst, Titel als Momentaufnahme, Degradierung erkannt' );
 list( $s, $me ) = mkl_req( 'GET', '/me' );
-mkl_assert( ! isset( $me['reachable_rank'] ) && ! isset( $me['threshold_reached_since'] ), '/me enthält nur eigene Rangdaten ohne Spieß-Auswertung' );
+mkl_assert( ! isset( $me['reachable_rank'] ) && ! isset( $me['threshold_reached_since'] ), '/me enthält nur eigene Dienstgraddaten ohne Spieß-Auswertung' );
 
 wp_set_current_user( $spiess );
 list( $s, $promo ) = mkl_req( 'GET', '/promotions' );
 $pos = array_flip( wp_list_pluck( $promo, 'user_id' ) );
 mkl_assert( 200 === $s && ! isset( $pos[ $gast ] ), 'Beförderungsübersicht ohne Konten ohne Rolle' );
 $e3 = $promo[ $pos[ $r3 ] ];
-mkl_assert( $e3['points_to_next'] <= 0 && '2026-02-15' === $e3['threshold_reached_since'], 'Übersicht: Mitglied ohne Rang mit 18 Punkten ist fällig seit 15.02.' );
+mkl_assert( $e3['points_to_next'] <= 0 && '2026-02-15' === $e3['threshold_reached_since'], 'Übersicht: Mitglied ohne Dienstgrad mit 18 Punkten ist fällig seit 15.02.' );
 $order_ok = true;
 $prev     = null;
 foreach ( $promo as $e ) {
@@ -598,14 +604,14 @@ foreach ( $promo as $e ) {
 	}
 	$prev = array( $g, $e['threshold_reached_since'], $e['points_to_next'] );
 }
-mkl_assert( $order_ok, 'Übersicht sortiert: fällige (älteste zuerst), dann nach fehlenden Punkten, höchster Rang zuletzt' );
+mkl_assert( $order_ok, 'Übersicht sortiert: fällige (älteste zuerst), dann nach fehlenden Punkten, höchster Dienstgrad zuletzt' );
 list( $s, $d ) = mkl_req( 'GET', '/members/' . $r1 );
-mkl_assert( 200 === $s && $maat['id'] === $d['rank_status']['rank']['id'] && 4 === count( $d['rank_history'] ), 'Mitgliedsdetails mit Rang-Stand und Verlauf' );
+mkl_assert( 200 === $s && $maat['id'] === $d['rank_status']['rank']['id'] && 4 === count( $d['rank_history'] ), 'Mitgliedsdetails mit Dienstgrad-Stand und Verlauf' );
 list( $s, $members ) = mkl_req( 'GET', '/members' );
 $ranks_by_user = wp_list_pluck( $members, 'rank', 'id' );
-mkl_assert( 'Mkltest Obermaat' === $ranks_by_user[ $r1 ]['title'] && null === $ranks_by_user[ $r3 ], 'Mitgliederliste zeigt den zugewiesenen Rang' );
+mkl_assert( 'Mkltest Obermaat' === $ranks_by_user[ $r1 ]['title'] && null === $ranks_by_user[ $r3 ], 'Mitgliederliste zeigt den zugewiesenen Dienstgrad' );
 
-echo "Mitglied mit Anfangsbestand und Rang anlegen\n";
+echo "Mitglied mit Anfangsbestand und Dienstgrad anlegen\n";
 wp_set_current_user( $boss );
 foreach ( array( 'mkltest.uebernahme', 'mkltest.zuwenig', 'mkltest.ohne' ) as $old_login ) {
 	$old = get_user_by( 'login', $old_login );
@@ -614,26 +620,26 @@ foreach ( array( 'mkltest.uebernahme', 'mkltest.zuwenig', 'mkltest.ohne' ) as $o
 	}
 }
 list( $s, $d ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ) );
-mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Rang mit zu wenig Anfangspunkten → 400, kein Konto angelegt' );
+mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Dienstgrad mit zu wenig Anfangspunkten → 400, kein Konto angelegt' );
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) );
-mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Deaktivierter Rang → 400' );
+mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Deaktivierter Dienstgrad → 400' );
 list( $s ) = mkl_req( 'POST', '/users', array( 'name' => 'X', 'username' => 'mkltest.zuwenig', 'initial_points' => -3 ) );
 mkl_assert( 400 === $s && ! username_exists( 'mkltest.zuwenig' ), 'Negativer Anfangsbestand → 400' );
 list( $s, $u ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Übernahme', 'username' => 'mkltest.uebernahme', 'initial_points' => 45, 'initial_points_date' => '2025-12-31', 'rank_id' => $bootsmann['id'] ) );
-mkl_assert( 201 === $s && 45 === $u['points'] && $bootsmann['id'] === $u['rank']['id'], 'Mitglied mit 45 Punkten und Rang Bootsmann angelegt' );
+mkl_assert( 201 === $s && 45 === $u['points'] && $bootsmann['id'] === $u['rank']['id'], 'Mitglied mit 45 Punkten und Dienstgrad Bootsmann angelegt' );
 $entries = MKL_DB::get_points_for_user( $u['id'] );
 mkl_assert( 1 === count( $entries ) && 45 === $entries[0]['points'] && 'Anfangsbestand bei Übernahme' === $entries[0]['reason'] && '2025-12-31' === $entries[0]['date'], 'Anfangsbestand als normale Buchung mit Datum' );
 $hist = MKL_Ranks::history( $u['id'] );
 mkl_assert( $bootsmann['id'] === MKL_Ranks::user_rank_id( $u['id'] ) && 1 === count( $hist ) && 'Ersteinstufung bei Anlage' === $hist[0]['reason'] && 45 === $hist[0]['points'], 'Ersteinstufung im Verlauf' );
 list( $s, $u2 ) = mkl_req( 'POST', '/users', array( 'name' => 'Mkltest Ohne', 'username' => 'mkltest.ohne' ) );
-mkl_assert( 201 === $s && 0 === $u2['points'] && null === $u2['rank'] && ! MKL_DB::get_points_for_user( $u2['id'] ), 'Ohne Angaben: kein Rang, keine Buchung' );
+mkl_assert( 201 === $s && 0 === $u2['points'] && null === $u2['rank'] && ! MKL_DB::get_points_for_user( $u2['id'] ), 'Ohne Angaben: kein Dienstgrad, keine Buchung' );
 foreach ( array( $u['id'], $u2['id'] ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
 	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $uid ) );
 	wp_delete_user( $uid );
 }
 
-echo "Jungmariner und Ränge\n";
+echo "Jungmariner und Dienstgrade\n";
 foreach ( array( 'mkltest.jungrang' ) as $old_login ) {
 	$old = get_user_by( 'login', $old_login );
 	if ( $old ) {
@@ -657,7 +663,7 @@ $wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $ju['id'] ) );
 wp_delete_user( $ju['id'] );
 
 list( $s ) = mkl_req( 'DELETE', '/ranks/' . $inaktiv['id'] );
-mkl_assert( 200 === $s && ! MKL_Ranks::get( $inaktiv['id'] ), 'Nicht zugewiesenen Rang löschen' );
+mkl_assert( 200 === $s && ! MKL_Ranks::get( $inaktiv['id'] ), 'Nicht zugewiesenen Dienstgrad löschen' );
 
 foreach ( array( $r1, $r2, $r3, $gast, $boss ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
@@ -665,6 +671,117 @@ foreach ( array( $r1, $r2, $r3, $gast, $boss ) as $uid ) {
 	wp_delete_user( $uid );
 }
 $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Ranks::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+
+echo "Titel\n";
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Titles::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+$defaults = wp_list_pluck( MKL_Titles::all(), 'title' );
+mkl_assert( ! array_diff( MKL_Titles::DEFAULTS, $defaults ), 'Standardtitel Kapitän, Ehrenkapitän, Ehrenspieß, Ehrenmitglied sind angelegt' );
+$t1    = mkl_test_user( 'mkltest_titel1' );
+$tgast = mkl_test_user( 'mkltest_titelgast', 'ohne' );
+$tboss = mkl_test_user( 'mkltest_titeladmin', 'admin' );
+
+wp_set_current_user( $spiess );
+list( $s, $kap ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Kapitän' ) );
+mkl_assert( 201 === $s && 'Mkltest Kapitän' === $kap['title'], 'Spieß legt Titel an' );
+list( $s, $ehr ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Ehrenmitglied' ) );
+mkl_assert( 201 === $s && $ehr['sort'] > $kap['sort'], 'Neuer Titel wird hinten angehängt' );
+list( $s ) = mkl_req( 'POST', '/titles', array( 'title' => 'Mkltest Kapitän' ) );
+mkl_assert( 400 === $s, 'Doppelter Titel → 400' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( $ehr['id'], $kap['id'], $kap['id'] ) ) );
+list( $s, $d ) = mkl_req( 'GET', '/members/' . $t1 );
+mkl_assert( 200 === $s && array( 'Mkltest Kapitän', 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $d['titles'], 'title' ), 'Mehrere Titel zuweisen, Reihenfolge der Titelliste, ohne Doppelte' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( 999999 ) ) );
+mkl_assert( 400 === $s && 2 === count( MKL_Titles::for_user( $t1 ) ), 'Unbekannter Titel → 400, bisherige Titel bleiben' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $tgast . '/titles', array( 'title_ids' => array( $kap['id'] ) ) );
+mkl_assert( 400 === $s, 'Konto ohne Rolle bekommt keine Titel → 400' );
+list( $s, $members ) = mkl_req( 'GET', '/members' );
+$titles_by_user = wp_list_pluck( $members, 'titles', 'id' );
+mkl_assert( 2 === count( $titles_by_user[ $t1 ] ) && array() === $titles_by_user[ $m2 ], 'Mitgliederliste zeigt die Titel' );
+list( $s, $promo ) = mkl_req( 'GET', '/promotions' );
+$titles_by_user = wp_list_pluck( $promo, 'titles', 'user_id' );
+mkl_assert( 2 === count( $titles_by_user[ $t1 ] ), 'Beförderungsübersicht zeigt die Titel' );
+list( $s, $list ) = mkl_req( 'GET', '/titles' );
+$counts = wp_list_pluck( $list, 'member_count', 'id' );
+mkl_assert( 1 === $counts[ $kap['id'] ] && 1 === $counts[ $ehr['id'] ], 'Titelliste mit Anzahl der Mitglieder' );
+list( $s ) = mkl_req( 'DELETE', '/titles/' . $kap['id'] );
+mkl_assert( 400 === $s && MKL_Titles::get( $kap['id'] ), 'Zugewiesenen Titel löschen → 400' );
+list( $s, $d ) = mkl_req( 'PATCH', '/titles/' . $kap['id'], array( 'title' => 'Mkltest Ehrenkapitän' ) );
+mkl_assert( 200 === $s && 'Mkltest Ehrenkapitän' === $d['title'], 'Titel umbenennen' );
+list( $s ) = mkl_req( 'PATCH', '/titles/' . $kap['id'], array( 'title' => 'Mkltest Ehrenmitglied' ) );
+mkl_assert( 400 === $s, 'Umbenennen auf vorhandenen Titel → 400' );
+
+wp_set_current_user( $t1 );
+list( $s, $me ) = mkl_req( 'GET', '/me' );
+mkl_assert( array( 'Mkltest Ehrenkapitän', 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $me['titles'], 'title' ), 'Mitglied sieht eigene Titel in /me' );
+list( $s ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array() ) );
+mkl_assert( 403 === $s, 'Mitglied darf sich keine Titel geben → 403' );
+
+wp_set_current_user( $tboss );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array( $ehr['id'] ) ) );
+mkl_assert( 200 === $s && array( 'Mkltest Ehrenmitglied' ) === wp_list_pluck( $d['titles'], 'title' ), 'Admin ändert Titel' );
+list( $s, $d ) = mkl_req( 'PUT', '/members/' . $t1 . '/titles', array( 'title_ids' => array() ) );
+mkl_assert( 200 === $s && array() === $d['titles'] && ! get_user_meta( $t1, MKL_Titles::META, false ), 'Alle Titel entfernen' );
+list( $s ) = mkl_req( 'DELETE', '/titles/' . $kap['id'] );
+mkl_assert( 200 === $s && ! MKL_Titles::get( $kap['id'] ), 'Nicht zugewiesenen Titel löschen' );
+
+foreach ( array( $t1, $tgast, $tboss ) as $uid ) {
+	wp_delete_user( $uid );
+}
+$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . MKL_Titles::table() . ' WHERE title LIKE %s', 'Mkltest%' ) );
+
+echo "Mitglieder verwalten (Admin)\n";
+$acc_admin = mkl_test_user( 'mkltest_accadmin', 'admin' );
+$acc       = mkl_test_user( 'mkltest_konto' );
+$acc_other = mkl_test_user( 'mkltest_konto2' );
+foreach ( array( 'mkltest.konto.neu' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+wp_update_user( array( 'ID' => $acc_other, 'user_email' => 'mkltest_konto2@example.com' ) );
+
+wp_set_current_user( $acc_admin );
+list( $s, $list ) = mkl_req( 'GET', '/accounts' );
+$by_id = array();
+foreach ( $list as $a ) {
+	$by_id[ $a['id'] ] = $a;
+}
+mkl_assert( 200 === $s && 'mkltest_konto' === $by_id[ $acc ]['username'] && $by_id[ $acc_admin ]['is_self'] && ! $by_id[ $acc ]['is_self'], 'Kontenliste mit Benutzername und eigenem Konto' );
+list( $s, $d ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'name' => 'Mkltest Neuer Name', 'email' => 'mkltest_konto@example.com' ) );
+$u = get_userdata( $acc );
+mkl_assert( 200 === $s && 'Mkltest Neuer Name' === $u->display_name && 'Mkltest' === $u->first_name && 'mkltest_konto@example.com' === $u->user_email, 'Name und E-Mail ändern' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'email' => 'mkltest_konto2@example.com' ) );
+mkl_assert( 400 === $s, 'E-Mail eines anderen Kontos → 400' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'email' => 'keine-mail' ) );
+mkl_assert( 400 === $s, 'Ungültige E-Mail → 400' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'username' => 'mkltest_konto2' ) );
+mkl_assert( 400 === $s && 'mkltest_konto' === get_userdata( $acc )->user_login, 'Vergebener Benutzername → 400' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'username' => 'Ungültig Name!' ) );
+mkl_assert( 400 === $s, 'Ungültiger Benutzername → 400' );
+$tokens = WP_Session_Tokens::get_instance( $acc );
+$tokens->create( time() + HOUR_IN_SECONDS );
+list( $s, $d ) = mkl_req( 'PATCH', '/accounts/' . $acc, array( 'username' => 'mkltest.konto.neu' ) );
+mkl_assert( 200 === $s && 'mkltest.konto.neu' === $d['username'] && 'mkltest.konto.neu' === get_userdata( $acc )->user_login && ! $tokens->get_all(), 'Benutzername ändern beendet die Sitzungen' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc_admin, array( 'username' => 'mkltest_selbst' ) );
+mkl_assert( 400 === $s && 'mkltest_accadmin' === wp_get_current_user()->user_login, 'Eigenen Benutzernamen ändern → 400' );
+list( $s ) = mkl_req( 'PATCH', '/accounts/' . $acc_admin, array( 'name' => 'Mkltest Admin Selbst' ) );
+mkl_assert( 200 === $s, 'Eigenen Namen ändern ist erlaubt' );
+$tokens->create( time() + HOUR_IN_SECONDS );
+list( $s, $d ) = mkl_req( 'POST', '/accounts/' . $acc . '/password' );
+mkl_assert( 200 === $s && 12 === strlen( $d['password'] ) && wp_check_password( $d['password'], get_userdata( $acc )->user_pass, $acc ) && ! $tokens->get_all(), 'Neues Startpasswort gilt, Sitzungen beendet' );
+list( $s ) = mkl_req( 'POST', '/accounts/' . $acc_admin . '/password' );
+mkl_assert( 400 === $s, 'Eigenes Passwort zurücksetzen → 400' );
+
+wp_set_current_user( $spiess );
+list( $s ) = mkl_req( 'POST', '/accounts/' . $acc . '/password' );
+mkl_assert( 403 === $s, 'Spieß darf keine Passwörter zurücksetzen → 403' );
+
+foreach ( array( $acc_admin, $acc, $acc_other ) as $uid ) {
+	wp_delete_user( $uid );
+}
+
+echo "Dokumente (Satzung)\n";
 
 echo "Dokumente\n";
 $doc_admin = mkl_test_user( 'mkltest_docadmin', 'admin' );

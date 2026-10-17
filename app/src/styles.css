@@ -446,7 +446,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 
 /* ------------------------------------------------------------------ */
-/* Ränge                                                               */
+/* Dienstgrade                                                         */
 /* ------------------------------------------------------------------ */
 
 .rank-card, .rank-control { padding: 16px 18px; margin-top: 12px; border-left: 4px solid var(--brass); }
@@ -467,6 +467,21 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .promo-missing small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.75rem; color: var(--muted); }
 .rank-form { margin-top: 12px; }
 .rank-control .section-title { margin-top: 18px; }
+
+/* Titel (z. B. Ehrenkapitän), zusätzlich zum Dienstgrad */
+.title-badges { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; vertical-align: 2px; }
+.row-title .title-badges { margin-left: 6px; }
+.title-control { padding: 16px 18px; margin: 14px 0; border-left: 4px solid var(--brass); }
+.rank-card .title-badges, .title-control .title-badges { display: flex; margin: 2px 0 8px; }
+.badge-title { background: transparent; color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--brass); }
+.title-picker { border: 1.5px solid var(--line-strong); border-radius: 12px; margin-bottom: 4px; }
+.title-edit { margin-top: 8px; }
+
+/* Einrichtung */
+.inline-link { padding: 0; min-height: 0; font-size: inherit; vertical-align: baseline; }
+.account-points { margin-bottom: 14px; }
+.account-form, .account-password { margin-bottom: 14px; }
+.account-password { padding: 16px 18px; }
 .fieldset { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .fieldset legend { padding: 0 6px; font-family: var(--font-head); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85rem; color: var(--accent-text); }
 
@@ -483,9 +498,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .pdf-page { display: block; width: 100%; height: auto; background: #fff; border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); }
 .pdf-progress { text-align: center; }
 
-/* Schmale Handys (z. B. 360 px): fünf Spieß-Reiter und sechs Tabs ohne Umbruch. */
-@media (max-width: 380px) {
+/* Handys: fünf Spieß-Reiter (Mitglieder … Einrichtung) ohne Umbruch, auch auf 360 px. */
+@media (max-width: 430px) {
   .segmented button { white-space: nowrap; padding: 9px 2px; font-size: 0.74rem; letter-spacing: 0.02em; }
+}
+/* Schmale Handys (z. B. 360 px): sechs Tabs ohne Umbruch. */
+@media (max-width: 380px) {
   .tabbar button { letter-spacing: 0.04em; }
 }
 

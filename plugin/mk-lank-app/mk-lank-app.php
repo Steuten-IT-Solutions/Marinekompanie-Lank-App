@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Marinekompanie Lank – App
- * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Rängen, Strafen und Dokumenten. Erreichbar unter /app/.
+ * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Dienstgraden, Titeln, Strafen und Dokumenten. Erreichbar unter /app/.
  * Version:           0.5.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'MKL_VERSION', '0.5.0' );
-define( 'MKL_DB_VERSION', '6' );
+define( 'MKL_DB_VERSION', '7' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );
@@ -36,6 +36,7 @@ define( 'MKL_META_JUNGMARINER', 'mkl_jungmariner' );
 require_once MKL_DIR . 'includes/class-mkl-db.php';
 require_once MKL_DIR . 'includes/class-mkl-roles.php';
 require_once MKL_DIR . 'includes/class-mkl-ranks.php';
+require_once MKL_DIR . 'includes/class-mkl-titles.php';
 require_once MKL_DIR . 'includes/class-mkl-documents.php';
 require_once MKL_DIR . 'includes/class-mkl-session.php';
 require_once MKL_DIR . 'includes/class-mkl-calendar.php';

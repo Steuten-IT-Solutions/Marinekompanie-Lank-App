@@ -3,7 +3,7 @@ import Punkte from './Punkte';
 import Rang from './Rang';
 import Strafen from './Strafen';
 
-/** „Meins“: eigene Punkte, Rang und Strafen, umschaltbar. */
+/** „Meins“: eigene Punkte, Dienstgrad und Strafen, umschaltbar. */
 export default function Meins({ sub }: { sub?: string }) {
   const active = sub === 'strafen' || sub === 'rang' ? sub : 'punkte';
   return (
@@ -12,7 +12,7 @@ export default function Meins({ sub }: { sub?: string }) {
         {(
           [
             ['punkte', 'Punkte'],
-            ['rang', 'Rang'],
+            ['rang', 'Dienstgrad'],
             ['strafen', 'Strafen'],
           ] as const
         ).map(([id, label]) => (

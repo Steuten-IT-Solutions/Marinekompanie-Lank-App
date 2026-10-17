@@ -1,15 +1,15 @@
 <?php
 /**
- * Ränge: Rangliste mit Punkteschwellen, zugewiesener Rang je Mitglied und Verlauf.
+ * Dienstgrade: Liste mit Punkteschwellen, zugewiesener Dienstgrad je Mitglied und Verlauf.
  *
  * Grundsätze:
- * - Den Rang setzen die Spieße (Beförderung/Degradierung). Er wird als User-Meta
+ * - Den Dienstgrad setzen die Spieße (Beförderung/Degradierung). Er wird als User-Meta
  *   gespeichert und ändert sich nie automatisch, auch nicht durch Punkte.
- * - Befördern nur, wenn die Gesamtpunkte die Schwelle des Zielrangs erreichen.
- *   Ränge überspringen ist erlaubt.
- * - Degradieren nur, wenn die Gesamtpunkte unter der Schwelle des aktuellen Rangs liegen.
+ * - Befördern nur, wenn die Gesamtpunkte die Schwelle des Zieldienstgrads erreichen.
+ *   Dienstgrade überspringen ist erlaubt.
+ * - Degradieren nur, wenn die Gesamtpunkte unter der Schwelle des aktuellen Dienstgrads liegen.
  * - Die Regeln gelten für alle, auch für Administratoren.
- * - Nächster Rang, fehlende Punkte und „Schwelle erreicht seit“ werden berechnet,
+ * - Nächster Dienstgrad, fehlende Punkte und „Schwelle erreicht seit“ werden berechnet,
  *   nicht gespeichert.
  */
 
@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
 
 class MKL_Ranks {
 
-	/** User-Meta mit der ID des zugewiesenen Rangs. Fehlt sie, hat das Mitglied keinen Rang. */
+	/** User-Meta mit der ID des zugewiesenen Dienstgrads. Fehlt sie, hat das Mitglied keinen Dienstgrad. */
 	const META = 'mkl_rank_id';
 
 	const MAX_MIN_POINTS = 1000000;
@@ -34,10 +34,10 @@ class MKL_Ranks {
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Rangliste                                                           */
+	/* Dienstgrade                                                           */
 	/* ------------------------------------------------------------------ */
 
-	/** Ränge aufsteigend nach Schwelle. */
+	/** Dienstgrade aufsteigend nach Schwelle. */
 	public static function all( $only_active = true ) {
 		global $wpdb;
 		$t     = self::table();
@@ -53,7 +53,7 @@ class MKL_Ranks {
 		return $row ? self::format( $row ) : null;
 	}
 
-	/** @return int|WP_Error ID des neuen Rangs. */
+	/** @return int|WP_Error ID des neuen Dienstgrads. */
 	public static function insert( $title, $min_points ) {
 		global $wpdb;
 		$valid = self::validate( $title, $min_points, true, 0 );
@@ -80,7 +80,7 @@ class MKL_Ranks {
 		global $wpdb;
 		$rank = self::get( $id );
 		if ( ! $rank ) {
-			return self::error( 'Rang nicht gefunden.', 404 );
+			return self::error( 'Dienstgrad nicht gefunden.', 404 );
 		}
 		$merged = array_merge( $rank, $data );
 		$valid  = self::validate( $merged['title'], $merged['min_points'], $merged['active'], $id );
@@ -102,7 +102,7 @@ class MKL_Ranks {
 	}
 
 	/**
-	 * Löscht einen Rang, der niemandem zugewiesen ist. Zugewiesene Ränge
+	 * Löscht einen Dienstgrad, der niemandem zugewiesen ist. Zugewiesene Dienstgrade
 	 * lassen sich nur deaktivieren.
 	 *
 	 * @return true|WP_Error
@@ -110,13 +110,13 @@ class MKL_Ranks {
 	public static function delete( $id ) {
 		global $wpdb;
 		if ( ! self::get( $id ) ) {
-			return self::error( 'Rang nicht gefunden.', 404 );
+			return self::error( 'Dienstgrad nicht gefunden.', 404 );
 		}
 		$count = self::member_count( $id );
 		if ( $count > 0 ) {
 			return self::error(
 				sprintf(
-					'Der Rang ist noch %s zugewiesen. Bitte stattdessen deaktivieren.',
+					'Der Dienstgrad ist noch %s zugewiesen. Bitte stattdessen deaktivieren.',
 					1 === $count ? 'einem Mitglied' : $count . ' Mitgliedern'
 				)
 			);
@@ -125,7 +125,7 @@ class MKL_Ranks {
 		return true;
 	}
 
-	/** Wie vielen Konten der Rang zugewiesen ist. */
+	/** Wie vielen Konten der Dienstgrad zugewiesen ist. */
 	public static function member_count( $id ) {
 		$counts = array_count_values( self::rank_ids_by_user() );
 		return isset( $counts[ (int) $id ] ) ? $counts[ (int) $id ] : 0;
@@ -149,24 +149,24 @@ class MKL_Ranks {
 				$wpdb->prepare( "SELECT title FROM $t WHERE active = 1 AND min_points = %d AND id <> %d LIMIT 1", $min_points, $exclude_id ) // phpcs:ignore WordPress.DB.PreparedSQL
 			);
 			if ( null !== $other ) {
-				return self::error( sprintf( 'Der Rang „%s“ hat schon die Schwelle %d Punkte.', $other, $min_points ) );
+				return self::error( sprintf( 'Der Dienstgrad „%s“ hat schon die Schwelle %d Punkte.', $other, $min_points ) );
 			}
 		}
 		return true;
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Zugewiesener Rang                                                   */
+	/* Zugewiesener Dienstgrad                                                   */
 	/* ------------------------------------------------------------------ */
 
-	/** @return int|null ID des zugewiesenen Rangs. */
+	/** @return int|null ID des zugewiesenen Dienstgrads. */
 	public static function user_rank_id( $user_id ) {
 		$id = (int) get_user_meta( $user_id, self::META, true );
 		return $id && self::get( $id ) ? $id : null;
 	}
 
 	/**
-	 * Zugewiesene Ränge aller Konten in einer Abfrage.
+	 * Zugewiesene Dienstgrade aller Konten in einer Abfrage.
 	 *
 	 * @return array<int, int> user_id => rank_id
 	 */
@@ -186,9 +186,9 @@ class MKL_Ranks {
 	}
 
 	/**
-	 * Prüft eine Rangänderung nach den Regeln (gilt auch für Administratoren).
+	 * Prüft eine Dienstgradänderung nach den Regeln (gilt auch für Administratoren).
 	 *
-	 * @param int|null $target_id Neuer Rang, null = kein Rang.
+	 * @param int|null $target_id Neuer Dienstgrad, null = kein Dienstgrad.
 	 * @return array{current: array|null, target: array|null, kind: string}|WP_Error
 	 */
 	public static function validate_change( $user_id, $target_id, $points ) {
@@ -198,14 +198,14 @@ class MKL_Ranks {
 		if ( $target_id ) {
 			$target = self::get( $target_id );
 			if ( ! $target ) {
-				return self::error( 'Rang nicht gefunden.' );
+				return self::error( 'Dienstgrad nicht gefunden.' );
 			}
 			if ( ! $target['active'] ) {
-				return self::error( sprintf( 'Der Rang „%s“ ist deaktiviert.', $target['title'] ) );
+				return self::error( sprintf( 'Der Dienstgrad „%s“ ist deaktiviert.', $target['title'] ) );
 			}
 		}
 		if ( ( $target ? $target['id'] : null ) === $current_id ) {
-			return self::error( $target ? sprintf( 'Das Mitglied hat bereits den Rang „%s“.', $target['title'] ) : 'Das Mitglied hat bereits keinen Rang.' );
+			return self::error( $target ? sprintf( 'Das Mitglied hat bereits den Dienstgrad „%s“.', $target['title'] ) : 'Das Mitglied hat bereits keinen Dienstgrad.' );
 		}
 
 		$promotion = $target && ( ! $current || $target['min_points'] >= $current['min_points'] );
@@ -236,7 +236,7 @@ class MKL_Ranks {
 	}
 
 	/**
-	 * Setzt den Rang und schreibt den Verlauf. Vorher validate_change() aufrufen.
+	 * Setzt den Dienstgrad und schreibt den Verlauf. Vorher validate_change() aufrufen.
 	 *
 	 * @return bool
 	 */
@@ -298,12 +298,12 @@ class MKL_Ranks {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * Rang-Stand eines Mitglieds.
+	 * Dienstgrad-Stand eines Mitglieds.
 	 *
-	 * @param int|null   $rank_id   Zugewiesener Rang.
+	 * @param int|null   $rank_id   Zugewiesener Dienstgrad.
 	 * @param int|float  $points    Gesamtpunkte (Jungmariner: auch halbe Punkte).
 	 * @param array      $timeline  Buchungen chronologisch (points, date).
-	 * @param array      $ranks     Alle Ränge (auch inaktive), aufsteigend nach Schwelle.
+	 * @param array      $ranks     Alle Dienstgrade (auch inaktive), aufsteigend nach Schwelle.
 	 * @param string|null $joined   Datum der Anlage (Y-m-d), falls eine Schwelle von 0 Punkten gilt.
 	 */
 	public static function status( $rank_id, $points, array $timeline, array $ranks, $joined = null ) {
@@ -379,7 +379,7 @@ class MKL_Ranks {
 
 	/**
 	 * Beförderungsübersicht: zuerst fällige (älteste zuerst), dann nach fehlenden
-	 * Punkten, Mitglieder im höchsten Rang zuletzt.
+	 * Punkten, Mitglieder im höchsten Dienstgrad zuletzt.
 	 *
 	 * @param array $users Liste mit ID und display_name.
 	 */

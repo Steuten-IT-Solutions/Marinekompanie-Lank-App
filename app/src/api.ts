@@ -21,6 +21,8 @@ export interface AppUser {
   canManageEvents: boolean;
   canManageDocs: boolean;
   canPromoteUsers: boolean;
+  /** Konten bearbeiten (Name, Benutzername, E-Mail, Passwort) – Admins. */
+  canEditUsers: boolean;
 }
 
 export interface AppConfig {
@@ -53,11 +55,24 @@ export interface Me {
   /** Kann halbe Punkte enthalten (Jungmariner), z. B. 2.5. */
   points: number;
   open_cents: number;
-  /** Zugewiesener Rang (setzen die Spieße), null = noch kein Rang. */
+  /** Zugewiesener Dienstgrad (setzen die Spieße), null = noch kein Dienstgrad. */
   rank: RankRef | null;
   next_rank: RankRef | null;
-  /** Fehlende Punkte bis zum nächsten Rang; ≤ 0 = Schwelle erreicht, null = höchster Rang. */
+  /** Fehlende Punkte bis zum nächsten Dienstgrad; ≤ 0 = Schwelle erreicht, null = höchster Dienstgrad. */
   points_to_next: number | null;
+  /** Ehrentitel und Ämter, z. B. Kapitän (vergeben die Spieße, zusätzlich zum Dienstgrad). */
+  titles: TitleRef[];
+}
+
+export interface TitleRef {
+  id: number;
+  title: string;
+}
+
+export interface Title extends TitleRef {
+  sort: number;
+  /** Anzahl der Mitglieder mit diesem Titel. */
+  member_count: number;
 }
 
 export interface RankRef {
@@ -85,6 +100,7 @@ export interface Promotion extends RankStatus {
   user_id: number;
   name: string;
   points: number;
+  titles: TitleRef[];
 }
 
 export interface RankHistoryEntry {
@@ -246,6 +262,7 @@ export interface MemberSummary {
   points: number;
   open_cents: number;
   rank: RankRef | null;
+  titles: TitleRef[];
 }
 
 export interface MemberDetail extends Omit<MemberSummary, 'rank'> {
@@ -265,6 +282,18 @@ export interface CreatedUser {
   points: number;
   rank: RankRef | null;
   is_jungmariner: boolean;
+}
+
+/** Konto für „Mitglieder verwalten“ (nur Admins). */
+export interface Account {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  level: Level;
+  is_self: boolean;
+  /** Darf der angemeldete Admin dieses Konto bearbeiten? */
+  editable: boolean;
 }
 
 export interface NewUserInput {
@@ -403,6 +432,12 @@ export const api = {
     await refreshNonce();
   },
   createUser: (data: NewUserInput) => request<CreatedUser>('POST', '/users', data),
+  accounts: () => request<Account[]>('GET', '/accounts'),
+  updateAccount: (id: number, data: Partial<Pick<Account, 'name' | 'username' | 'email'>>) =>
+    request<Account>('PATCH', `/accounts/${id}`, data),
+  /** Neues Startpasswort; wird nur in dieser Antwort geliefert. */
+  resetPassword: (id: number) =>
+    request<{ id: number; name: string; username: string; password: string }>('POST', `/accounts/${id}/password`),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
     request<PointEntry[]>('POST', '/points', data),
@@ -420,7 +455,15 @@ export const api = {
     request<Rank>('PATCH', `/ranks/${id}`, data),
   deleteRank: (id: number) => request<{ deleted: boolean }>('DELETE', `/ranks/${id}`),
   promotions: () => request<Promotion[]>('GET', '/promotions'),
-  /** Befördern/Degradieren; rank_id null = kein Rang. */
+
+  titles: () => request<Title[]>('GET', '/titles'),
+  createTitle: (title: string) => request<Title>('POST', '/titles', { title }),
+  renameTitle: (id: number, title: string) => request<Title>('PATCH', `/titles/${id}`, { title }),
+  deleteTitle: (id: number) => request<{ deleted: boolean }>('DELETE', `/titles/${id}`),
+  /** Ersetzt die Titel eines Mitglieds; [] entfernt alle. */
+  setTitles: (id: number, title_ids: number[]) =>
+    request<{ titles: TitleRef[] }>('PUT', `/members/${id}/titles`, { title_ids }),
+  /** Befördern/Degradieren; rank_id null = kein Dienstgrad. */
   setRank: (id: number, rank_id: number | null, reason: string) =>
     request<{ rank_status: RankStatus; rank_history: RankHistoryEntry[] }>('PUT', `/members/${id}/rank`, {
       rank_id,

@@ -7,29 +7,29 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
   - Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
-- **Meins:** eigene Punkte (mit Punktekatalog), eigener Rang mit Rangliste und Verlauf, Strafen (Geldbeträge, offen/bezahlt).
+- **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt).
 - **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten, Ränge pflegen, Mitglieder befördern und degradieren.
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
-| **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog und Rangliste pflegen, befördern und degradieren |
-| **Mitglied** | die eigenen Punkte, den eigenen Rang und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
+| **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, Konten bearbeiten und Passwörter zurücksetzen, dazu alles vom Spieß |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog, Dienstgrade und Titel pflegen, befördern und degradieren, Titel vergeben |
+| **Mitglied** | die eigenen Punkte, den eigenen Dienstgrad und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
 
 **Jungmariner** erhalten laut Satzung nur die halbe Punktzahl. Der Spieß (oder ein Admin) setzt dafür beim Mitglied unter **Spieß → Mitglieder → Name** den Haken „Jungmariner“. Beim Anlegen eines neuen Mitglieds lässt sich der Haken auch gleich setzen. Dann gilt:
 
 - Bei jeder Punktevergabe wird für Jungmariner automatisch nur die Hälfte gutgeschrieben, z. B. 5 → 2,5. Dafür sind halbe Punkte möglich.
 - Abzüge (negative Punkte) zählen auch für Jungmariner voll.
 - Der Anfangsbestand beim Anlegen wird nicht halbiert, weil er ein bereits erreichter Punktestand ist.
-- Für Ränge und die Beförderungsübersicht zählen die gutgeschriebenen (halbierten) Punkte.
+- Für Dienstgrade und die Beförderungsübersicht zählen die gutgeschriebenen (halbierten) Punkte.
 - Ob ein Eintrag halbiert wurde, wird bei der Vergabe gespeichert und im Verlauf angezeigt („Jungmariner: halbe Punktzahl von +5“). Wird der Haken später entfernt, gelten nur künftige Vergaben wieder voll. Bereits vergebene Punkte bleiben unverändert.
 
 **Gäste** sind Besucher **ohne Anmeldung** und haben keine Rolle. Sie sehen nur öffentliche Termine, News und öffentliche Galeriebilder.
 
-Mitglieder sehen **ausschließlich ihre eigenen** Punkte, Ränge und Strafen. Ein angemeldetes WordPress-Konto ohne App-Rolle (z. B. ein reines Webseiten-Konto) steht in der App als **„Ohne Rolle“** und sieht dasselbe wie ein Gast.
+Mitglieder sehen **ausschließlich ihre eigenen** Punkte, Dienstgrade und Strafen. Ein angemeldetes WordPress-Konto ohne App-Rolle (z. B. ein reines Webseiten-Konto) steht in der App als **„Ohne Rolle“** und sieht dasselbe wie ein Gast.
 
 ## Warum kein Apple Developer Account nötig ist
 
@@ -63,7 +63,8 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
   includes/class-mkl-rest.php      REST-API /wp-json/mk-lank/v1/ inkl. Rechteprüfung
   includes/class-mkl-roles.php     Rollen Mitglied/Spieß/Admin, Migration
-  includes/class-mkl-ranks.php     Rangliste, zugewiesene Ränge, Beförderungsregeln, Verlauf
+  includes/class-mkl-ranks.php     Dienstgrade, zugewiesene Dienstgrade, Beförderungsregeln, Verlauf
+  includes/class-mkl-titles.php    Titel (Kapitän, Ehrenkapitän, …) und ihre Zuweisung
   includes/class-mkl-documents.php Dokumente und Kategorien: Prüfung, geschützte Ablage, Auslieferung
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
@@ -95,7 +96,7 @@ scripts/                   Build- und Test-Skripte
    - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
    - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
 5. **Rollen festlegen:**
-   - In der App unter **Spieß → Mitglied antippen → „Rolle in der App“** (Ohne Rolle / Mitglied / Spieß). Mit „Auch Konten ohne Rolle anzeigen“ findest du Konten, die noch keine Rolle haben.
+   - In der App unter **Spieß → Einrichtung → Mitglieder verwalten → Konto antippen → „Rolle in der App“** (Ohne Rolle / Mitglied / Spieß). Die Liste enthält alle Konten, auch die ohne Rolle.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
    - Die bisherige WordPress-Rolle, z. B. Redakteur, bleibt dabei erhalten.
    - Beim Update auf 0.2.0 werden alle bisherigen Abonnenten automatisch zu Mitgliedern. Wer keins ist, bekommt in der App „Ohne Rolle“.
@@ -103,7 +104,9 @@ scripts/                   Build- und Test-Skripte
    - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
    - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
-7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Mitglieder → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
+7. Jedes Mitglied braucht ein WordPress-Benutzerkonto mit der Rolle „Mitglied“. Administratoren können Mitglieder direkt in der App anlegen: **Spieß → Einrichtung → Mitglieder verwalten → „+ Mitglied anlegen“**. Die App erzeugt ein zufälliges Startpasswort, zeigt es **nur einmal** an und verschickt keine E-Mail. Gebt die Zugangsdaten persönlich weiter. Das Mitglied kann das Passwort danach selbst in der App ändern: oben rechts **„Konto“** → **„Passwort ändern“**. Dafür ist das aktuelle Passwort nötig, das neue muss mindestens 8 Zeichen haben. Auf allen anderen Geräten wird das Mitglied danach abgemeldet. Spieße ohne Admin-Rechte sehen diese Funktion nicht.
+
+   Unter **Mitglieder verwalten** können Admins außerdem Name, Benutzername und E-Mail eines Kontos ändern und ein **neues Startpasswort** erzeugen, wenn jemand sein Passwort vergessen hat. Bei einem neuen Passwort oder Benutzernamen wird das Mitglied auf allen Geräten abgemeldet. Den eigenen Benutzernamen und das eigene Passwort ändert man dort nicht (das eigene Passwort unter „Konto“).
 8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“):
    1. In der [Google Cloud Console](https://console.cloud.google.com/) im vorhandenen Projekt die **Google Drive API** aktivieren: [Direktlink](https://console.cloud.google.com/apis/library/drive.googleapis.com).
    2. Unter [IAM → Dienstkonten](https://console.cloud.google.com/iam-admin/serviceaccounts) ein **Dienstkonto** anlegen. Rollen braucht es keine.
@@ -121,18 +124,20 @@ scripts/                   Build- und Test-Skripte
    **Warum es schneller ist:** Jedes Bild wird einmalig in zwei Größen (400 px / 1600 px) auf dem eigenen Server abgelegt.
    - Öffentliche Bilder liefert der Webserver direkt aus.
    - Interne Bilder gibt es nur über `/app/foto/…` nach Prüfung der Anmeldung.
-9. **Rangliste anlegen und bestehende Mitglieder übernehmen:**
-   1. In der App unter **Spieß → Ränge → „Rangliste bearbeiten“** alle Ränge mit ihrer Mindestpunktzahl eintragen. Das dürfen Spieße und Admins.
-   2. Erst danach die Mitglieder übernehmen. Wer neu angelegt wird, bekommt unter **„+ Mitglied anlegen“ → „Übernahme“** gleich den heutigen Punktestand und seinen Rang. Der Rang muss mit diesen Punkten erreichbar sein. Die Punkte erscheinen als Buchung „Anfangsbestand bei Übernahme“.
+9. **Dienstgrade anlegen und bestehende Mitglieder übernehmen:**
+   1. In der App unter **Spieß → Einrichtung → Dienstgrade** alle Dienstgrade mit ihrer Mindestpunktzahl eintragen. Das dürfen Spieße und Admins.
+   2. Erst danach die Mitglieder übernehmen. Wer neu angelegt wird, bekommt unter **„+ Mitglied anlegen“ → „Übernahme“** gleich den heutigen Punktestand und seinen Dienstgrad. Der Dienstgrad muss mit diesen Punkten erreichbar sein. Die Punkte erscheinen als Buchung „Anfangsbestand bei Übernahme“.
    3. Mitglieder, die schon ein Konto haben, bekommen ihre Punkte über **„Punkte +“**, z. B. mit dem Grund „Anfangsbestand bei Übernahme“. Danach befördert sie ein Spieß.
 
    **Regeln:**
-   - Den Rang legen die Spieße fest. Punkte allein ändern den Rang nie.
-   - Befördern geht nur, wenn die Punkte die Schwelle des Zielrangs erreichen. Mehrere Ränge auf einmal überspringen ist erlaubt.
-   - Degradieren geht nur, wenn die Punkte unter der Schwelle des aktuellen Rangs liegen.
+   - Den Dienstgrad legen die Spieße fest. Punkte allein ändern den Dienstgrad nie.
+   - Befördern geht nur, wenn die Punkte die Schwelle des Zieldienstgrads erreichen. Mehrere Dienstgrade auf einmal überspringen ist erlaubt.
+   - Degradieren geht nur, wenn die Punkte unter der Schwelle des aktuellen Dienstgrads liegen.
    - Die Regeln gelten auch für Admins.
-   - **Spieß → Ränge** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
-   - Mitglieder sehen unter **Meins** ihren eigenen Rang, die fehlenden Punkte bis zum nächsten Rang, die Rangliste und ihren Verlauf, aber nicht die Ränge anderer.
+   - **Spieß → Dienstgrade** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
+   - Mitglieder sehen unter **Meins** ihren eigenen Dienstgrad, die fehlenden Punkte bis zum nächsten Dienstgrad, die Dienstgrade und ihren Verlauf, aber nicht die Dienstgrade anderer.
+
+   **Titel:** Kapitän, Ehrenkapitän, Ehrenspieß und Ehrenmitglied sind schon angelegt. Weitere Titel, Umbenennen und Löschen unter **Spieß → Einrichtung → Titel**. Vergeben werden Titel in den Mitgliedsdetails unter **„Titel ändern“**; ein Mitglied kann mehrere Titel haben. Titel hängen nicht von Punkten ab und werden zusätzlich zum Dienstgrad angezeigt: in der Mitgliederliste, in der Beförderungsübersicht und beim Mitglied selbst unter **Meins**. Das dürfen Spieße und Admins. Zugewiesene Titel lassen sich erst löschen, wenn sie niemand mehr hat.
 10. **Dokumente hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“**.
     - Zuerst bei Bedarf **Kategorien** anlegen, z. B. „Satzung & Ordnungen“, „Protokolle“, „Formulare“. Dokumente ohne Kategorie stehen unter „Weitere Dokumente“.
     - Dann Dokumente **hochladen**: Datei, Titel, Kategorie, Stand und **Sichtbarkeit** („Alle Mitglieder“ oder „Nur Spieße“; Admins sehen alles).
@@ -143,7 +148,7 @@ scripts/                   Build- und Test-Skripte
     - Der direkte Abruf der Dateien ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
     - Ist eine Datei größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
     - **Offline:** Was ein Mitglied einmal geöffnet oder heruntergeladen hat, speichert die App auf dem Gerät; es ist danach auch ohne Netz lesbar. Vorab wird nichts geladen. Beim Abmelden wird alles wieder gelöscht.
-11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Ränge und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
+11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Dienstgrade, Titel und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
@@ -186,7 +191,7 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 ### Tests
 
 ```bash
-# REST-API: Rechte, Validierung, Summen, Ränge, Dokumente, ICS-Parser
+# REST-API: Rechte, Validierung, Summen, Dienstgrade, Titel, Dokumente, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
 # Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)

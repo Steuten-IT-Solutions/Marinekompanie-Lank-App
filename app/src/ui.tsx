@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { MemberSummary } from './api';
+import type { MemberSummary, TitleRef } from './api';
+import { caps } from './format';
+import { navigate } from './router';
 
 /** Lädt Daten asynchron; reload() lädt neu. */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
@@ -53,6 +55,29 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () =
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty">{children}</p>;
+}
+
+/** Zurück zur Übersicht „Spieß → Einrichtung“ (oder einer anderen Seite). */
+export function BackToSetup({ to = 'spiess/einrichtung', label = 'Einrichtung' }: { to?: string; label?: string }) {
+  return (
+    <button type="button" className="btn btn-link back" onClick={() => navigate(to)}>
+      ‹ {label}
+    </button>
+  );
+}
+
+/** Titel (z. B. Ehrenkapitän) als Plaketten, zusätzlich zum Dienstgrad. */
+export function TitleBadges({ titles }: { titles: TitleRef[] }) {
+  if (titles.length === 0) return null;
+  return (
+    <span className="title-badges">
+      {titles.map((t) => (
+        <span key={t.id} className="badge badge-title">
+          {caps(t.title)}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export function StatCard({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'neutral' }) {
