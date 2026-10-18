@@ -1,6 +1,7 @@
 import { api } from '../api';
-import { formatDate, formatPoints } from '../format';
+import { formatDate, formatPoints, halvedNote } from '../format';
 import { Empty, ErrorBox, Loading, StatCard, useAsync } from '../ui';
+import { MyTitles, RankProgress } from './Rang';
 
 export default function Punkte() {
   const { data, error, loading, reload } = useAsync(() => Promise.all([api.me(), api.myPoints()]));
@@ -11,7 +12,12 @@ export default function Punkte() {
 
   return (
     <div>
+      <MyTitles titles={me.titles} />
       <StatCard label="Meine Punkte" value={me.points.toLocaleString('de-DE')} tone="good" />
+      <RankProgress me={me} link showTitles={false} />
+      {me.is_jungmariner && (
+        <p className="muted small">Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.</p>
+      )}
       <h2 className="section-title">Verlauf</h2>
       {points.length === 0 ? (
         <Empty>Noch keine Punkte – das ändert sich beim nächsten Antreten!</Empty>
@@ -23,6 +29,7 @@ export default function Punkte() {
                 <div className="row-title">{p.reason}</div>
                 <div className="row-sub">
                   {formatDate(p.date)}
+                  {halvedNote(p)}
                   {p.created_by_name && ` · von ${p.created_by_name}`}
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // E2E-Tests gegen eine laufende WordPress-Instanz mit aktivem Plugin.
-// Erwartet die Testbenutzer spiess (Rolle Spieß), mariner1, mariner2 mit Passwort test1234.
+// Erwartet die Testbenutzer spiess (Rolle Spieß), mariner1, mariner2, anwaerter mit Passwort test1234.
 export default defineConfig({
   testDir: './e2e',
   workers: 1,
