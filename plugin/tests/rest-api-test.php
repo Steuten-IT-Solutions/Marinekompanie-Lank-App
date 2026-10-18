@@ -1037,11 +1037,12 @@ list( $s, $att ) = mkl_req( 'PUT', '/attendance', $att_body );
 mkl_assert( 201 === $s && 'frei' === $att['source'] && 32 === strlen( $att['event_key'] ) && 'Arbeitsdienst Schützenplatz' === $att['title'] && '2026-09-12' === $att['date'], 'Freie Anwesenheitsliste anlegen' );
 $att_status = wp_list_pluck( $att['members'], 'status', 'id' );
 mkl_assert( 'anwesend' === $att_status[ $m1 ] && 'entschuldigt' === $att_status[ $m2 ] && 'fehlt' === $att_status[ $spiess ], 'Stati gespeichert, Mitglieder ohne Eintrag gelten als „fehlt“' );
-mkl_assert( ! isset( $att_status[ $att_anw ] ) && ! isset( $att_status[ $att_ohne ] ), 'Anwärter und Konten ohne Rolle stehen nicht in der Liste' );
+$att_anw_flag = wp_list_pluck( $att['members'], 'is_anwaerter', 'id' );
+mkl_assert( 'fehlt' === $att_status[ $att_anw ] && true === $att_anw_flag[ $att_anw ] && false === $att_anw_flag[ $m1 ], 'Anwärter stehen in der Liste und sind markiert' );
+mkl_assert( ! isset( $att_status[ $att_ohne ] ), 'Konten ohne Rolle stehen nicht in der Liste' );
 
 foreach (
 	array(
-		'Anwärter'         => array( 'entries' => array( array( 'user_id' => $att_anw, 'status' => 'anwesend' ) ) ),
 		'Konto ohne Rolle' => array( 'entries' => array( array( 'user_id' => $att_ohne, 'status' => 'anwesend' ) ) ),
 		'Unbekannter Status' => array( 'entries' => array( array( 'user_id' => $m1, 'status' => 'krank' ) ) ),
 		'Ohne Titel'       => array( 'title' => '' ),
@@ -1078,6 +1079,11 @@ list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1, $m
 mkl_assert( 201 === $s && 1 === count( $d ) && $m2 === $d[0]['user_id'], 'Zweite Buchung: schon gebuchte Mitglieder werden übersprungen, nicht Anwesende sind erlaubt' );
 list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1, $m2 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'attendance_id' => $att['id'] ) );
 mkl_assert( 400 === $s, 'Alle schon gebucht → 400' );
+list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'id' => $att['id'], 'title' => $att['title'], 'date' => $att['date'], 'entries' => array( array( 'user_id' => $att_anw, 'status' => 'anwesend' ) ) ) );
+$att_status = wp_list_pluck( $d['members'], 'status', 'id' );
+mkl_assert( 200 === $s && 'anwesend' === $att_status[ $att_anw ], 'Anwärter als anwesend speichern' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $att_anw ), 'points' => 3, 'reason' => 'x', 'attendance_id' => $att['id'] ) );
+mkl_assert( 400 === $s, 'Anwärter bekommen auch über die Anwesenheit keine Punkte → 400' );
 list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'x', 'attendance_id' => 999999 ) );
 mkl_assert( 400 === $s, 'Unbekannte Anwesenheitsliste → 400' );
 list( $s, $d ) = mkl_req( 'GET', '/attendance/' . $att['id'] );
@@ -1096,7 +1102,7 @@ mkl_assert( 200 === $s && 'Arbeitsdienst' === $d['title'] && '2026-09-13' === $d
 
 list( $s, $d ) = mkl_req( 'GET', '/attendance' );
 $att_recent = wp_list_pluck( $d, 'counts', 'id' );
-mkl_assert( 200 === $s && isset( $att_recent[ $att['id'] ] ) && array( 'anwesend' => 0, 'entschuldigt' => 1, 'fehlt' => 1 ) === $att_recent[ $att['id'] ], 'Letzte Listen mit Zählern' );
+mkl_assert( 200 === $s && isset( $att_recent[ $att['id'] ] ) && array( 'anwesend' => 1, 'entschuldigt' => 1, 'fehlt' => 1 ) === $att_recent[ $att['id'] ], 'Letzte Listen mit Zählern' );
 
 wp_set_current_user( $m1 );
 list( $s, $d ) = mkl_req( 'GET', '/me/attendance' );

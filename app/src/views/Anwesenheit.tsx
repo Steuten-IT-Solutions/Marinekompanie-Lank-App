@@ -27,6 +27,19 @@ export function countsText(c: Record<AttendanceStatus, number>): string {
   return `${c.anwesend} anwesend · ${c.entschuldigt} entschuldigt · ${c.fehlt} fehlt`;
 }
 
+/** „davon 5 Mitglieder · 2 Jungmariner · 1 Anwärter“; Jungmariner zählen nicht zusätzlich als Mitglieder. */
+export function presentBreakdown(present: AttendanceMember[]): string {
+  const anw = present.filter((m) => m.is_anwaerter).length;
+  const jung = present.filter((m) => !m.is_anwaerter && m.is_jungmariner).length;
+  const members = present.length - anw - jung;
+  return `davon ${members} ${members === 1 ? 'Mitglied' : 'Mitglieder'} · ${jung} Jungmariner · ${anw} Anwärter`;
+}
+
+/** Punkte und Strafen gibt es nur für Mitglieder, nicht für Anwärter. */
+export function canBook(m: AttendanceMember): boolean {
+  return !m.is_anwaerter;
+}
+
 /* ------------------------------------------------------------------ */
 
 const EVENTS_SHOWN = 8;
@@ -139,7 +152,7 @@ function Overview({ onToast }: { onToast: (msg: string) => void }) {
 
 /** Noch nicht gespeicherte Liste zu einem Kalendertermin. */
 function EventAttendance({ eventKey, onToast }: { eventKey: string; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(() => Promise.all([api.attendanceEvents(), api.members()]));
+  const { data, error, loading, reload } = useAsync(() => Promise.all([api.attendanceEvents(), api.members({ anwaerter: true })]));
   const event = data?.[0].find((ev) => ev.key === eventKey);
 
   // Gibt es schon eine Liste, direkt dorthin.
@@ -155,6 +168,7 @@ function EventAttendance({ eventKey, onToast }: { eventKey: string; onToast: (ms
   const members: AttendanceMember[] = data![1].map((m) => ({
     id: m.id,
     name: m.name,
+    is_anwaerter: m.level === 'anwaerter',
     is_jungmariner: m.is_jungmariner,
     status: 'fehlt',
     booked: false,
@@ -207,7 +221,9 @@ function Editor({
   );
   const counts = { anwesend: 0, entschuldigt: 0, fehlt: 0 };
   for (const m of members) counts[statuses[m.id]]++;
-  const toBook = members.filter((m) => statuses[m.id] === 'anwesend' && !m.booked).length;
+  const toBook = members.filter((m) => statuses[m.id] === 'anwesend' && !m.booked && canBook(m)).length;
+  const presentBookable = members.filter((m) => statuses[m.id] === 'anwesend' && canBook(m)).length;
+  const toPenalize = members.filter((m) => statuses[m.id] === 'fehlt' && canBook(m)).length;
 
   function change(next: Record<number, AttendanceStatus>) {
     setStatuses(next);
@@ -305,6 +321,9 @@ function Editor({
       <p className="attendance-counts" role="status">
         {countsText(counts)}
       </p>
+      <p className="attendance-breakdown muted small">
+        {presentBreakdown(members.filter((m) => statuses[m.id] === 'anwesend'))}
+      </p>
 
       <div className="picker">
         <div className="picker-head">
@@ -335,7 +354,11 @@ function Editor({
           {filtered.map((m) => (
             <li key={m.id} className="attendance-grid" role="radiogroup" aria-label={m.name}>
               <span className="attendance-name">
-                {m.name}
+                <span>
+                  {m.name}
+                  {m.is_anwaerter && <span className="badge badge-level-anwaerter">Anwärter</span>}
+                  {m.is_jungmariner && !m.is_anwaerter && <span className="badge badge-jungmariner">Jungmariner</span>}
+                </span>
                 {m.booked && <span className="attendance-booked">Punkte gebucht</span>}
               </span>
               {STATUS_COLUMNS.map((st) => (
@@ -363,11 +386,11 @@ function Editor({
         <button className="btn" disabled={busy || toBook === 0} onClick={() => saveAndGo('punkte')}>
           Punkte für {toBook} {toBook === 1 ? 'Anwesenden' : 'Anwesende'}
         </button>
-        <button className="btn btn-warn" disabled={busy || counts.fehlt === 0} onClick={() => saveAndGo('strafe')}>
-          Strafe für {counts.fehlt} {counts.fehlt === 1 ? 'Unentschuldigten' : 'Unentschuldigte'}
+        <button className="btn btn-warn" disabled={busy || toPenalize === 0} onClick={() => saveAndGo('strafe')}>
+          Strafe für {toPenalize} {toPenalize === 1 ? 'Unentschuldigten' : 'Unentschuldigte'}
         </button>
       </div>
-      {toBook === 0 && counts.anwesend > 0 && <p className="muted small">Punkte bereits gebucht.</p>}
+      {toBook === 0 && presentBookable > 0 && <p className="muted small">Punkte bereits gebucht.</p>}
       {list.id && (
         <p className="muted small">
           {list.updated_by_name && <>Zuletzt gespeichert von {list.updated_by_name}. </>}

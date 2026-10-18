@@ -851,10 +851,16 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await page.getByLabel('Spiess: entschuldigt').check();
   await expect(page.getByLabel('Spiess: anwesend')).not.toBeChecked();
   await expect(page.getByLabel('Mariner1: fehlt')).not.toBeChecked();
-  await expect(page.locator('.attendance-counts')).toContainText('2 anwesend · 1 entschuldigt');
+  // Anwärter stehen mit in der Liste, bekommen aber keine Punkte.
+  await page.getByLabel('Anwaerter: anwesend', { exact: true }).check();
+  await page.getByLabel('Neuer Mariner: anwesend').check();
+  await expect(page.locator('.attendance-counts')).toContainText('4 anwesend · 1 entschuldigt');
+  await expect(page.locator('.attendance-breakdown')).toHaveText('davon 2 Mitglieder · 1 Jungmariner · 1 Anwärter');
   await shot(page, '12-anwesenheit');
 
   // Punktevorschlag: Formular mit den Anwesenden, Termindatum und passender Vorlage.
+  await page.getByLabel('Neuer Mariner: fehlt').check();
+  await expect(page.locator('.attendance-breakdown')).toHaveText('davon 2 Mitglieder · 0 Jungmariner · 1 Anwärter');
   await page.getByRole('button', { name: 'Punkte für 2 Anwesende' }).click();
   await expect(page.locator('.attendance-note')).toContainText('Arbeitsdienst Schützenplatz');
   await expect(page.locator('select')).toHaveValue(/\d+/);

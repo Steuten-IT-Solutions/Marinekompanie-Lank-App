@@ -183,6 +183,8 @@ export interface AttendanceSummary extends AttendanceList {
 export interface AttendanceMember {
   id: number;
   name: string;
+  /** Anwärter stehen in der Liste, bekommen aber keine Punkte oder Strafen. */
+  is_anwaerter: boolean;
   is_jungmariner: boolean;
   status: AttendanceStatus;
   /** Hat für diesen Termin schon Punkte (nicht storniert). */

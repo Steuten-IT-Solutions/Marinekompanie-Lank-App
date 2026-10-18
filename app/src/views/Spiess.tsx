@@ -3,7 +3,7 @@ import { api, config, isMemberLevel, LEVEL_LABELS, type AttendanceDetail, type C
 import { caps, formatDate, formatEuro, formatPoints, halvedNote, matchCatalog, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, TitleBadges, useAsync } from '../ui';
-import Anwesenheit from './Anwesenheit';
+import Anwesenheit, { canBook } from './Anwesenheit';
 import Einrichtung, { canManageAccounts } from './Einrichtung';
 import { Promotions, RankControl } from './SpiessRaenge';
 import { TitleControl } from './SpiessTitel';
@@ -367,7 +367,7 @@ function GivePointsForm({
   // Vorschlag aus der Anwesenheitsliste: Anwesende ohne Buchung, Termindatum, passende Vorlage.
   const [suggested] = useState(() => (list ? matchCatalog(list.title, catalog) : null));
   const [selected, setSelected] = useState<number[]>(() =>
-    list ? list.members.filter((m) => m.status === 'anwesend' && !m.booked).map((m) => m.id) : preselect,
+    list ? list.members.filter((m) => m.status === 'anwesend' && !m.booked && canBook(m)).map((m) => m.id) : preselect,
   );
   const [catalogId, setCatalogId] = useState<string>(suggested ? String(suggested.id) : '');
   const [points, setPoints] = useState(suggested ? String(suggested.points) : '');
@@ -494,7 +494,7 @@ function GivePenaltyForm({
 }) {
   // Vorschlag aus der Anwesenheitsliste: alle, die unentschuldigt gefehlt haben.
   const [selected, setSelected] = useState<number[]>(() =>
-    list ? list.members.filter((m) => m.status === 'fehlt').map((m) => m.id) : preselect,
+    list ? list.members.filter((m) => m.status === 'fehlt' && canBook(m)).map((m) => m.id) : preselect,
   );
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState(list ? `Unentschuldigt gefehlt: ${list.title}` : '');

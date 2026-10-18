@@ -13,8 +13,8 @@
  *   Benutzer anlegen/Rollen ändern create_users/promote_users. Anwärter zum Mitglied
  *   befördern darf auch der Spieß (mkl_manage).
  * - Mitglieder sehen nur den eigenen Dienstgrad und Verlauf (/me…), nie den anderer.
- * - Anwesenheitslisten führt der Spieß (mkl_manage); Mitglieder sehen nur die eigene
- *   Anwesenheit (/me/attendance).
+ * - Anwesenheitslisten (Mitglieder und Anwärter) führt der Spieß (mkl_manage);
+ *   Mitglieder sehen nur die eigene Anwesenheit (/me/attendance).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -1387,9 +1387,14 @@ class MKL_REST {
 		return rest_ensure_response( self::attendance_detail( $list ) );
 	}
 
+	/** Mitglieder und Anwärter stehen in der Anwesenheitsliste. */
+	private static function in_attendance( $user_id ) {
+		return MKL_Roles::is_member( $user_id ) || MKL_Roles::LEVEL_ANWAERTER === MKL_Roles::get_level( $user_id );
+	}
+
 	/**
-	 * Liste mit allen aktuellen Mitgliedern. Wer noch keinen Eintrag hat, z. B.
-	 * weil er erst später Mitglied wurde, erscheint als „fehlt“.
+	 * Liste mit allen aktuellen Mitgliedern und Anwärtern. Wer noch keinen Eintrag
+	 * hat, z. B. weil er erst später dazukam, erscheint als „fehlt“.
 	 */
 	private static function attendance_detail( array $list ) {
 		$statuses = MKL_Attendance::statuses( $list['id'] );
@@ -1397,12 +1402,13 @@ class MKL_REST {
 		$members  = array();
 		foreach ( self::member_users() as $u ) {
 			$id = (int) $u->ID;
-			if ( ! MKL_Roles::is_member( $id ) ) {
+			if ( ! self::in_attendance( $id ) ) {
 				continue;
 			}
 			$members[] = array(
 				'id'             => $id,
 				'name'           => $u->display_name,
+				'is_anwaerter'   => ! MKL_Roles::is_member( $id ),
 				'is_jungmariner' => MKL_Roles::is_jungmariner( $id ),
 				'status'         => isset( $statuses[ $id ] ) ? $statuses[ $id ] : MKL_Attendance::STATUS_FEHLT,
 				'booked'         => isset( $booked[ $id ] ),
@@ -1463,8 +1469,8 @@ class MKL_REST {
 			if ( ! $user_id || ! get_userdata( $user_id ) ) {
 				return self::error( 'Unbekanntes Mitglied.' );
 			}
-			if ( ! MKL_Roles::is_member( $user_id ) ) {
-				return self::error( 'In der Anwesenheitsliste stehen nur Mitglieder.' );
+			if ( ! self::in_attendance( $user_id ) ) {
+				return self::error( 'In der Anwesenheitsliste stehen nur Mitglieder und Anwärter.' );
 			}
 			if ( ! in_array( $status, MKL_Attendance::STATUSES, true ) ) {
 				return self::error( 'Ungültiger Status.' );

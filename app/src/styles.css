@@ -525,7 +525,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .badge-att-entschuldigt { background: #f3e6c4; color: #6b4e10; }
 .badge-att-fehlt { background: #f6d9cf; color: #7a2412; }
 .attendance-meta { margin-bottom: 4px; }
-.attendance-counts { margin: 10px 2px 12px; font-weight: 650; color: var(--ink-2); }
+.attendance-counts { margin: 10px 2px 0; font-weight: 650; color: var(--ink-2); }
+.attendance-breakdown { margin: 2px 2px 12px; }
+.attendance-name .badge { margin-left: 6px; vertical-align: 2px; }
 .attendance-list { max-height: none; }
 .attendance-list { padding: 0; }
 .attendance-list li { border-bottom: 1px solid var(--line); }
