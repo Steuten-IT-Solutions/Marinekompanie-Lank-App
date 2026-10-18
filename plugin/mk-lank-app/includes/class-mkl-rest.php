@@ -1404,12 +1404,9 @@ class MKL_REST {
 		);
 	}
 
-	/** Entfernt ein gerade angelegtes Konto samt Buchungen wieder, damit kein halb angelegtes Mitglied bleibt. */
+	/** Entfernt ein gerade angelegtes Konto samt Buchungen wieder (über deleted_user), damit kein halb angelegtes Mitglied bleibt. */
 	private static function rollback_user( $user_id ) {
-		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/user.php';
-		$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $user_id ), array( '%d' ) );
-		$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $user_id ), array( '%d' ) );
 		wp_delete_user( $user_id );
 	}
 

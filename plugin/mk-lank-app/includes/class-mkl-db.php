@@ -4,6 +4,8 @@
  *
  * Geldbeträge werden ausschließlich als Ganzzahl in Cent gespeichert.
  * Einträge werden nie physisch gelöscht, sondern über deleted_at storniert.
+ * Ausnahme: Wird ein WordPress-Konto gelöscht, entfernt delete_user_data()
+ * alle Daten dieses Mitglieds.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -439,6 +441,20 @@ class MKL_DB {
 			array( '%s', '%d' ),
 			array( '%d' )
 		);
+	}
+
+	/**
+	 * Löscht alle Daten eines Mitglieds: Punkte, Strafen (auch stornierte),
+	 * Dienstgradverlauf und Anwesenheit. Läuft über den Hook deleted_user.
+	 * Einträge, die das Mitglied für andere angelegt hat, bleiben; der Name
+	 * dazu lässt sich nach dem Löschen des Kontos nicht mehr auflösen.
+	 */
+	public static function delete_user_data( $user_id ) {
+		global $wpdb;
+		$user_id = (int) $user_id;
+		foreach ( array( self::table( 'points' ), self::table( 'penalties' ), MKL_Ranks::history_table(), MKL_Attendance::entries_table() ) as $t ) {
+			$wpdb->delete( $t, array( 'user_id' => $user_id ), array( '%d' ) );
+		}
 	}
 
 	/* ------------------------------------------------------------------ */

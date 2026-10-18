@@ -90,7 +90,7 @@ scripts/                   Build- und Test-Skripte
   - `mkl_manage_events`: Admin (öffentliche Termine)
   - `mkl_manage_documents`: Admin (Dokumente)
   - Benutzer anlegen und Rollen ändern ist an die WordPress-Rechte `create_users` bzw. `promote_users` gebunden. Ausnahme: Anwärter zum Mitglied befördern (`POST /members/{id}/promote`) darf auch der Spieß (`mkl_manage`).
-- **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet.
+- **Nachvollziehbarkeit:** Zu jedem Eintrag wird gespeichert, wer ihn angelegt hat. Stornierte Einträge werden nicht gelöscht, sondern nur ausgeblendet. Wird ein WordPress-Konto gelöscht, löscht das Plugin alle Daten dieses Mitglieds (Punkte, Strafen, Dienstgradverlauf, Anwesenheit). Einträge, die die Person für andere angelegt hat, bleiben erhalten.
 
 ## Installation auf der Webseite
 
