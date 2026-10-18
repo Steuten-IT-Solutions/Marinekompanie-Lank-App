@@ -1,33 +1,37 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import {
-  api,
-  config,
-  LEVEL_LABELS,
-  MAX_BULK_USERS,
-  type CatalogItem,
-  type CreatedUser,
-  type Level,
-  type MemberSummary,
-  type NewUserInput,
-} from '../api';
-import { caps, formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
+import { api, config, isMemberLevel, LEVEL_LABELS, type CatalogItem, type MemberSummary } from '../api';
+import { caps, formatDate, formatEuro, formatPoints, halvedNote, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
-import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
+import { Empty, ErrorBox, Loading, MemberPicker, StatCard, TitleBadges, useAsync } from '../ui';
+import Einrichtung, { canManageAccounts } from './Einrichtung';
+import { Promotions, RankControl } from './SpiessRaenge';
+import { TitleControl } from './SpiessTitel';
 import { PenaltyRow } from './Strafen';
 
-type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'katalog';
+type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'raenge' | 'einrichtung';
+
+/** Frühere Adressen, die jetzt unter „Einrichtung“ liegen. */
+function setupAlias(path: string[]): string[] | null {
+  if (path[0] === 'katalog') return ['katalog'];
+  if (path[0] === 'neu') return ['mitglieder', 'neu'];
+  if (path[0] === 'raenge' && path[1] === 'liste') return ['raenge'];
+  if (path[0] === 'raenge' && path[1] === 'titel') return ['titel'];
+  return path[0] === 'einrichtung' ? path.slice(1) : null;
+}
 
 export default function Spiess({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
-  const [sub, arg] = [path[0] as Sub | 'mitglied' | 'neu' | undefined, path[1]];
+  const [sub, arg] = [path[0] as Sub | 'mitglied' | undefined, path[1]];
+  const setup = setupAlias(path);
   const preselect = arg && /^\d+$/.test(arg) ? [Number(arg)] : [];
 
   const tabs: { id: Sub; label: string }[] = [
     { id: 'mitglieder', label: 'Mitglieder' },
     { id: 'punkte', label: 'Punkte +' },
     { id: 'strafe', label: 'Strafe +' },
-    { id: 'katalog', label: 'Katalog' },
+    { id: 'raenge', label: 'Dienstgrade' },
+    { id: 'einrichtung', label: 'Einrichtung' },
   ];
-  const active: Sub = sub === 'mitglied' || sub === 'neu' || !sub ? 'mitglieder' : (sub as Sub);
+  const active: Sub = setup ? 'einrichtung' : sub === 'mitglied' || !sub ? 'mitglieder' : (sub as Sub);
 
   return (
     <div>
@@ -43,16 +47,16 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
           </button>
         ))}
       </nav>
-      {sub === 'mitglied' && arg ? (
-        <MemberDetailView id={Number(arg)} onToast={onToast} />
-      ) : sub === 'neu' && config?.user?.canCreateUsers ? (
-        <NewMember />
+      {setup ? (
+        <Einrichtung path={setup} onToast={onToast} />
+      ) : sub === 'mitglied' && arg ? (
+        <MemberDetailView id={Number(arg)} startPromote={path[2] === 'befoerdern'} onToast={onToast} />
       ) : active === 'punkte' ? (
         <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
       ) : active === 'strafe' ? (
         <GivePenalty key={path.join('/')} preselect={preselect} onToast={onToast} />
-      ) : active === 'katalog' ? (
-        <Catalog onToast={onToast} />
+      ) : active === 'raenge' ? (
+        <Promotions />
       ) : (
         <Members />
       )}
@@ -63,9 +67,8 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 /* ------------------------------------------------------------------ */
 
 function Members() {
-  const canPromote = !!config?.user?.canPromoteUsers;
-  const [showGuests, setShowGuests] = useState(false);
-  const { data, error, loading, reload } = useAsync(() => api.members(showGuests), [showGuests]);
+  // Anwärter mitladen, damit Spieß und Admins sie befördern können.
+  const { data, error, loading, reload } = useAsync(() => api.members({ anwaerter: true }));
   const [query, setQuery] = useState('');
   const list = useMemo(
     () => (data ?? []).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())),
@@ -75,16 +78,11 @@ function Members() {
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
 
-  const totalOpen = (data ?? []).filter((m) => m.level !== 'gast').reduce((s, m) => s + m.open_cents, 0);
+  const totalOpen = (data ?? []).filter((m) => isMemberLevel(m.level)).reduce((s, m) => s + m.open_cents, 0);
 
   return (
     <div>
       <StatCard label="Offene Strafen gesamt" value={formatEuro(totalOpen)} tone={totalOpen > 0 ? 'warn' : 'good'} />
-      {config?.user?.canCreateUsers && (
-        <button className="btn btn-block add-member" onClick={() => navigate('spiess/neu')}>
-          + Mitglied anlegen
-        </button>
-      )}
       <input
         className="search"
         type="search"
@@ -93,12 +91,6 @@ function Members() {
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Mitglied suchen"
       />
-      {canPromote && (
-        <label className="toggle">
-          <input type="checkbox" checked={showGuests} onChange={(e) => setShowGuests(e.target.checked)} />
-          Auch Gast-Konten anzeigen (um ihnen eine Rolle zu geben)
-        </label>
-      )}
       <ul className="card-list">
         {list.map((m) => (
           <li key={m.id} className="card row clickable" onClick={() => navigate(`spiess/mitglied/${m.id}`)}>
@@ -106,8 +98,11 @@ function Members() {
               <div className="row-title">
                 {m.name}{' '}
                 {m.level !== 'mitglied' && <span className={`badge badge-level-${m.level}`}>{caps(LEVEL_LABELS[m.level])}</span>}
+                <TitleBadges titles={m.titles} />
+                {m.is_jungmariner && <span className="badge badge-jungmariner">Jungmariner</span>}
               </div>
               <div className="row-sub">
+                {m.rank && <>{m.rank.title} · </>}
                 {m.points.toLocaleString('de-DE')} Punkte
                 {m.open_cents > 0 && <> · <span className="neg">{formatEuro(m.open_cents)} offen</span></>}
               </div>
@@ -123,7 +118,15 @@ function Members() {
 
 /* ------------------------------------------------------------------ */
 
-function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) => void }) {
+function MemberDetailView({
+  id,
+  startPromote,
+  onToast,
+}: {
+  id: number;
+  startPromote: boolean;
+  onToast: (msg: string) => void;
+}) {
   const { data, error, loading, reload } = useAsync(() => api.member(id), [id]);
   const [busy, setBusy] = useState(false);
 
@@ -150,12 +153,30 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
         ‹ Alle Mitglieder
       </button>
       <h2 className="member-name">{m.name}</h2>
-      <RoleControl id={m.id} level={m.level} onChanged={reload} onToast={onToast} />
+      <p className="muted small member-level">
+        Rolle: {LEVEL_LABELS[m.level]}
+        {canManageAccounts() && (
+          <>
+            {' · '}
+            <button className="btn btn-link inline-link" onClick={() => navigate(`spiess/einrichtung/mitglieder/${m.id}`)}>
+              Konto verwalten
+            </button>
+          </>
+        )}
+      </p>
+      {m.level === 'anwaerter' && config?.user?.isSpiess && (
+        <button className="btn btn-block promote-anwaerter" disabled={busy} onClick={() => run(() => api.promote(m.id), 'Zum Mitglied befördert')}>
+          Zum Mitglied befördern
+        </button>
+      )}
+      {isMemberLevel(m.level) && (
+        <JungmarinerToggle key={m.id} id={m.id} initial={m.is_jungmariner} onChanged={reload} onToast={onToast} />
+      )}
       <div className="stats">
         <StatCard label="Punkte" value={m.points.toLocaleString('de-DE')} tone="good" />
         <StatCard label="Offen" value={formatEuro(m.open_cents)} tone={m.open_cents > 0 ? 'warn' : 'good'} />
       </div>
-      {m.level !== 'gast' && (
+      {isMemberLevel(m.level) && (
         <div className="button-row">
           <button className="btn" onClick={() => navigate(`spiess/punkte/${m.id}`)}>
             Punkte vergeben
@@ -165,6 +186,16 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
           </button>
         </div>
       )}
+      {isMemberLevel(m.level) && (
+        <RankControl
+          key={`${m.id}-${m.rank_status.rank?.id ?? 0}-${m.points}`}
+          member={m}
+          startPromote={startPromote}
+          onChanged={reload}
+          onToast={onToast}
+        />
+      )}
+      {isMemberLevel(m.level) && <TitleControl member={m} onChanged={reload} onToast={onToast} />}
 
       <h3 className="section-title">Strafen</h3>
       {m.penalties.length === 0 ? (
@@ -223,6 +254,7 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
                 <div className="row-sub">
                   {formatDate(p.date)}
                   {p.created_by_name && ` · von ${p.created_by_name}`}
+                  {halvedNote(p)}
                 </div>
                 <div className="row-actions">
                   <button
@@ -246,340 +278,42 @@ function MemberDetailView({ id, onToast }: { id: number; onToast: (msg: string) 
   );
 }
 
-/** Admins legen hier die Rolle in der App fest (Gast / Mitglied / Spieß). */
-function RoleControl({
+/**
+ * Jungmariner erhalten laut Satzung nur die halbe Punktzahl. Die Markierung gilt
+ * für künftige Vergaben; bereits vergebene Punkte bleiben, wie sie sind.
+ */
+function JungmarinerToggle({
   id,
-  level,
+  initial,
   onChanged,
   onToast,
 }: {
   id: number;
-  level: Level;
+  initial: boolean;
   onChanged: () => void;
   onToast: (msg: string) => void;
 }) {
+  const [checked, setChecked] = useState(initial);
   const [busy, setBusy] = useState(false);
-  if (!config?.user?.canPromoteUsers) {
-    return <p className="muted small member-level">Rolle: {LEVEL_LABELS[level]}</p>;
-  }
-  if (level === 'admin' || id === config.user.id) {
-    return (
-      <p className="muted small member-level">
-        Rolle: {LEVEL_LABELS[level]}
-        {level === 'admin' && ' (wird im WordPress-Backend verwaltet)'}
-      </p>
-    );
-  }
-  async function change(next: Exclude<Level, 'admin'>) {
-    if (next === level) return;
+  async function change(next: boolean) {
+    setChecked(next);
     setBusy(true);
     try {
-      await api.setRole(id, next);
-      onToast(`Rolle geändert: ${LEVEL_LABELS[next]}`);
+      await api.setJungmariner(id, next);
+      onToast(next ? 'Als Jungmariner markiert' : 'Kein Jungmariner mehr');
       onChanged();
     } catch (e) {
+      setChecked(!next);
       onToast((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <div className="role-control">
-      <span className="field-label">Rolle in der App</span>
-      <div className="segmented small" role="group" aria-label="Rolle in der App">
-        {(['gast', 'mitglied', 'spiess'] as const).map((l) => (
-          <button
-            key={l}
-            className={level === l ? 'active' : ''}
-            disabled={busy}
-            aria-pressed={level === l}
-            aria-label={LEVEL_LABELS[l]}
-            onClick={() => change(l)}
-          >
-            {caps(LEVEL_LABELS[l])}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function NewMember() {
-  const [mode, setMode] = useState<'einzeln' | 'mehrere'>('einzeln');
-  return (
-    <div>
-      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/mitglieder')}>
-        ‹ Alle Mitglieder
-      </button>
-      <div className="segmented small new-member-mode" role="group" aria-label="Anlegen">
-        {(
-          [
-            ['einzeln', 'Einzeln'],
-            ['mehrere', 'Mehrere'],
-          ] as const
-        ).map(([id, label]) => (
-          <button key={id} type="button" className={mode === id ? 'active' : ''} aria-pressed={mode === id} onClick={() => setMode(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {mode === 'einzeln' ? <NewSingleMember /> : <NewMembersBulk />}
-    </div>
-  );
-}
-
-function credentialsText(u: CreatedUser) {
-  return `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${u.username}\nPasswort: ${u.password}`;
-}
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function NewSingleMember() {
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreatedUser | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    if (!name.trim()) return setFormError('Bitte einen Namen angeben.');
-    setBusy(true);
-    try {
-      setCreated(
-        await api.createUser({
-          name: name.trim(),
-          ...(username.trim() ? { username: username.trim() } : {}),
-          ...(email.trim() ? { email: email.trim() } : {}),
-        }),
-      );
-    } catch (err) {
-      setFormError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (created) {
-    return (
-      <div className="card created">
-        <h2>{created.name} ist angelegt</h2>
-        <p className="muted">
-          Das Startpasswort wird <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und persönlich
-          weitergeben.
-        </p>
-        <dl className="credentials">
-          <dt>App</dt>
-          <dd>{config?.appUrl}</dd>
-          <dt>Benutzername</dt>
-          <dd data-testid="new-username">{created.username}</dd>
-          <dt>Passwort</dt>
-          <dd data-testid="new-password">{created.password}</dd>
-        </dl>
-        <div className="button-row">
-          <button className="btn" onClick={async () => setCopied(await copyText(credentialsText(created)))}>
-            {copied ? 'Kopiert ✓' : 'Zugangsdaten kopieren'}
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setCreated(null);
-              setCopied(false);
-              setName('');
-              setUsername('');
-              setEmail('');
-            }}
-          >
-            Weiteres Mitglied
-          </button>
-        </div>
-        <button className="btn btn-link" onClick={() => navigate('spiess/mitglieder')}>
-          ‹ Zur Mitgliederliste
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form className="form" onSubmit={submit}>
-      <label className="field">
-        <span>Name</span>
-        <input type="text" autoComplete="off" placeholder="Vorname Nachname" value={name} onChange={(e) => setName(e.target.value)} required />
-      </label>
-      <label className="field">
-        <span>Benutzername (optional)</span>
-        <input
-          type="text"
-          autoComplete="off"
-          autoCapitalize="none"
-          placeholder="wird sonst aus dem Namen gebildet"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-      </label>
-      <label className="field">
-        <span>E-Mail (optional)</span>
-        <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </label>
-      <p className="muted small">Das Mitglied bekommt die Rolle „Mitglied“ und ein zufälliges Startpasswort.</p>
-      {formError && <p className="form-error" role="alert">{formError}</p>}
-      <button className="btn btn-block" type="submit" disabled={busy}>
-        {busy ? 'Legt an …' : 'Mitglied anlegen'}
-      </button>
-    </form>
-  );
-}
-
-/**
- * Eine Zeile pro Mitglied: „Vorname Nachname“, optional mit E-Mail-Adresse dahinter
- * (getrennt durch Komma, Semikolon oder Tabulator, z. B. aus einer Tabelle kopiert).
- */
-function parseMemberLines(text: string): { users: NewUserInput[]; errors: string[] } {
-  const users: NewUserInput[] = [];
-  const errors: string[] = [];
-  text.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.trim();
-    if (!line) return;
-    const parts = line.split(/[\t;,]/).map((p) => p.trim()).filter(Boolean);
-    const emails = parts.filter((p) => p.includes('@'));
-    const names = parts.filter((p) => !p.includes('@'));
-    const name = names.join(' ').replace(/\s+/g, ' ');
-    if (emails.length > 1) errors.push(`Zeile ${i + 1}: bitte nur eine E-Mail-Adresse angeben.`);
-    else if (!name) errors.push(`Zeile ${i + 1}: Name fehlt.`);
-    else if (names.length > 1) errors.push(`Zeile ${i + 1}: bitte als „Vorname Nachname“ ohne Komma schreiben.`);
-    else users.push({ name, ...(emails[0] ? { email: emails[0] } : {}) });
-  });
-  return { users, errors };
-}
-
-function NewMembersBulk() {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreatedUser[] | null>(null);
-  const [copied, setCopied] = useState<number | 'alle' | null>(null);
-  const { users, errors } = useMemo(() => parseMemberLines(text), [text]);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    if (errors.length) return setFormError(errors[0]);
-    if (users.length === 0) return setFormError('Bitte mindestens einen Namen eintragen.');
-    if (users.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} Mitglieder auf einmal anlegen.`);
-    setBusy(true);
-    try {
-      setCreated(await api.createUsers(users));
-    } catch (err) {
-      setFormError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (created) {
-    const all = created.map((u) => `${u.name}\n${credentialsText(u)}`).join('\n\n');
-    return (
-      <div className="card created">
-        <h2>
-          {created.length} {created.length === 1 ? 'Mitglied ist' : 'Mitglieder sind'} angelegt
-        </h2>
-        <p className="muted">
-          Die Startpasswörter werden <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und jedem
-          Mitglied persönlich weitergeben.
-        </p>
-        <button className="btn btn-block" onClick={async () => setCopied((await copyText(all)) ? 'alle' : null)}>
-          {copied === 'alle' ? 'Alle kopiert ✓' : 'Alle Zugangsdaten kopieren'}
-        </button>
-        <p className="muted small">App: {config?.appUrl}</p>
-        <ul className="created-list">
-          {created.map((u) => (
-            <li key={u.id} data-testid="created-user">
-              <div className="created-name">{u.name}</div>
-              <dl className="credentials">
-                <dt>Benutzername</dt>
-                <dd data-testid="new-username">{u.username}</dd>
-                <dt>Passwort</dt>
-                <dd data-testid="new-password">{u.password}</dd>
-              </dl>
-              <button
-                className="btn btn-small btn-secondary"
-                aria-label={`Zugangsdaten von ${u.name} kopieren`}
-                onClick={async () => setCopied((await copyText(credentialsText(u))) ? u.id : null)}
-              >
-                {copied === u.id ? 'Kopiert ✓' : 'Kopieren'}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <button className="btn btn-link" onClick={() => navigate('spiess/mitglieder')}>
-          ‹ Zur Mitgliederliste
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form className="form" onSubmit={submit}>
-      <label className="field">
-        <span>Ein Mitglied pro Zeile</span>
-        <textarea
-          rows={8}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={'Max Müller\nErika Mustermann, erika@example.de'}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </label>
-      <p className="muted small">
-        Pro Zeile „Vorname Nachname“, optional mit Komma und E-Mail-Adresse dahinter. Eine Liste aus Excel mit den
-        Spalten Name und E-Mail kann direkt hineinkopiert werden. Benutzernamen werden aus den Namen gebildet. Alle
-        bekommen die Rolle „Mitglied“ und ein eigenes zufälliges Startpasswort. Enthält eine Zeile einen Fehler, wird
-        niemand angelegt.
-      </p>
-      {users.length > 0 && (
-        <div className="bulk-preview" aria-live="polite">
-          <span className="field-label">
-            Erkannt: {users.length} {users.length === 1 ? 'Mitglied' : 'Mitglieder'}
-          </span>
-          <ul>
-            {users.map((u, i) => (
-              <li key={i}>
-                {u.name}
-                {u.email && <span className="muted"> · {u.email}</span>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {errors.length > 0 && (
-        <ul className="form-error bulk-errors" role="alert">
-          {errors.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-      )}
-      {formError && !errors.includes(formError) && <p className="form-error" role="alert">{formError}</p>}
-      <button className="btn btn-block" type="submit" disabled={busy || errors.length > 0 || users.length === 0}>
-        {busy
-          ? 'Legt an …'
-          : users.length > 1
-            ? `${users.length} Mitglieder anlegen`
-            : 'Mitglieder anlegen'}
-      </button>
-    </form>
+    <label className="toggle">
+      <input type="checkbox" checked={checked} disabled={busy} onChange={(e) => change(e.target.checked)} />
+      Jungmariner (erhält ab jetzt die halbe Punktzahl, Abzüge zählen voll)
+    </label>
   );
 }
 
@@ -602,6 +336,8 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   const [members, catalog] = data as [MemberSummary[], CatalogItem[]];
+  const n = Number(points);
+  const juniors = members.filter((m) => m.is_jungmariner && selected.includes(m.id));
 
   function chooseCatalog(id: string) {
     setCatalogId(id);
@@ -615,7 +351,6 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    const n = Number(points);
     if (selected.length === 0) return setFormError('Bitte mindestens ein Mitglied auswählen.');
     if (!Number.isInteger(n) || n === 0) return setFormError('Bitte eine ganze Punktzahl ungleich 0 angeben.');
     if (!reason.trim()) return setFormError('Bitte einen Grund angeben.');
@@ -668,6 +403,12 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
         <span>Mitglieder</span>
         <MemberPicker members={members} selected={selected} onChange={setSelected} />
       </div>
+      {juniors.length > 0 && n > 0 && Number.isInteger(n) && (
+        <p className="muted small" role="status">
+          {juniors.length === 1 ? `${juniors[0].name} ist Jungmariner und erhält` : `${juniors.length} Jungmariner erhalten`} nur die
+          halbe Punktzahl: {formatPoints(n / 2)}.
+        </p>
+      )}
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Speichert …' : 'Punkte vergeben'}
@@ -677,7 +418,7 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
 }
 
 function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(api.members);
+  const { data, error, loading, reload } = useAsync(() => api.members());
   const [selected, setSelected] = useState<number[]>(preselect);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -735,99 +476,5 @@ function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (ms
         {busy ? 'Speichert …' : 'Strafe vergeben'}
       </button>
     </form>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function Catalog({ onToast }: { onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(() => api.catalog(true));
-  const [title, setTitle] = useState('');
-  const [points, setPoints] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function run(action: () => Promise<unknown>, msg: string) {
-    setBusy(true);
-    try {
-      await action();
-      onToast(msg);
-      reload();
-      return true;
-    } catch (e) {
-      onToast((e as Error).message);
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function add(e: FormEvent) {
-    e.preventDefault();
-    const n = Number(points);
-    if (!title.trim() || !Number.isInteger(n)) {
-      onToast('Bitte Titel und ganze Punktzahl angeben.');
-      return;
-    }
-    if (await run(() => api.createCatalogItem(title.trim(), n), 'Vorlage angelegt')) {
-      setTitle('');
-      setPoints('');
-    }
-  }
-
-  if (loading && !data) return <Loading />;
-  if (error) return <ErrorBox message={error} onRetry={reload} />;
-
-  return (
-    <div>
-      <form className="form card" onSubmit={add}>
-        <div className="field-row">
-          <label className="field grow">
-            <span>Neue Vorlage</span>
-            <input type="text" placeholder="z. B. Teilnahme Schützenfest" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          <label className="field narrow">
-            <span>Punkte</span>
-            <input type="number" inputMode="numeric" step="1" value={points} onChange={(e) => setPoints(e.target.value)} />
-          </label>
-        </div>
-        <button className="btn btn-block" type="submit" disabled={busy}>
-          Hinzufügen
-        </button>
-      </form>
-      <ul className="card-list">
-        {(data ?? []).map((c) => (
-          <li key={c.id} className={`card row ${c.active ? '' : 'inactive'}`}>
-            <div className="row-main">
-              <div className="row-title">{c.title}</div>
-              <div className="row-sub">{c.active ? 'aktiv' : 'deaktiviert'}</div>
-              <div className="row-actions">
-                <button
-                  className="btn btn-small btn-secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    const next = window.prompt(`Punkte für „${c.title}“`, String(c.points));
-                    if (next === null) return;
-                    const n = Number(next);
-                    if (!Number.isInteger(n)) return onToast('Bitte eine ganze Zahl angeben.');
-                    run(() => api.updateCatalogItem(c.id, { points: n }), 'Gespeichert');
-                  }}
-                >
-                  Punkte ändern
-                </button>
-                <button
-                  className="btn btn-small btn-secondary"
-                  disabled={busy}
-                  onClick={() => run(() => api.updateCatalogItem(c.id, { active: !c.active }), c.active ? 'Deaktiviert' : 'Aktiviert')}
-                >
-                  {c.active ? 'Deaktivieren' : 'Aktivieren'}
-                </button>
-              </div>
-            </div>
-            <div className="row-value pos">{formatPoints(c.points)}</div>
-          </li>
-        ))}
-        {(data ?? []).length === 0 && <Empty>Noch keine Vorlagen. Lege oben die erste an.</Empty>}
-      </ul>
-    </div>
   );
 }

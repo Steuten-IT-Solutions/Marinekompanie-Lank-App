@@ -1,13 +1,18 @@
 <?php
 /**
- * Rollen der App: Admin, Spieß, Mitglied, Gast.
+ * Rollen der App: Admin, Spieß, Mitglied, Anwärter.
  *
- * - Admin   = WordPress-Administrator, darf alles.
- * - Spieß   = Rolle mkl_spiess (mkl_manage + mkl_member).
- * - Mitglied = Rolle mkl_mitglied (mkl_member).
- * - Gast    = nicht angemeldet oder angemeldet ohne mkl_member.
+ * - Admin      = WordPress-Administrator, darf alles.
+ * - Spieß      = Rolle mkl_spiess (mkl_manage + mkl_member + mkl_calendar).
+ * - Mitglied   = Rolle mkl_mitglied (mkl_member + mkl_calendar).
+ * - Anwärter   = Rolle mkl_anwaerter (mkl_calendar): wie ohne Rolle, sieht aber
+ *                den internen Kalender statt der öffentlichen Termine.
+ * - Ohne Rolle = angemeldetes Konto ohne mkl_member/mkl_calendar (z. B. reines
+ *                Webseiten-Konto); sieht dasselbe wie ein Gast.
  *
- * Spieß und Mitglied werden zusätzlich zur bestehenden WordPress-Rolle vergeben
+ * „Gast“ ist keine Rolle, sondern ein Besucher ohne Anmeldung.
+ *
+ * Spieß, Mitglied und Anwärter werden zusätzlich zur bestehenden WordPress-Rolle vergeben
  * (z. B. Redakteur + Mitglied), damit niemand seine Webseiten-Rechte verliert.
  */
 
@@ -17,8 +22,9 @@ class MKL_Roles {
 
 	const LEVEL_ADMIN    = 'admin';
 	const LEVEL_SPIESS   = 'spiess';
-	const LEVEL_MITGLIED = 'mitglied';
-	const LEVEL_GAST     = 'gast';
+	const LEVEL_MITGLIED  = 'mitglied';
+	const LEVEL_ANWAERTER = 'anwaerter';
+	const LEVEL_OHNE      = 'ohne';
 
 	public static function init() {
 		add_action( 'show_user_profile', array( __CLASS__, 'render_profile_field' ) );
@@ -36,10 +42,14 @@ class MKL_Roles {
 		if ( ! get_role( MKL_ROLE_SPIESS ) ) {
 			add_role( MKL_ROLE_SPIESS, 'Spieß', array( 'read' => true ) );
 		}
+		if ( ! get_role( MKL_ROLE_ANWAERTER ) ) {
+			add_role( MKL_ROLE_ANWAERTER, 'Anwärter', array( 'read' => true ) );
+		}
 		$caps = array(
-			MKL_ROLE_MITGLIED => array( MKL_CAP_MEMBER ),
-			MKL_ROLE_SPIESS   => array( MKL_CAP_MEMBER, MKL_CAP_MANAGE ),
-			'administrator'   => array( MKL_CAP_MEMBER, MKL_CAP_MANAGE, MKL_CAP_EVENTS ),
+			MKL_ROLE_ANWAERTER => array( MKL_CAP_CALENDAR ),
+			MKL_ROLE_MITGLIED  => array( MKL_CAP_MEMBER, MKL_CAP_CALENDAR ),
+			MKL_ROLE_SPIESS    => array( MKL_CAP_MEMBER, MKL_CAP_CALENDAR, MKL_CAP_MANAGE ),
+			'administrator'    => array( MKL_CAP_MEMBER, MKL_CAP_CALENDAR, MKL_CAP_MANAGE, MKL_CAP_EVENTS, MKL_CAP_DOCS ),
 		);
 		foreach ( $caps as $role_name => $role_caps ) {
 			$role = get_role( $role_name );
@@ -56,7 +66,7 @@ class MKL_Roles {
 
 	/**
 	 * Bis Version 0.1.x hatten alle angemeldeten Konten Mitglieder-Rechte.
-	 * Damit beim Update niemand zum Gast wird, bekommen alle Abonnenten die Rolle Mitglied.
+	 * Damit beim Update niemand seine Rolle verliert, bekommen alle Abonnenten die Rolle Mitglied.
 	 */
 	public static function migrate_subscribers_to_members() {
 		foreach ( get_users( array( 'role' => 'subscriber' ) ) as $user ) {
@@ -72,11 +82,32 @@ class MKL_Roles {
 		return $user_id ? user_can( $user_id, MKL_CAP_MEMBER ) : current_user_can( MKL_CAP_MEMBER );
 	}
 
-	/** @return string admin|spiess|mitglied|gast */
+	/** Interner Kalender: Anwärter, Mitglied, Spieß, Admin. */
+	public static function can_see_calendar( $user_id = null ) {
+		return $user_id ? user_can( $user_id, MKL_CAP_CALENDAR ) : current_user_can( MKL_CAP_CALENDAR );
+	}
+
+	/**
+	 * Jungmariner ist keine eigene Rolle, sondern ein Merkmal eines Mitglieds
+	 * (Benutzer-Meta). Jungmariner erhalten bei der Punktevergabe nur die halbe Punktzahl.
+	 */
+	public static function is_jungmariner( $user_id ) {
+		return (bool) get_user_meta( $user_id, MKL_META_JUNGMARINER, true );
+	}
+
+	public static function set_jungmariner( $user_id, $value ) {
+		if ( $value ) {
+			update_user_meta( $user_id, MKL_META_JUNGMARINER, 1 );
+		} else {
+			delete_user_meta( $user_id, MKL_META_JUNGMARINER );
+		}
+	}
+
+	/** @return string admin|spiess|mitglied|anwaerter|ohne */
 	public static function get_level( $user_id ) {
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {
-			return self::LEVEL_GAST;
+			return self::LEVEL_OHNE;
 		}
 		$roles = (array) $user->roles;
 		if ( in_array( 'administrator', $roles, true ) ) {
@@ -88,11 +119,14 @@ class MKL_Roles {
 		if ( user_can( $user, MKL_CAP_MEMBER ) ) {
 			return self::LEVEL_MITGLIED;
 		}
-		return self::LEVEL_GAST;
+		if ( user_can( $user, MKL_CAP_CALENDAR ) ) {
+			return self::LEVEL_ANWAERTER;
+		}
+		return self::LEVEL_OHNE;
 	}
 
 	/**
-	 * Setzt die App-Rolle (gast|mitglied|spiess). Administratoren werden nicht verändert;
+	 * Setzt die App-Rolle (ohne|anwaerter|mitglied|spiess); „ohne“ entzieht die Rolle. Administratoren werden nicht verändert;
 	 * Admin-Rechte vergibt man bewusst nur im WordPress-Backend.
 	 *
 	 * @return true|WP_Error
@@ -105,16 +139,19 @@ class MKL_Roles {
 		if ( in_array( 'administrator', (array) $user->roles, true ) ) {
 			return new WP_Error( 'mkl_invalid', 'Administratoren werden im WordPress-Backend verwaltet.', array( 'status' => 400 ) );
 		}
-		if ( ! in_array( $level, array( self::LEVEL_GAST, self::LEVEL_MITGLIED, self::LEVEL_SPIESS ), true ) ) {
+		if ( ! in_array( $level, array( self::LEVEL_OHNE, self::LEVEL_ANWAERTER, self::LEVEL_MITGLIED, self::LEVEL_SPIESS ), true ) ) {
 			return new WP_Error( 'mkl_invalid', 'Ungültige Rolle.', array( 'status' => 400 ) );
 		}
 
 		$user->remove_role( MKL_ROLE_SPIESS );
 		$user->remove_role( MKL_ROLE_MITGLIED );
+		$user->remove_role( MKL_ROLE_ANWAERTER );
 		if ( self::LEVEL_SPIESS === $level ) {
 			$user->add_role( MKL_ROLE_SPIESS );
 		} elseif ( self::LEVEL_MITGLIED === $level ) {
 			$user->add_role( MKL_ROLE_MITGLIED );
+		} elseif ( self::LEVEL_ANWAERTER === $level ) {
+			$user->add_role( MKL_ROLE_ANWAERTER );
 		}
 		// Ein Konto ohne jede Rolle kann sich nicht sinnvoll anmelden.
 		if ( empty( $user->roles ) ) {
@@ -125,10 +162,11 @@ class MKL_Roles {
 
 	public static function level_label( $level ) {
 		$labels = array(
-			self::LEVEL_ADMIN    => 'Admin',
-			self::LEVEL_SPIESS   => 'Spieß',
-			self::LEVEL_MITGLIED => 'Mitglied',
-			self::LEVEL_GAST     => 'Gast',
+			self::LEVEL_ADMIN     => 'Admin',
+			self::LEVEL_SPIESS    => 'Spieß',
+			self::LEVEL_MITGLIED  => 'Mitglied',
+			self::LEVEL_ANWAERTER => 'Anwärter',
+			self::LEVEL_OHNE      => 'Ohne Rolle',
 		);
 		return isset( $labels[ $level ] ) ? $labels[ $level ] : $level;
 	}
@@ -152,7 +190,8 @@ class MKL_Roles {
 						<strong>Admin</strong> – Administratoren dürfen in der App alles.
 					<?php else : ?>
 						<select name="mkl_level" id="mkl_level">
-							<option value="gast" <?php selected( $level, self::LEVEL_GAST ); ?>>Gast – nur öffentliche Inhalte</option>
+							<option value="ohne" <?php selected( $level, self::LEVEL_OHNE ); ?>>Ohne Rolle – nur öffentliche Inhalte</option>
+							<option value="anwaerter" <?php selected( $level, self::LEVEL_ANWAERTER ); ?>>Anwärter – wie ohne Rolle, aber interner Kalender</option>
 							<option value="mitglied" <?php selected( $level, self::LEVEL_MITGLIED ); ?>>Mitglied – eigene Punkte und Strafen</option>
 							<option value="spiess" <?php selected( $level, self::LEVEL_SPIESS ); ?>>Spieß – Punkte und Strafen verwalten</option>
 						</select>
