@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Marinekompanie Lank – App
  * Description:       Mitglieder-App (PWA) mit Terminen, Punkten, Dienstgraden, Titeln, Strafen, Dokumenten und Push-Benachrichtigungen. Erreichbar unter /app/.
- * Version:           0.8.0
+ * Version:           0.9.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marinekompanie 1973 Lank
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MKL_VERSION', '0.8.0' );
+define( 'MKL_VERSION', '0.9.0' );
 define( 'MKL_DB_VERSION', '10' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );

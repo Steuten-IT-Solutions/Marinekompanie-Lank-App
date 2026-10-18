@@ -393,15 +393,20 @@ class MKL_REST {
 		if ( is_wp_error( $id ) ) {
 			return $id;
 		}
-		return new WP_REST_Response( MKL_Events::get( $id ), 201 );
+		$event = MKL_Events::get( $id );
+		MKL_Push::public_event_saved( $event );
+		return new WP_REST_Response( $event, 201 );
 	}
 
 	public static function update_event( WP_REST_Request $req ) {
+		$before = MKL_Events::get( (int) $req['id'] );
 		$result = MKL_Events::update( (int) $req['id'], self::event_input( $req ) );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		return rest_ensure_response( MKL_Events::get( (int) $req['id'] ) );
+		$event = MKL_Events::get( (int) $req['id'] );
+		MKL_Push::public_event_saved( $event, $before );
+		return rest_ensure_response( $event );
 	}
 
 	public static function delete_event( WP_REST_Request $req ) {

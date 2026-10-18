@@ -9,7 +9,10 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt), eigene Anwesenheit.
 - **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
-- **Benachrichtigungen:** Push-Nachricht aufs Handy bei neuer Strafe, neuen Punkten oder neuem Dienstgrad. Jedes Mitglied schaltet sie unter **Konto → Benachrichtigungen** je Gerät ein und wählt die Ereignisse; Betrag und Grund einer Strafe erscheinen nur, wenn man das ausdrücklich einschaltet. Termine, News und Erinnerungen folgen (siehe Issue #5).
+- **Benachrichtigungen:** Push-Nachricht aufs Handy. Angemeldete schalten sie unter **Konto → Benachrichtigungen** je Gerät ein, Gäste ohne Anmeldung unten auf der Seite **Termine**. Je Gerät wählbar:
+  - nur Mitglieder: neue Strafe, Punkte, neuer Dienstgrad. Betrag und Grund einer Strafe erscheinen nur, wenn man das ausdrücklich einschaltet.
+  - alle: neue und geänderte Termine (neu, oder Datum/Uhrzeit/Ort geändert), Erinnerung am Vortag um 18 Uhr, neue Blogbeiträge.
+  - Anwärter und Mitglieder bekommen die Termine aus dem Google Kalender, alle anderen die öffentlichen Termine. Weil die öffentlichen Termine auch im Kalender stehen, kommt nichts doppelt.
 - **Spieß:** Punkte und Strafen vergeben, Anwesenheit je Termin erfassen, Anwärter zu Mitgliedern befördern, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
 
 ### Rollen
@@ -171,7 +174,10 @@ scripts/                   Build- und Test-Skripte
     - Ist eine Datei größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
     - **Offline:** Was ein Mitglied einmal geöffnet oder heruntergeladen hat, speichert die App auf dem Gerät; es ist danach auch ohne Netz lesbar. Vorab wird nichts geladen. Beim Abmelden wird alles wieder gelöscht.
 11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Dienstgrade, Titel und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server. Für Push-Benachrichtigungen speichert die App je Gerät die Push-Adresse und die Schlüssel des Geräts; die Nachrichten laufen Ende-zu-Ende-verschlüsselt über den Push-Dienst des Browsers (Apple, Google bzw. Mozilla).
-12. **Push-Benachrichtigungen prüfen:** Unter **Einstellungen → Kompanie-App → Push-Benachrichtigungen** steht, ob der Server sie verschicken kann (PHP mit OpenSSL, P-256 und AES-GCM). Nach dem Einschalten in der App schickt der Knopf **„Testbenachrichtigung an meine Geräte“** eine Probe. Verschickt wird über WP-Cron, also beim nächsten Seitenaufruf; die App stößt das nach jeder Strafe/Punktevergabe selbst an. Bietet der Hoster echte Cronjobs an, ist ein Aufruf von `wp-cron.php` alle 5–15 Minuten zuverlässiger.
+12. **Push-Benachrichtigungen prüfen:** Unter **Einstellungen → Kompanie-App → Push-Benachrichtigungen** steht, ob der Server sie verschicken kann (PHP mit OpenSSL, P-256 und AES-GCM). Nach dem Einschalten in der App schickt der Knopf **„Testbenachrichtigung an meine Geräte“** eine Probe.
+    - Verschickt wird über WP-Cron. Nach Strafen, Punkten, Terminen und Beiträgen stößt das Plugin den Versand selbst an.
+    - Der Abgleich mit dem Google Kalender (neue/geänderte Termine) und die Erinnerung um 18 Uhr laufen alle 15 Minuten über WP-Cron. WP-Cron läuft aber nur, wenn jemand die Webseite aufruft. Bei wenig Besuch kann sich das verzögern (die Erinnerung geht bis 22 Uhr raus, danach entfällt sie für diesen Tag). Bietet der Hoster echte Cronjobs an, ist ein Aufruf von `wp-cron.php` alle 5–15 Minuten zuverlässiger.
+    - Beim allerersten Kalender-Abgleich merkt sich das Plugin nur den Stand und verschickt nichts.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
@@ -217,7 +223,8 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 # REST-API: Rechte, Validierung, Summen, Dienstgrade, Titel, Dokumente, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
-# Push: offizieller Testvektor aus RFC 8291, VAPID-Signatur, REST, simulierter Push-Dienst
+# Push: offizieller Testvektor aus RFC 8291, VAPID-Signatur, REST (auch Gäste), simulierter Push-Dienst,
+# Termine, News, Kalender-Abgleich, Erinnerung
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/push-test.php
 
 # Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)
@@ -231,6 +238,5 @@ GitHub Actions führt bei jedem Push und jedem Pull Request alles aus: Syntaxpr�
 
 ## Ideen für später
 
-- Push-Benachrichtigungen für Termine, News und Erinnerungen, auch für Gäste (Issue #5, Teil 2)
 - Zu- und Absagen für Termine
 - Strafenkatalog analog zum Punktekatalog

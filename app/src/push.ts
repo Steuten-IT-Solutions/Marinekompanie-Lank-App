@@ -1,5 +1,5 @@
 // Push-Benachrichtigungen im Browser: Abo beim Push-Dienst anlegen und beim Server hinterlegen.
-import { api, config, type PushSubscriptionPrefs } from './api';
+import { api, config, type PushRef, type PushSubscriptionPrefs } from './api';
 import { detectPlatform, isStandalone } from './install';
 
 /** Kann dieser Browser überhaupt Web Push? */
@@ -25,6 +25,11 @@ async function registration(): Promise<ServiceWorkerRegistration> {
   if (reg) return reg;
   // Normalerweise registriert main.tsx den Service Worker schon beim Laden.
   return navigator.serviceWorker.register(config!.swUrl, { scope: config!.appUrl });
+}
+
+/** Kennung für den Server (Gäste brauchen zusätzlich das auth-Geheimnis). */
+export function pushRef(sub: PushSubscription): PushRef {
+  return { endpoint: sub.endpoint, auth: sub.toJSON().keys?.auth };
 }
 
 export async function currentSubscription(): Promise<PushSubscription | null> {
@@ -72,7 +77,7 @@ function sameKey(sub: PushSubscription, publicKey: string): boolean {
 export async function disablePush(): Promise<void> {
   const sub = await currentSubscription();
   if (!sub) return;
-  await api.pushUnsubscribe(sub.endpoint).catch(() => undefined);
+  await api.pushUnsubscribe(pushRef(sub)).catch(() => undefined);
   await sub.unsubscribe().catch(() => false);
 }
 

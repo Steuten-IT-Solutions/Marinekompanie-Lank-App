@@ -1027,7 +1027,7 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('fehlt');
 });
 
-test('Benachrichtigungen: iPhone-Hinweis für Mitglieder, nichts für Anwärter', async ({ page }) => {
+test('Benachrichtigungen: iPhone-Hinweis für Mitglieder, Anwärter und Gäste', async ({ page }) => {
   await login(page, 'mariner1');
   await page.goto('/app/#/konto');
   const card = page.locator('.push-card');
@@ -1037,16 +1037,24 @@ test('Benachrichtigungen: iPhone-Hinweis für Mitglieder, nichts für Anwärter'
   await login(page, 'anwaerter');
   await page.goto('/app/#/konto');
   await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
-  await expect(page.locator('.push-card')).toHaveCount(0);
+  await expect(card).toContainText('nur in der installierten App');
+
+  // Gäste finden die Benachrichtigungen unter den Terminen (Seite neu laden, nicht nur den Hash wechseln).
+  await page.context().clearCookies();
+  await page.goto('about:blank');
+  await page.goto('/app/#/termine');
+  await expect(card).toContainText('nur in der installierten App');
 });
 
 test.describe('Benachrichtigungen (Android)', () => {
   const { defaultBrowserType: _ignored, ...pixel } = devices['Pixel 7'];
   test.use({ ...pixel, permissions: ['notifications'] });
 
-  test('Mitglied aktiviert Benachrichtigungen, wählt Ereignisse und schaltet sie aus', async ({ page }) => {
-    // Der Test-Chromium hat keinen echten Push-Dienst: PushManager durch ein Gerät mit gültigem
-    // P-256-Schlüssel ersetzen. Der Server prüft und speichert das Abo wie bei einem echten Gerät.
+  /**
+   * Der Test-Chromium hat keinen echten Push-Dienst: PushManager durch ein Gerät mit gültigem
+   * P-256-Schlüssel ersetzen. Der Server prüft und speichert das Abo wie bei einem echten Gerät.
+   */
+  async function fakePushDevice(page: Page) {
     const { createECDH, randomBytes } = await import('node:crypto');
     const ecdh = createECDH('prime256v1');
     const b64u = (b: Buffer) => b.toString('base64url');
@@ -1072,7 +1080,10 @@ test.describe('Benachrichtigungen (Android)', () => {
         return make(ep) as unknown as PushSubscription;
       };
     }, device);
+  }
 
+  test('Mitglied aktiviert Benachrichtigungen, wählt Ereignisse und schaltet sie aus', async ({ page }) => {
+    await fakePushDevice(page);
     await login(page, 'mariner1');
     await page.goto('/app/#/konto');
     const card = page.locator('.push-card');
@@ -1100,6 +1111,25 @@ test.describe('Benachrichtigungen (Android)', () => {
     await expect(page.locator('.toast')).toHaveText('Benachrichtigungen ausgeschaltet');
     await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toBeVisible();
     await page.reload();
+    await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toBeVisible();
+  });
+
+  test('Gast ohne Anmeldung abonniert Termine und News auf der Termine-Seite', async ({ page }) => {
+    await fakePushDevice(page);
+    await page.context().clearCookies();
+    await page.goto('/app/#/termine');
+    const card = page.locator('.push-card');
+    await card.getByRole('button', { name: 'Benachrichtigungen aktivieren' }).click();
+    await expect(page.locator('.toast')).toHaveText('Benachrichtigungen aktiviert');
+    for (const label of ['Neue und geänderte Termine', 'Erinnerung am Vortag (18 Uhr)', 'Neuigkeiten']) {
+      await expect(card.getByLabel(label)).toBeChecked();
+    }
+    await expect(card.getByLabel('Neue Strafen')).toHaveCount(0);
+    await card.getByLabel('Neuigkeiten').uncheck();
+    await page.reload();
+    await expect(card.getByLabel('Neuigkeiten')).not.toBeChecked();
+    await expect(card.getByLabel('Neue und geänderte Termine')).toBeChecked();
+    await card.getByRole('button', { name: 'Ausschalten' }).click();
     await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toBeVisible();
   });
 });
