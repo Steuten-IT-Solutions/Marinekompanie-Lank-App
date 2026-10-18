@@ -13,12 +13,8 @@ import { formatDate, formatEventWhen, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
 
-/** Reihenfolge beim Antippen: fehlt → anwesend → entschuldigt → fehlt … */
-const NEXT_STATUS: Record<AttendanceStatus, AttendanceStatus> = {
-  fehlt: 'anwesend',
-  anwesend: 'entschuldigt',
-  entschuldigt: 'fehlt',
-};
+/** Spalten der Liste; je Mitglied ist genau ein Häkchen gesetzt. */
+const STATUS_COLUMNS: AttendanceStatus[] = ['anwesend', 'entschuldigt', 'fehlt'];
 
 /** Spieß → Anwesenheit: #/spiess/anwesenheit[/<id> | /termin/<key>] */
 export default function Anwesenheit({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
@@ -327,29 +323,37 @@ function Editor({
             Alle anwesend
           </button>
         </div>
+        <div className="attendance-grid attendance-head" aria-hidden="true">
+          <span />
+          {STATUS_COLUMNS.map((st) => (
+            <span key={st} className={`attendance-col attendance-col-${st}`}>
+              {ATTENDANCE_LABELS[st]}
+            </span>
+          ))}
+        </div>
         <ul className="picker-list attendance-list">
-          {filtered.map((m) => {
-            const status = statuses[m.id];
-            return (
-              <li key={m.id}>
-                <button
-                  type="button"
-                  className="attendance-row"
-                  onClick={() => change({ ...statuses, [m.id]: NEXT_STATUS[status] })}
-                  aria-label={`${m.name}: ${ATTENDANCE_LABELS[status]}. Tippen zum Ändern.`}
-                >
-                  <span className="attendance-name">
-                    {m.name}
-                    {m.booked && <span className="attendance-booked">Punkte gebucht</span>}
-                  </span>
-                  <span className={`badge badge-att-${status}`}>{ATTENDANCE_LABELS[status]}</span>
-                </button>
-              </li>
-            );
-          })}
+          {filtered.map((m) => (
+            <li key={m.id} className="attendance-grid" role="radiogroup" aria-label={m.name}>
+              <span className="attendance-name">
+                {m.name}
+                {m.booked && <span className="attendance-booked">Punkte gebucht</span>}
+              </span>
+              {STATUS_COLUMNS.map((st) => (
+                <span key={st} className="attendance-cell">
+                  <input
+                    type="radio"
+                    className={`attendance-check attendance-check-${st}`}
+                    name={`att-${m.id}`}
+                    checked={statuses[m.id] === st}
+                    onChange={() => change({ ...statuses, [m.id]: st })}
+                    aria-label={`${m.name}: ${ATTENDANCE_LABELS[st]}`}
+                  />
+                </span>
+              ))}
+            </li>
+          ))}
           {filtered.length === 0 && <li className="muted">Niemand gefunden.</li>}
         </ul>
-        <div className="picker-count">Antippen wechselt: anwesend → entschuldigt → fehlt</div>
       </div>
 
       <button className="btn btn-block attendance-save" disabled={busy || !dirty} onClick={saveAndStay}>

@@ -3,14 +3,25 @@ import { devices, expect, test, type Page } from '@playwright/test';
 const PASSWORD = process.env.MKL_TEST_PASSWORD ?? 'test1234';
 const SHOTS = process.env.MKL_SCREENSHOT_DIR;
 
+/**
+ * Füllt das WordPress-Anmeldeformular aus. WordPress setzt 200 ms nach dem Laden
+ * den Fokus auf „Benutzername“ und markiert den Inhalt (wp_attempt_focus). Wer
+ * vorher tippt, landet sonst mit dem Passwort im Benutzernamen-Feld.
+ */
+async function fillLoginForm(page: Page, user: string, password: string) {
+  await page.waitForFunction(() => document.activeElement?.id === 'user_login');
+  await page.fill('#user_login', user);
+  await page.fill('#user_pass', password);
+  await expect(page.locator('#user_login')).toHaveValue(user);
+}
+
 async function login(page: Page, user: string, password = PASSWORD) {
   await page.context().clearCookies();
   await page.goto('/app/');
   // Gäste sehen die öffentliche Ansicht; angemeldet wird über den Knopf in der Kopfleiste.
   await page.getByRole('link', { name: 'Anmelden' }).click();
   await expect(page).toHaveURL(/wp-login\.php/);
-  await page.fill('#user_login', user);
-  await page.fill('#user_pass', password);
+  await fillLoginForm(page, user, password);
   await page.click('#wp-submit');
   await expect(page).toHaveURL(/\/app\/?(#.*)?$/);
   await expect(page.locator('.topbar')).toBeVisible();
@@ -491,8 +502,7 @@ test('Angemeldet bleiben ist vorausgewählt und hält rund 400 Tage', async ({ p
   await page.goto('/app/');
   await page.getByRole('link', { name: 'Anmelden' }).click();
   await expect(page.locator('#rememberme')).toBeChecked();
-  await page.fill('#user_login', 'mariner1');
-  await page.fill('#user_pass', PASSWORD);
+  await fillLoginForm(page, 'mariner1', PASSWORD);
   await page.click('#wp-submit');
   await expect(page.locator('.topbar')).toBeVisible();
   const cookie = (await page.context().cookies()).find((c) => c.name.startsWith('wordpress_logged_in_'));
@@ -833,11 +843,14 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
   await page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' }).click();
   await expect(page.locator('.member-name')).toHaveText('Arbeitsdienst Schützenplatz');
-  await page.getByRole('button', { name: /^Mariner1: fehlt/ }).click();
-  await page.getByRole('button', { name: /^Mariner2: fehlt/ }).click();
-  await page.getByRole('button', { name: /^Spiess: fehlt/ }).click();
-  await page.getByRole('button', { name: /^Spiess: anwesend/ }).click();
-  await expect(page.getByRole('button', { name: /^Spiess: entschuldigt/ })).toBeVisible();
+  // Anfangs ist bei allen „fehlt“ angehakt; je Mitglied ist genau ein Häkchen gesetzt.
+  await expect(page.getByLabel('Mariner1: fehlt')).toBeChecked();
+  await page.getByLabel('Mariner1: anwesend').check();
+  await page.getByLabel('Mariner2: anwesend').check();
+  await page.getByLabel('Spiess: anwesend').check();
+  await page.getByLabel('Spiess: entschuldigt').check();
+  await expect(page.getByLabel('Spiess: anwesend')).not.toBeChecked();
+  await expect(page.getByLabel('Mariner1: fehlt')).not.toBeChecked();
   await expect(page.locator('.attendance-counts')).toContainText('2 anwesend · 1 entschuldigt');
   await shot(page, '12-anwesenheit');
 
@@ -870,8 +883,7 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
   await page.getByPlaceholder('z. B. Arbeitsdienst').fill('Sonderdienst Bootshaus');
   await page.getByRole('button', { name: 'Liste anlegen' }).click();
-  await page.getByRole('button', { name: /^Mariner1: fehlt/ }).click();
-  await page.getByRole('button', { name: /^Mariner1: anwesend/ }).click();
+  await page.getByLabel('Mariner1: entschuldigt').check();
   await page.getByRole('button', { name: 'Speichern' }).click();
   await expect(page.locator('.toast')).toHaveText('Anwesenheit gespeichert');
   await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
