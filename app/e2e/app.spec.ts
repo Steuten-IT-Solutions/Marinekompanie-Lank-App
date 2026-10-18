@@ -152,39 +152,78 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
 });
 
 test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const rank = `Bulkrang ${tag}`;
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  // Eigener Dienstgrad mit einer Schwelle, die sonst niemand nutzt.
+  const rankId = await page.evaluate(async (title) => {
+    const cfg = window.MKL_CONFIG!;
+    const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
+    const res = await fetch(cfg.restUrl + 'ranks', {
+      method: 'POST',
+      headers,
+      credentials: 'same-origin',
+      body: JSON.stringify({ title, min_points: 50000 + Math.floor(Math.random() * 40000) }),
+    });
+    return ((await res.json()) as { id: number }).id;
+  }, rank);
+
   await page.getByRole('button', { name: 'Spieß' }).click();
   await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByRole('button', { name: 'Mehrere' }).click();
 
   const list = page.getByLabel('Eine Person pro Zeile');
+  // Anwärter (Standard): keine Punkte erlaubt.
+  await list.fill('Bulk Eins;;10');
+  await expect(page.getByRole('alert')).toContainText('nur bei der Rolle Mitglied oder Spieß');
+  await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
   await list.fill('Bulk Eins\nMüller, Max');
   await expect(page.getByRole('alert')).toContainText('Zeile 2');
   await expect(page.getByRole('button', { name: 'Konten anlegen' })).toBeDisabled();
+  await list.fill(`Bulk Eins;;10;${rank}`);
+  await expect(page.getByRole('alert')).toContainText('mindestens');
 
-  const stamp = Date.now();
-  await list.fill(`Bulk Eins\n\nBulk Zwei\tbulk.zwei.${stamp}@example.com\nBulk Drei; bulk.drei.${stamp}@example.com`);
+  await list.fill(
+    [
+      'Name\tE-Mail\tPunkte\tDienstgrad\tJungmariner',
+      `Bulk Eins\t\t90.000\t${rank.toLowerCase()}`,
+      '',
+      `Bulk Zwei\tbulk.zwei.${tag}@example.com\t12\t\tja`,
+      `Bulk Drei; bulk.drei.${tag}@example.com`,
+    ].join('\n'),
+  );
   await expect(page.getByText('Erkannt: 3 Personen')).toBeVisible();
-  await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
+  await expect(page.locator('.bulk-preview li').first()).toContainText(`90.000 Punkte · ${rank}`);
+  await page.getByLabel('Punktestand vom (für alle)').fill('2025-12-31');
   await shot(page, '8b-mehrere-mitglieder');
   await page.getByRole('button', { name: '3 Konten anlegen' }).click();
   await expect(page.getByText('3 Konten sind angelegt')).toBeVisible();
   await expect(page.getByTestId('bulk-level')).toHaveText('Mitglied');
-  await expect(page.getByTestId('created-user')).toHaveCount(3);
+  const created = page.getByTestId('created-user');
+  await expect(created).toHaveCount(3);
+  await expect(created.nth(0).getByTestId('created-extras')).toHaveText(`90.000 Punkte · Dienstgrad: ${rank}`);
+  await expect(created.nth(1).getByTestId('created-extras')).toHaveText('12 Punkte · ohne Dienstgrad · Jungmariner');
+  await expect(created.nth(2).getByTestId('created-extras')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Alle Zugangsdaten kopieren' })).toBeVisible();
   await shot(page, '8c-mehrere-angelegt');
 
-  const second = page.getByTestId('created-user').nth(1);
-  await expect(second).toContainText('Bulk Zwei');
-  const username = (await second.getByTestId('new-username').textContent())!.trim();
-  const password = (await second.getByTestId('new-password').textContent())!.trim();
+  const username = (await created.nth(1).getByTestId('new-username').textContent())!.trim();
+  const password = (await created.nth(1).getByTestId('new-password').textContent())!.trim();
   expect(username).toMatch(/^bulk\.zwei\d*$/);
   expect(password).toHaveLength(12);
 
+  // Dienstgrad wieder abschalten, damit spätere Tests unbeeinflusst bleiben.
+  await page.evaluate(async (id) => {
+    const cfg = window.MKL_CONFIG!;
+    const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
+    await fetch(cfg.restUrl + 'ranks/' + id, { method: 'PATCH', headers, credentials: 'same-origin', body: JSON.stringify({ active: false }) });
+  }, rankId);
+
   await login(page, username, password);
   await expect(page.locator('.topbar-sub')).toHaveText('Ahoi, Bulk Zwei');
-  await expect(page.getByRole('button', { name: 'Meins' })).toBeVisible();
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.getByText('Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.')).toBeVisible();
 });
 
 test('Admin legt einen Anwärter an', async ({ page }) => {

@@ -293,8 +293,8 @@ export interface CreatedUser {
   is_jungmariner: boolean;
 }
 
-/** Antwort von „Mehrere anlegen“ (ohne Anfangsbestand, Dienstgrad und Jungmariner). */
-export type CreatedAccount = Pick<CreatedUser, 'id' | 'name' | 'username' | 'email' | 'level' | 'password'>;
+/** Eine Person bei „Mehrere anlegen“; Rolle und Datum des Anfangsbestands gelten für alle. */
+export type BulkUserInput = Omit<NewUserInput, 'level' | 'initial_points_date'>;
 
 /** Höchstzahl für „Mehrere anlegen“ (wie MKL_REST::MAX_BULK_USERS). */
 export const MAX_BULK_USERS = 50;
@@ -456,8 +456,8 @@ export const api = {
   },
   createUser: (data: NewUserInput) => request<CreatedUser>('POST', '/users', data),
   /** Legt mehrere Konten mit derselben Rolle an; bei einem Fehler wird niemand angelegt. */
-  createUsers: (users: Pick<NewUserInput, 'name' | 'username' | 'email'>[], level: Exclude<Level, 'admin'>) =>
-    request<CreatedAccount[]>('POST', '/users/bulk', { users, level }),
+  createUsers: (data: { users: BulkUserInput[]; level: Exclude<Level, 'admin'>; initial_points_date?: string }) =>
+    request<CreatedUser[]>('POST', '/users/bulk', data),
   accounts: () => request<Account[]>('GET', '/accounts'),
   updateAccount: (id: number, data: Partial<Pick<Account, 'name' | 'username' | 'email'>>) =>
     request<Account>('PATCH', `/accounts/${id}`, data),

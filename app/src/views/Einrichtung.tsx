@@ -6,10 +6,10 @@ import {
   LEVEL_LABELS,
   MAX_BULK_USERS,
   type Account,
-  type CreatedAccount,
+  type BulkUserInput,
   type CreatedUser,
   type Level,
-  type NewUserInput,
+  type Rank,
 } from '../api';
 import { caps, formatPoints, todayYmd } from '../format';
 import { navigate } from '../router';
@@ -670,36 +670,91 @@ function NewSingleMember() {
   );
 }
 
+/** Spalten bei „Mehrere anlegen“, in dieser Reihenfolge. */
+const BULK_COLUMNS = 'Name, E-Mail, Punkte, Dienstgrad, Jungmariner';
+
+/** Jungmariner-Spalte: „ja“, „x“, „1“ … bzw. leer oder „nein“. */
+function parseYesNo(raw: string): boolean | null {
+  const v = raw.trim().toLowerCase();
+  if (['', 'nein', 'n', 'no', '0', '-', 'falsch', 'false'].includes(v)) return false;
+  if (['ja', 'j', 'x', '1', 'yes', 'wahr', 'true', 'jm', 'jungmariner'].includes(v)) return true;
+  return null;
+}
+
+/** Ganze Punktzahl ab 0, auch mit Tausenderpunkt („1.200“) wie aus Excel kopiert. */
+function parsePoints(raw: string): number | null {
+  const v = raw.trim().replace(/\s/g, '');
+  if (!/^\d+$/.test(v) && !/^\d{1,3}(\.\d{3})+$/.test(v)) return null;
+  return Number(v.replace(/\./g, ''));
+}
+
+interface BulkRow extends BulkUserInput {
+  rank_title?: string;
+}
+
 /**
- * Eine Zeile pro Person: „Vorname Nachname“, optional mit E-Mail-Adresse dahinter
- * (getrennt durch Komma, Semikolon oder Tabulator, z. B. aus einer Tabelle kopiert).
+ * Eine Zeile pro Person, Spalten getrennt durch Tabulator, Semikolon oder Komma
+ * (z. B. aus Excel kopiert): Name, E-Mail, Punkte, Dienstgrad, Jungmariner.
+ * Nur der Name ist Pflicht; hintere Spalten dürfen fehlen, mittlere leer bleiben.
+ * Eine Kopfzeile, die mit „Name“ beginnt, wird übersprungen.
  */
-function parseMemberLines(text: string): { users: Pick<NewUserInput, 'name' | 'email'>[]; errors: string[] } {
-  const users: Pick<NewUserInput, 'name' | 'email'>[] = [];
+function parseMemberLines(
+  text: string,
+  ranks: Rank[],
+  memberRole: boolean,
+): { users: BulkRow[]; errors: string[] } {
+  const users: BulkRow[] = [];
   const errors: string[] = [];
-  text.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.trim();
-    if (!line) return;
-    const parts = line.split(/[\t;,]/).map((p) => p.trim()).filter(Boolean);
-    const emails = parts.filter((p) => p.includes('@'));
-    const names = parts.filter((p) => !p.includes('@'));
-    const name = names.join(' ').replace(/\s+/g, ' ');
-    if (emails.length > 1) errors.push(`Zeile ${i + 1}: bitte nur eine E-Mail-Adresse angeben.`);
-    else if (!name) errors.push(`Zeile ${i + 1}: Name fehlt.`);
-    else if (names.length > 1) errors.push(`Zeile ${i + 1}: bitte als „Vorname Nachname“ ohne Komma schreiben.`);
-    else users.push({ name, ...(emails[0] ? { email: emails[0] } : {}) });
+  const lines = text.split(/\r?\n/);
+  lines.forEach((raw, i) => {
+    if (!raw.trim()) return;
+    const cols = raw.split(/[\t;,]/).map((c) => c.trim().replace(/\s+/g, ' '));
+    const [name = '', email = '', points = '', rankTitle = '', jung = ''] = cols;
+    if (users.length === 0 && errors.length === 0 && name.toLowerCase() === 'name') return;
+    const at = `Zeile ${i + 1}`;
+    if (!name) return void errors.push(`${at}: Name fehlt.`);
+    if (name.includes('@')) return void errors.push(`${at}: In der ersten Spalte steht eine E-Mail-Adresse statt des Namens.`);
+    if (email && !email.includes('@'))
+      return void errors.push(
+        `${at}: „${email}“ ist keine E-Mail-Adresse. Den Namen bitte als „Vorname Nachname“ ohne Komma schreiben; Spalten: ${BULK_COLUMNS}.`,
+      );
+    if (cols.length > 5 && cols.slice(5).some(Boolean)) return void errors.push(`${at}: zu viele Spalten (erwartet: ${BULK_COLUMNS}).`);
+    const initial = points === '' ? 0 : parsePoints(points);
+    if (initial === null) return void errors.push(`${at}: „${points}“ ist keine ganze Punktzahl ab 0.`);
+    let rank: Rank | undefined;
+    if (rankTitle) {
+      rank = ranks.find((r) => r.active && r.title.toLowerCase() === rankTitle.toLowerCase());
+      if (!rank) return void errors.push(`${at}: Dienstgrad „${rankTitle}“ gibt es nicht (oder er ist deaktiviert).`);
+      if (initial < rank.min_points)
+        return void errors.push(`${at}: Für „${rank.title}“ sind mindestens ${rank.min_points.toLocaleString('de-DE')} Punkte nötig.`);
+    }
+    const jm = parseYesNo(jung);
+    if (jm === null) return void errors.push(`${at}: „${jung}“ bei Jungmariner bitte als „ja“ oder leer angeben.`);
+    if (!memberRole && (initial > 0 || rank || jm))
+      return void errors.push(`${at}: Punkte, Dienstgrad und Jungmariner gibt es nur bei der Rolle Mitglied oder Spieß.`);
+    users.push({
+      name,
+      ...(email ? { email } : {}),
+      ...(initial > 0 ? { initial_points: initial } : {}),
+      ...(rank ? { rank_id: rank.id, rank_title: rank.title } : {}),
+      ...(jm ? { jungmariner: true } : {}),
+    });
   });
   return { users, errors };
 }
 
 function NewMembersBulk() {
+  const ranks = useAsync(api.ranks);
   const [text, setText] = useState('');
   const [level, setLevel] = useState<Exclude<Level, 'admin'>>('anwaerter');
+  const [pointsDate, setPointsDate] = useState(todayYmd());
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreatedAccount[] | null>(null);
+  const [created, setCreated] = useState<CreatedUser[] | null>(null);
   const [copied, setCopied] = useState<number | 'alle' | null>(null);
-  const { users, errors } = useMemo(() => parseMemberLines(text), [text]);
+  const memberRole = isMemberLevel(level);
+  const { users, errors } = useMemo(() => parseMemberLines(text, ranks.data ?? [], memberRole), [text, ranks.data, memberRole]);
+  const hasPoints = users.some((u) => u.initial_points);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -709,7 +764,13 @@ function NewMembersBulk() {
     if (users.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} auf einmal anlegen.`);
     setBusy(true);
     try {
-      setCreated(await api.createUsers(users, level));
+      setCreated(
+        await api.createUsers({
+          users: users.map(({ rank_title, ...u }) => u),
+          level,
+          ...(hasPoints ? { initial_points_date: pointsDate } : {}),
+        }),
+      );
     } catch (err) {
       setFormError((err as Error).message);
     } finally {
@@ -736,6 +797,15 @@ function NewMembersBulk() {
           {created.map((u) => (
             <li key={u.id} data-testid="created-user">
               <div className="created-name">{u.name}</div>
+              {(u.points > 0 || u.rank || u.is_jungmariner) && (
+                <div className="muted small" data-testid="created-extras">
+                  {[
+                    `${u.points.toLocaleString('de-DE')} Punkte`,
+                    u.rank ? `Dienstgrad: ${u.rank.title}` : 'ohne Dienstgrad',
+                    ...(u.is_jungmariner ? ['Jungmariner'] : []),
+                  ].join(' · ')}
+                </div>
+              )}
               <dl className="credentials">
                 <dt>Benutzername</dt>
                 <dd data-testid="new-username">{u.username}</dd>
@@ -761,27 +831,42 @@ function NewMembersBulk() {
 
   return (
     <form className="form" onSubmit={submit}>
+      <LevelPicker level={level} onChange={setLevel} />
       <label className="field">
         <span>Eine Person pro Zeile</span>
         <textarea
           rows={8}
           autoComplete="off"
           spellCheck={false}
-          placeholder={'Max Müller\nErika Mustermann, erika@example.de'}
+          placeholder={
+            memberRole
+              ? 'Max Müller\nErika Mustermann; erika@example.de; 120; Bootsmann\nTim Klein;;30;;ja'
+              : 'Max Müller\nErika Mustermann; erika@example.de'
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
       </label>
       <p className="muted small">
-        Pro Zeile „Vorname Nachname“, optional mit Komma und E-Mail-Adresse dahinter. Eine Liste aus Excel mit den
-        Spalten Name und E-Mail kann direkt hineinkopiert werden. Benutzernamen werden aus den Namen gebildet. Enthält
-        eine Zeile einen Fehler, wird niemand angelegt.
+        {memberRole ? (
+          <>
+            Spalten: <strong>{BULK_COLUMNS}</strong>, getrennt durch Semikolon, Komma oder Tab. Nur der Name ist Pflicht,
+            leere Spalten bleiben einfach leer. Eine Excel-Tabelle mit diesen Spalten kann direkt hineinkopiert werden,
+            auch mit Kopfzeile. Der Dienstgrad muss so heißen wie unter „Dienstgrade“ und mit den Punkten erreicht sein;
+            bei Jungmariner „ja“ eintragen.
+          </>
+        ) : (
+          <>Pro Zeile „Vorname Nachname“, optional mit Semikolon oder Komma und E-Mail-Adresse dahinter.</>
+        )}{' '}
+        Benutzernamen werden aus den Namen gebildet, jede Person bekommt ein eigenes zufälliges Startpasswort. Enthält eine
+        Zeile einen Fehler, wird niemand angelegt.
       </p>
-      <LevelPicker level={level} onChange={setLevel} />
-      <p className="muted small">
-        Alle bekommen diese Rolle und je ein eigenes zufälliges Startpasswort.
-        {isMemberLevel(level) && ' Anfangsbestand, Dienstgrad und Jungmariner lassen sich nur beim einzelnen Anlegen eintragen.'}
-      </p>
+      {memberRole && hasPoints && (
+        <label className="field">
+          <span>Punktestand vom (für alle)</span>
+          <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
+        </label>
+      )}
       {users.length > 0 && (
         <div className="bulk-preview" aria-live="polite">
           <span className="field-label">Erkannt: {users.length === 1 ? '1 Person' : `${users.length} Personen`}</span>
@@ -790,11 +875,23 @@ function NewMembersBulk() {
               <li key={i}>
                 {u.name}
                 {u.email && <span className="muted"> · {u.email}</span>}
+                {(u.initial_points || u.rank_title || u.jungmariner) && (
+                  <span className="muted">
+                    {' '}
+                    ·{' '}
+                    {[
+                      `${(u.initial_points ?? 0).toLocaleString('de-DE')} Punkte`,
+                      ...(u.rank_title ? [u.rank_title] : []),
+                      ...(u.jungmariner ? ['Jungmariner'] : []),
+                    ].join(' · ')}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         </div>
       )}
+      {ranks.error && <p className="form-error">Dienstgrade konnten nicht geladen werden: {ranks.error}</p>}
       {errors.length > 0 && (
         <ul className="form-error bulk-errors" role="alert">
           {errors.map((e) => (
@@ -803,7 +900,7 @@ function NewMembersBulk() {
         </ul>
       )}
       {formError && !errors.includes(formError) && <p className="form-error" role="alert">{formError}</p>}
-      <button className="btn btn-block" type="submit" disabled={busy || errors.length > 0 || users.length === 0}>
+      <button className="btn btn-block" type="submit" disabled={busy || ranks.loading || errors.length > 0 || users.length === 0}>
         {busy ? 'Legt an …' : users.length > 1 ? `${users.length} Konten anlegen` : 'Konten anlegen'}
       </button>
     </form>

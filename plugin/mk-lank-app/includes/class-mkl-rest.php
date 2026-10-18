@@ -966,9 +966,106 @@ class MKL_REST {
 		if ( is_wp_error( $identity ) ) {
 			return $identity;
 		}
-		$name = $identity['name'];
+		$initial_date = self::parse_date( $req->get_param( 'initial_points_date' ) );
+		if ( is_wp_error( $initial_date ) ) {
+			return $initial_date;
+		}
+		$extras = self::validate_extras(
+			array(
+				'initial_points' => $req->get_param( 'initial_points' ),
+				'rank_id'        => $req->get_param( 'rank_id' ),
+				'jungmariner'    => $req->get_param( 'jungmariner' ),
+			),
+			$is_member
+		);
+		if ( is_wp_error( $extras ) ) {
+			return $extras;
+		}
 
-		$raw_points = $req->get_param( 'initial_points' );
+		$account = self::insert_account( $identity, $level );
+		if ( is_wp_error( $account ) ) {
+			return $account;
+		}
+		$applied = self::apply_extras( $account['id'], $extras, $initial_date );
+		if ( is_wp_error( $applied ) ) {
+			self::rollback_user( $account['id'] );
+			return self::error( $applied->get_error_message() . ' Das Mitglied wurde nicht angelegt.', 500 );
+		}
+		return new WP_REST_Response( self::format_created( $account, $extras ), 201 );
+	}
+
+	/**
+	 * Legt mehrere Konten auf einmal an:
+	 * { level?, initial_points_date?, users: [ { name, username?, email?, initial_points?, rank_id?, jungmariner? }, … ] }.
+	 * Alle bekommen dieselbe Rolle (Standard Anwärter) und je ein eigenes Startpasswort;
+	 * Anfangsbestand, Dienstgrad und Jungmariner gelten je Person (nur für Mitglieder und Spieße),
+	 * das Datum des Anfangsbestands für alle.
+	 *
+	 * Zuerst werden alle Einträge geprüft, auch gegeneinander (z. B. doppelte
+	 * E-Mail-Adressen). Ist einer fehlerhaft, wird niemand angelegt und die Meldung
+	 * nennt die Zeile. Scheitert danach noch etwas beim Speichern, werden alle in
+	 * diesem Durchgang angelegten Konten wieder entfernt.
+	 * Antwort: Liste der angelegten Konten mit Startpasswörtern.
+	 */
+	public static function create_users_bulk( WP_REST_Request $req ) {
+		$level = self::parse_new_level( $req->get_param( 'level' ) );
+		if ( is_wp_error( $level ) ) {
+			return $level;
+		}
+		$is_member    = in_array( $level, array( MKL_Roles::LEVEL_MITGLIED, MKL_Roles::LEVEL_SPIESS ), true );
+		$initial_date = self::parse_date( $req->get_param( 'initial_points_date' ) );
+		if ( is_wp_error( $initial_date ) ) {
+			return $initial_date;
+		}
+		$users = $req->get_param( 'users' );
+		if ( ! is_array( $users ) || ! $users ) {
+			return self::error( 'Bitte mindestens ein Mitglied angeben.' );
+		}
+		if ( count( $users ) > self::MAX_BULK_USERS ) {
+			return self::error( sprintf( 'Bitte höchstens %d Mitglieder auf einmal anlegen.', self::MAX_BULK_USERS ) );
+		}
+
+		$reserved = array();
+		$valid    = array();
+		foreach ( array_values( $users ) as $i => $entry ) {
+			$entry    = is_array( $entry ) ? $entry : array();
+			$identity = self::validate_identity( $entry, $reserved );
+			$extras   = is_wp_error( $identity ) ? $identity : self::validate_extras( $entry, $is_member );
+			if ( is_wp_error( $extras ) ) {
+				$name = isset( $entry['name'] ) ? trim( sanitize_text_field( (string) $entry['name'] ) ) : '';
+				return self::error( sprintf( 'Zeile %d%s: %s Es wurde niemand angelegt.', $i + 1, '' !== $name ? ' (' . $name . ')' : '', $extras->get_error_message() ) );
+			}
+			$valid[] = array( $identity, $extras );
+		}
+
+		$created = array();
+		foreach ( $valid as $item ) {
+			list( $identity, $extras ) = $item;
+			$account = self::insert_account( $identity, $level );
+			$applied = is_wp_error( $account ) ? $account : self::apply_extras( $account['id'], $extras, $initial_date );
+			if ( is_wp_error( $applied ) ) {
+				// Sollte nach der Prüfung nicht vorkommen. Alles oder nichts: bereits Angelegte wieder entfernen.
+				if ( ! is_wp_error( $account ) ) {
+					self::rollback_user( $account['id'] );
+				}
+				foreach ( $created as $done ) {
+					self::rollback_user( $done['id'] );
+				}
+				return self::error( sprintf( '%s konnte nicht angelegt werden: %s Es wurde niemand angelegt.', $identity['name'], $applied->get_error_message() ), 500 );
+			}
+			$created[] = self::format_created( $account, $extras );
+		}
+		return new WP_REST_Response( $created, 201 );
+	}
+
+	/**
+	 * Prüft Anfangsbestand (initial_points), Dienstgrad (rank_id) und Jungmariner.
+	 * Der Dienstgrad muss aktiv und mit dem Anfangsbestand erreichbar sein.
+	 *
+	 * @return array|WP_Error initial (int), rank (array|null), jungmariner (bool)
+	 */
+	private static function validate_extras( array $entry, $is_member ) {
+		$raw_points = isset( $entry['initial_points'] ) ? $entry['initial_points'] : null;
 		$initial    = 0;
 		if ( null !== $raw_points && '' !== $raw_points ) {
 			if ( ! is_numeric( $raw_points ) || (int) $raw_points != $raw_points || (int) $raw_points < 0 || (int) $raw_points > self::MAX_INITIAL_POINTS ) { // phpcs:ignore WordPress.PHP.StrictComparisons
@@ -976,11 +1073,7 @@ class MKL_REST {
 			}
 			$initial = (int) $raw_points;
 		}
-		$initial_date = self::parse_date( $req->get_param( 'initial_points_date' ) );
-		if ( is_wp_error( $initial_date ) ) {
-			return $initial_date;
-		}
-		$raw_rank = $req->get_param( 'rank_id' );
+		$raw_rank = isset( $entry['rank_id'] ) ? $entry['rank_id'] : null;
 		$rank     = null;
 		if ( null !== $raw_rank && '' !== $raw_rank && 0 !== (int) $raw_rank ) {
 			$rank = MKL_Ranks::get( (int) $raw_rank );
@@ -995,99 +1088,51 @@ class MKL_REST {
 			}
 		}
 
-		$jungmariner = rest_sanitize_boolean( $req->get_param( 'jungmariner' ) );
+		$jungmariner = rest_sanitize_boolean( isset( $entry['jungmariner'] ) ? $entry['jungmariner'] : false );
 		if ( ! $is_member && ( $initial > 0 || $rank || $jungmariner ) ) {
 			return self::error( 'Anfangsbestand, Dienstgrad und Jungmariner gibt es nur für Mitglieder.' );
 		}
-
-		$account = self::insert_account( $identity, $level );
-		if ( is_wp_error( $account ) ) {
-			return $account;
-		}
-		$user_id = $account['id'];
-
-		if ( $initial > 0 ) {
-			$ids = MKL_DB::add_points( array( $user_id ), $initial, 'Anfangsbestand bei Übernahme', null, $initial_date, get_current_user_id() );
-			if ( ! $ids[0] ) {
-				self::rollback_user( $user_id );
-				return self::error( 'Der Anfangsbestand konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
-			}
-		}
-		if ( $rank && ! MKL_Ranks::set_rank( $user_id, null, $rank, MKL_Ranks::KIND_PROMOTION, $initial, 'Ersteinstufung bei Anlage', get_current_user_id() ) ) {
-			self::rollback_user( $user_id );
-			return self::error( 'Der Dienstgrad konnte nicht gespeichert werden. Das Mitglied wurde nicht angelegt.', 500 );
-		}
-		// Erst nach dem Anfangsbestand: Der ist ein bereits erreichter Stand und wird nicht halbiert.
-		MKL_Roles::set_jungmariner( $user_id, $jungmariner );
-
-		return new WP_REST_Response(
-			array(
-				'id'             => $user_id,
-				'name'           => $name,
-				'username'       => $account['username'],
-				'email'          => $account['email'],
-				'level'          => MKL_Roles::get_level( $user_id ),
-				'password'       => $account['password'],
-				'points'         => $initial,
-				'rank'           => MKL_Ranks::ref( $rank ),
-				'is_jungmariner' => MKL_Roles::is_jungmariner( $user_id ),
-			),
-			201
+		return array(
+			'initial'     => $initial,
+			'rank'        => $rank,
+			'jungmariner' => $jungmariner,
 		);
 	}
 
 	/**
-	 * Legt mehrere Konten auf einmal an: { level?, users: [ { name, username?, email? }, … ] }.
-	 * Alle bekommen dieselbe Rolle (Standard Anwärter) und je ein eigenes Startpasswort.
-	 * Anfangsbestand, Dienstgrad und Jungmariner gibt es hier nicht; dafür ist das
-	 * Einzelformular da.
+	 * Bucht den Anfangsbestand, setzt den Dienstgrad und markiert Jungmariner.
+	 * Bei einem Fehler muss der Aufrufer das Konto mit rollback_user() entfernen.
 	 *
-	 * Zuerst werden alle Einträge geprüft, auch gegeneinander (z. B. doppelte
-	 * E-Mail-Adressen). Ist einer fehlerhaft, wird niemand angelegt und die Meldung
-	 * nennt die Zeile. Antwort: Liste der angelegten Konten mit Startpasswörtern.
+	 * @return true|WP_Error
 	 */
-	public static function create_users_bulk( WP_REST_Request $req ) {
-		$level = self::parse_new_level( $req->get_param( 'level' ) );
-		if ( is_wp_error( $level ) ) {
-			return $level;
-		}
-		$users = $req->get_param( 'users' );
-		if ( ! is_array( $users ) || ! $users ) {
-			return self::error( 'Bitte mindestens ein Mitglied angeben.' );
-		}
-		if ( count( $users ) > self::MAX_BULK_USERS ) {
-			return self::error( sprintf( 'Bitte höchstens %d Mitglieder auf einmal anlegen.', self::MAX_BULK_USERS ) );
-		}
-
-		$reserved = array();
-		$valid    = array();
-		foreach ( array_values( $users ) as $i => $entry ) {
-			$identity = self::validate_identity( is_array( $entry ) ? $entry : array(), $reserved );
-			if ( is_wp_error( $identity ) ) {
-				$name = is_array( $entry ) && isset( $entry['name'] ) ? trim( sanitize_text_field( (string) $entry['name'] ) ) : '';
-				return self::error( sprintf( 'Zeile %d%s: %s Es wurde niemand angelegt.', $i + 1, '' !== $name ? ' (' . $name . ')' : '', $identity->get_error_message() ) );
+	private static function apply_extras( $user_id, array $extras, $initial_date ) {
+		if ( $extras['initial'] > 0 ) {
+			$ids = MKL_DB::add_points( array( $user_id ), $extras['initial'], 'Anfangsbestand bei Übernahme', null, $initial_date, get_current_user_id() );
+			if ( ! $ids[0] ) {
+				return self::error( 'Der Anfangsbestand konnte nicht gespeichert werden.', 500 );
 			}
-			$valid[] = $identity;
 		}
+		if ( $extras['rank'] && ! MKL_Ranks::set_rank( $user_id, null, $extras['rank'], MKL_Ranks::KIND_PROMOTION, $extras['initial'], 'Ersteinstufung bei Anlage', get_current_user_id() ) ) {
+			return self::error( 'Der Dienstgrad konnte nicht gespeichert werden.', 500 );
+		}
+		// Erst nach dem Anfangsbestand: Der ist ein bereits erreichter Stand und wird nicht halbiert.
+		MKL_Roles::set_jungmariner( $user_id, $extras['jungmariner'] );
+		return true;
+	}
 
-		$created = array();
-		foreach ( $valid as $identity ) {
-			$account = self::insert_account( $identity, $level );
-			if ( is_wp_error( $account ) ) {
-				// Sollte nach der Prüfung nicht vorkommen; bereits Angelegte bleiben bestehen und werden gemeldet.
-				return new WP_REST_Response(
-					array(
-						'code'    => 'mkl_partial',
-						'message' => sprintf( '%s konnte nicht angelegt werden: %s', $identity['name'], $account->get_error_message() ),
-						'created' => $created,
-					),
-					500
-				);
-			}
-			$account['level'] = MKL_Roles::get_level( $account['id'] );
-			$created[]        = $account;
-		}
-		return new WP_REST_Response( $created, 201 );
+	/** Antwort für ein neu angelegtes Konto (inkl. Startpasswort). */
+	private static function format_created( array $account, array $extras ) {
+		return array(
+			'id'             => $account['id'],
+			'name'           => $account['name'],
+			'username'       => $account['username'],
+			'email'          => $account['email'],
+			'level'          => MKL_Roles::get_level( $account['id'] ),
+			'password'       => $account['password'],
+			'points'         => $extras['initial'],
+			'rank'           => MKL_Ranks::ref( $extras['rank'] ),
+			'is_jungmariner' => MKL_Roles::is_jungmariner( $account['id'] ),
+		);
 	}
 
 	/**

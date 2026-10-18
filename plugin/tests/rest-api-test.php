@@ -794,6 +794,86 @@ foreach ( array( $u['id'], $u2['id'] ) as $uid ) {
 	wp_delete_user( $uid );
 }
 
+echo "Mehrere anlegen mit Anfangsbestand, Dienstgrad und Jungmariner\n";
+foreach ( array( 'mkltest.uebern.a', 'mkltest.uebern.b', 'mkltest.uebern.c' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+$count_before = count_users()['total_users'];
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level' => 'mitglied',
+		'users' => array(
+			array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'B', 'username' => 'mkltest.uebern.b', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ),
+		),
+	)
+);
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 2' ) && false !== strpos( $d['message'], 'mindestens' ), 'Dienstgrad mit zu wenig Punkten in Zeile 2 → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => -1 ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 1' ), 'Negativer Anfangsbestand → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) ) ) );
+mkl_assert( 400 === $s, 'Deaktivierter Dienstgrad → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'anwaerter', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'jungmariner' => true ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'nur für Mitglieder' ), 'Jungmariner bei Anwärtern → 400' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'initial_points_date' => '31.12.2025', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a' ) ) ) );
+mkl_assert( 400 === $s, 'Ungültiges Datum → 400' );
+mkl_assert( count_users()['total_users'] === $count_before, 'Bei Fehlern wurde niemand angelegt' );
+
+// Scheitert ein Konto erst beim Speichern, werden auch die vorher angelegten wieder entfernt.
+$fail_login = function ( $login ) {
+	return 'mkltest.uebern.c' === $login ? '' : $login;
+};
+add_filter( 'pre_user_login', $fail_login );
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level' => 'mitglied',
+		'users' => array(
+			array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'B', 'username' => 'mkltest.uebern.b', 'initial_points' => 12 ),
+			array( 'name' => 'C', 'username' => 'mkltest.uebern.c' ),
+		),
+	)
+);
+remove_filter( 'pre_user_login', $fail_login );
+mkl_assert( 500 === $s && false !== strpos( $d['message'], 'niemand angelegt' ), 'Fehler beim Speichern → 500' );
+mkl_assert( count_users()['total_users'] === $count_before && ! username_exists( 'mkltest.uebern.a' ) && ! username_exists( 'mkltest.uebern.b' ), 'Alles oder nichts: bereits angelegte Konten wieder entfernt' );
+$orphans = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'points' ) . ' WHERE reason = %s AND user_id NOT IN (SELECT ID FROM ' . $wpdb->users . ')', 'Anfangsbestand bei Übernahme' ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+mkl_assert( 0 === $orphans, 'Keine verwaisten Anfangsbestände' );
+
+list( $s, $bulk ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level'               => 'mitglied',
+		'initial_points_date' => '2025-12-31',
+		'users'               => array(
+			array( 'name' => 'Mkltest Übern A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'Mkltest Übern B', 'username' => 'mkltest.uebern.b', 'initial_points' => 12, 'jungmariner' => true ),
+			array( 'name' => 'Mkltest Übern C', 'username' => 'mkltest.uebern.c' ),
+		),
+	)
+);
+mkl_assert( 201 === $s && 3 === count( $bulk ), 'Drei Mitglieder mit unterschiedlichen Angaben angelegt' );
+mkl_assert( 45 === $bulk[0]['points'] && $bootsmann['id'] === $bulk[0]['rank']['id'] && false === $bulk[0]['is_jungmariner'], 'A: 45 Punkte, Bootsmann' );
+mkl_assert( 12 === $bulk[1]['points'] && null === $bulk[1]['rank'] && true === $bulk[1]['is_jungmariner'] && MKL_Roles::is_jungmariner( $bulk[1]['id'] ), 'B: 12 Punkte, Jungmariner' );
+mkl_assert( 0 === $bulk[2]['points'] && null === $bulk[2]['rank'] && ! MKL_DB::get_points_for_user( $bulk[2]['id'] ), 'C: ohne Angaben keine Buchung' );
+$entries = MKL_DB::get_points_for_user( $bulk[1]['id'] );
+mkl_assert( 1 === count( $entries ) && 12 === $entries[0]['points'] && '2025-12-31' === $entries[0]['date'], 'Anfangsbestand des Jungmariners nicht halbiert, Datum übernommen' );
+$hist = MKL_Ranks::history( $bulk[0]['id'] );
+mkl_assert( $bootsmann['id'] === MKL_Ranks::user_rank_id( $bulk[0]['id'] ) && 1 === count( $hist ) && 'Ersteinstufung bei Anlage' === $hist[0]['reason'], 'Ersteinstufung im Verlauf' );
+foreach ( $bulk as $u ) {
+	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $u['id'] ) );
+	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $u['id'] ) );
+	wp_delete_user( $u['id'] );
+}
+
 echo "Jungmariner und Dienstgrade\n";
 foreach ( array( 'mkltest.jungrang' ) as $old_login ) {
 	$old = get_user_by( 'login', $old_login );
