@@ -19,18 +19,41 @@ defined( 'ABSPATH' ) || exit;
 class MKL_Calendar {
 
 	const CACHE_KEY = 'mkl_calendar_events';
+	const PAST_CACHE_KEY = 'mkl_calendar_past_events';
+	/** So weit zurück lassen sich Anwesenheitslisten zu Kalenderterminen anlegen. */
+	const PAST_DAYS = 90;
 	const GOOGLE_EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/%s/events';
 
 	/**
 	 * @return array|WP_Error Liste normalisierter Termine, nach Beginn sortiert.
 	 */
 	public static function get_events() {
-		$cached = get_transient( self::CACHE_KEY );
+		return self::cached( self::CACHE_KEY, self::range() );
+	}
+
+	/**
+	 * Termine der letzten PAST_DAYS Tage bis einschließlich morgen, für die
+	 * Anwesenheit. Die IDs sind dieselben wie bei get_events().
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function get_past_events() {
+		return self::cached(
+			self::PAST_CACHE_KEY,
+			array(
+				'timeMin' => gmdate( 'Y-m-d\TH:i:s\Z', time() - self::PAST_DAYS * DAY_IN_SECONDS ),
+				'timeMax' => gmdate( 'Y-m-d\TH:i:s\Z', time() + DAY_IN_SECONDS ),
+			)
+		);
+	}
+
+	private static function cached( $key, array $range ) {
+		$cached = get_transient( $key );
 		if ( is_array( $cached ) ) {
 			return $cached;
 		}
 
-		$events = self::fetch_events();
+		$events = self::fetch_events( $range );
 		if ( is_wp_error( $events ) ) {
 			return $events;
 		}
@@ -43,12 +66,13 @@ class MKL_Calendar {
 		);
 
 		$minutes = max( 1, (int) get_option( 'mkl_calendar_cache_minutes', 15 ) );
-		set_transient( self::CACHE_KEY, $events, $minutes * MINUTE_IN_SECONDS );
+		set_transient( $key, $events, $minutes * MINUTE_IN_SECONDS );
 		return $events;
 	}
 
 	public static function clear_cache() {
 		delete_transient( self::CACHE_KEY );
+		delete_transient( self::PAST_CACHE_KEY );
 	}
 
 	/** Zeitraum: ab gestern bis ein Jahr in die Zukunft. */
@@ -99,12 +123,12 @@ class MKL_Calendar {
 		return 'Nicht konfiguriert';
 	}
 
-	private static function fetch_events() {
+	private static function fetch_events( array $range ) {
 		$ids     = self::get_calendar_ids();
 		$api_key = (string) get_option( 'mkl_google_api_key', '' );
 
 		if ( $ids && '' !== $api_key ) {
-			return self::fetch_google( $ids, array( 'key' => $api_key ), array() );
+			return self::fetch_google( $ids, array( 'key' => $api_key ), array(), $range );
 		}
 
 		if ( $ids && self::pgc_available() ) {
@@ -114,11 +138,11 @@ class MKL_Calendar {
 					if ( $client->isAccessTokenExpired() ) {
 						$client->refreshAccessToken();
 					}
-					return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ) );
+					return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ), $range );
 				}
 				$pgc_key = (string) get_option( 'pgc_api_key', '' );
 				if ( '' !== $pgc_key ) {
-					return self::fetch_google( $ids, array( 'key' => $pgc_key ), array( 'Referer' => home_url( '/' ) ) );
+					return self::fetch_google( $ids, array( 'key' => $pgc_key ), array( 'Referer' => home_url( '/' ) ), $range );
 				}
 			} catch ( Exception $e ) {
 				return new WP_Error( 'mkl_calendar_pgc', 'Google-Kalender konnte nicht abgerufen werden: ' . $e->getMessage() );
@@ -127,15 +151,14 @@ class MKL_Calendar {
 
 		$ics_url = (string) get_option( 'mkl_ics_url', '' );
 		if ( '' !== $ics_url ) {
-			return self::fetch_ics( $ics_url );
+			return self::fetch_ics( $ics_url, $range );
 		}
 
 		return new WP_Error( 'mkl_calendar_not_configured', 'Der Kalender ist noch nicht eingerichtet.' );
 	}
 
-	private static function fetch_google( array $ids, array $auth_params, array $headers ) {
+	private static function fetch_google( array $ids, array $auth_params, array $headers, array $range ) {
 		$events = array();
-		$range  = self::range();
 		foreach ( $ids as $cal_id ) {
 			$params = array_merge(
 				array(
@@ -213,7 +236,7 @@ class MKL_Calendar {
 	/* iCal (ICS)                                                          */
 	/* ------------------------------------------------------------------ */
 
-	private static function fetch_ics( $url ) {
+	private static function fetch_ics( $url, array $range ) {
 		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
 		if ( is_wp_error( $response ) ) {
 			return $response;
@@ -221,17 +244,17 @@ class MKL_Calendar {
 		if ( 200 !== wp_remote_retrieve_response_code( $response ) ) {
 			return new WP_Error( 'mkl_calendar_ics', 'iCal-Adresse lieferte HTTP ' . wp_remote_retrieve_response_code( $response ) );
 		}
-		return self::parse_ics( wp_remote_retrieve_body( $response ) );
+		return self::parse_ics( wp_remote_retrieve_body( $response ), $range );
 	}
 
 	/**
 	 * Einfacher ICS-Parser für VEVENTs. Wiederkehrende Termine (RRULE) werden
 	 * nur mit ihrem ersten Vorkommen angezeigt – dafür lieber die Google-API nutzen.
 	 */
-	public static function parse_ics( $ics ) {
+	public static function parse_ics( $ics, $range = null ) {
 		$ics   = preg_replace( "/\r\n[ \t]|\n[ \t]/", '', str_replace( "\r\n", "\n", (string) $ics ) );
 		$lines = explode( "\n", $ics );
-		$range = self::range();
+		$range = $range ? $range : self::range();
 		$min   = strtotime( $range['timeMin'] );
 		$max   = strtotime( $range['timeMax'] );
 

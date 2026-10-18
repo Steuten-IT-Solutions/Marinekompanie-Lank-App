@@ -77,3 +77,36 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
 }
+
+/* Anwesenheit */
+
+/** Füllwörter, die bei der Zuordnung Termin → Katalog-Vorlage nicht zählen. */
+const MATCH_STOPWORDS = new Set(['teilnahme', 'beim', 'bei', 'der', 'die', 'das', 'den', 'dem', 'und', 'zum', 'zur', 'vom', 'von', 'mit', 'für', 'auf', 'des']);
+
+function matchWords(s: string): Set<string> {
+  return new Set(
+    s
+      .toLocaleLowerCase('de-DE')
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length >= 3 && !MATCH_STOPWORDS.has(w)),
+  );
+}
+
+/**
+ * Katalog-Vorlage, die am besten zum Termintitel passt (meiste gemeinsame
+ * Wörter, z. B. „Schützenfest Osterath“ → „Teilnahme Schützenfest“); null, wenn keine passt.
+ */
+export function matchCatalog<T extends { title: string }>(eventTitle: string, catalog: T[]): T | null {
+  const words = matchWords(eventTitle);
+  let best: T | null = null;
+  let bestScore = 0;
+  for (const item of catalog) {
+    let score = 0;
+    for (const w of matchWords(item.title)) if (words.has(w)) score++;
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best;
+}

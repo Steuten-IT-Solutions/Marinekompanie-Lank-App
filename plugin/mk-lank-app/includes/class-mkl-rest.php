@@ -13,6 +13,8 @@
  *   Benutzer anlegen/Rollen ändern create_users/promote_users. Anwärter zum Mitglied
  *   befördern darf auch der Spieß (mkl_manage).
  * - Mitglieder sehen nur den eigenen Dienstgrad und Verlauf (/me…), nie den anderer.
+ * - Anwesenheitslisten (Mitglieder und Anwärter) führt der Spieß (mkl_manage);
+ *   Mitglieder sehen nur die eigene Anwesenheit (/me/attendance).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -47,6 +49,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/me', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_me' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/me/points', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_points' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/penalties', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_penalties' ), 'permission_callback' => $member ) );
+		register_rest_route( self::NS, '/me/attendance', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_attendance' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/rank-history', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_my_rank_history' ), 'permission_callback' => $member ) );
 		register_rest_route( self::NS, '/me/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'change_my_password' ), 'permission_callback' => $logged_in ) );
 		register_rest_route( self::NS, '/calendar', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_calendar' ), 'permission_callback' => $calendar ) );
@@ -165,6 +168,24 @@ class MKL_REST {
 		register_rest_route( self::NS, '/accounts', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_accounts' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ) ) );
 		register_rest_route( self::NS, '/accounts/(?P<id>\d+)', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'update_account' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
 		register_rest_route( self::NS, '/accounts/(?P<id>\d+)/password', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'reset_account_password' ), 'permission_callback' => array( __CLASS__, 'can_edit_users' ), 'args' => $id_arg ) );
+
+		register_rest_route(
+			self::NS,
+			'/attendance',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_attendance_lists' ), 'permission_callback' => $manage ),
+				array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'save_attendance' ), 'permission_callback' => $manage ),
+			)
+		);
+		register_rest_route( self::NS, '/attendance/events', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_attendance_events' ), 'permission_callback' => $manage ) );
+		register_rest_route(
+			self::NS,
+			'/attendance/(?P<id>\d+)',
+			array(
+				array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'get_attendance_list' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_attendance_list' ), 'permission_callback' => $manage, 'args' => $id_arg ),
+			)
+		);
 
 		register_rest_route( self::NS, '/points', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_points' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/points/(?P<id>\d+)', array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_points' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
@@ -299,6 +320,10 @@ class MKL_REST {
 
 	public static function get_my_rank_history() {
 		return rest_ensure_response( MKL_Ranks::history( get_current_user_id() ) );
+	}
+
+	public static function get_my_attendance() {
+		return rest_ensure_response( MKL_Attendance::for_user( get_current_user_id() ) );
 	}
 
 	public static function get_my_points() {
@@ -1455,7 +1480,20 @@ class MKL_REST {
 			return self::error( 'Bitte einen Grund angeben.' );
 		}
 
-		$ids = MKL_DB::add_points( $user_ids, $points, $reason, $catalog_id, $date, get_current_user_id() );
+		// Aus einer Anwesenheitsliste: wer für diesen Termin schon Punkte hat, wird übersprungen.
+		// Die Antwort enthält nur die neu angelegten Einträge.
+		$attendance_id = $req->get_param( 'attendance_id' ) ? (int) $req->get_param( 'attendance_id' ) : null;
+		if ( $attendance_id ) {
+			if ( ! MKL_Attendance::get( $attendance_id ) ) {
+				return self::error( 'Anwesenheitsliste nicht gefunden.' );
+			}
+			$user_ids = array_values( array_diff( $user_ids, MKL_Attendance::booked_user_ids( $attendance_id ) ) );
+			if ( ! $user_ids ) {
+				return self::error( 'Alle ausgewählten Mitglieder haben für diesen Termin schon Punkte.' );
+			}
+		}
+
+		$ids = MKL_DB::add_points( $user_ids, $points, $reason, $catalog_id, $date, get_current_user_id(), $attendance_id );
 		return new WP_REST_Response( array_map( array( 'MKL_DB', 'get_points_row' ), $ids ), 201 );
 	}
 
@@ -1465,6 +1503,159 @@ class MKL_REST {
 			return self::error( 'Eintrag nicht gefunden.', 404 );
 		}
 		MKL_DB::soft_delete( 'points', $row['id'], get_current_user_id() );
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Anwesenheit                                                         */
+	/* ------------------------------------------------------------------ */
+
+	public static function get_attendance_lists() {
+		return rest_ensure_response( MKL_Attendance::recent() );
+	}
+
+	/**
+	 * Kalendertermine der letzten Tage bis heute (laufende eingeschlossen), neueste
+	 * zuerst, jeweils mit der ID einer schon vorhandenen Liste.
+	 */
+	public static function get_attendance_events() {
+		$events = MKL_Calendar::get_past_events();
+		if ( is_wp_error( $events ) ) {
+			$events->add_data( array( 'status' => 502 ) );
+			return $events;
+		}
+		$today = wp_date( 'Y-m-d' );
+		$lists = MKL_Attendance::list_ids_by_event_key();
+		$out   = array();
+		foreach ( array_reverse( $events ) as $ev ) {
+			$date = substr( $ev['start'], 0, 10 );
+			if ( $date > $today ) {
+				continue;
+			}
+			$out[] = array(
+				'key'      => $ev['id'],
+				'title'    => $ev['title'],
+				'date'     => $date,
+				'start'    => $ev['start'],
+				'end'      => $ev['end'],
+				'all_day'  => $ev['all_day'],
+				'location' => $ev['location'],
+				'list_id'  => isset( $lists[ $ev['id'] ] ) ? $lists[ $ev['id'] ] : null,
+			);
+		}
+		return rest_ensure_response( $out );
+	}
+
+	public static function get_attendance_list( WP_REST_Request $req ) {
+		$list = MKL_Attendance::get( (int) $req['id'] );
+		if ( ! $list ) {
+			return self::error( 'Anwesenheitsliste nicht gefunden.', 404 );
+		}
+		return rest_ensure_response( self::attendance_detail( $list ) );
+	}
+
+	/** Mitglieder und Anwärter stehen in der Anwesenheitsliste. */
+	private static function in_attendance( $user_id ) {
+		return MKL_Roles::is_member( $user_id ) || MKL_Roles::LEVEL_ANWAERTER === MKL_Roles::get_level( $user_id );
+	}
+
+	/**
+	 * Liste mit allen aktuellen Mitgliedern und Anwärtern. Wer noch keinen Eintrag
+	 * hat, z. B. weil er erst später dazukam, erscheint als „fehlt“.
+	 */
+	private static function attendance_detail( array $list ) {
+		$statuses = MKL_Attendance::statuses( $list['id'] );
+		$booked   = array_flip( MKL_Attendance::booked_user_ids( $list['id'] ) );
+		$members  = array();
+		foreach ( self::member_users() as $u ) {
+			$id = (int) $u->ID;
+			if ( ! self::in_attendance( $id ) ) {
+				continue;
+			}
+			$members[] = array(
+				'id'             => $id,
+				'name'           => $u->display_name,
+				'is_anwaerter'   => ! MKL_Roles::is_member( $id ),
+				'is_jungmariner' => MKL_Roles::is_jungmariner( $id ),
+				'status'         => isset( $statuses[ $id ] ) ? $statuses[ $id ] : MKL_Attendance::STATUS_FEHLT,
+				'booked'         => isset( $booked[ $id ] ),
+			);
+		}
+		$list['members'] = $members;
+		return $list;
+	}
+
+	/**
+	 * Legt eine Liste an oder speichert sie. Body: id (bestehende Liste) oder
+	 * source (kalender|frei) mit event_key (nur kalender), dazu title, date und
+	 * entries: [{user_id, status}].
+	 */
+	public static function save_attendance( WP_REST_Request $req ) {
+		$id = $req->get_param( 'id' ) ? (int) $req->get_param( 'id' ) : null;
+		if ( $id ) {
+			$list = MKL_Attendance::get( $id );
+			if ( ! $list ) {
+				return self::error( 'Anwesenheitsliste nicht gefunden.', 404 );
+			}
+			$source    = $list['source'];
+			$event_key = $list['event_key'];
+		} else {
+			$source    = (string) $req->get_param( 'source' );
+			$event_key = '';
+			if ( MKL_Attendance::SOURCE_KALENDER === $source ) {
+				$event_key = (string) $req->get_param( 'event_key' );
+				if ( ! preg_match( '/^[a-f0-9]{32}$/', $event_key ) ) {
+					return self::error( 'Ungültiger Termin.' );
+				}
+			} elseif ( MKL_Attendance::SOURCE_FREI !== $source ) {
+				return self::error( 'Ungültige Terminart.' );
+			}
+		}
+
+		$title = mb_substr( sanitize_text_field( (string) $req->get_param( 'title' ) ), 0, 191 );
+		if ( '' === $title ) {
+			return self::error( 'Bitte einen Titel angeben.' );
+		}
+		$raw_date = $req->get_param( 'date' );
+		if ( null === $raw_date || '' === $raw_date ) {
+			return self::error( 'Bitte ein Datum angeben.' );
+		}
+		$date = self::parse_date( $raw_date );
+		if ( is_wp_error( $date ) ) {
+			return $date;
+		}
+
+		$raw = $req->get_param( 'entries' );
+		if ( null !== $raw && ! is_array( $raw ) ) {
+			return self::error( 'Ungültige Einträge.' );
+		}
+		$entries = array();
+		foreach ( (array) $raw as $entry ) {
+			$user_id = is_array( $entry ) && isset( $entry['user_id'] ) ? absint( $entry['user_id'] ) : 0;
+			$status  = is_array( $entry ) && isset( $entry['status'] ) ? $entry['status'] : null;
+			if ( ! $user_id || ! get_userdata( $user_id ) ) {
+				return self::error( 'Unbekanntes Mitglied.' );
+			}
+			if ( ! self::in_attendance( $user_id ) ) {
+				return self::error( 'In der Anwesenheitsliste stehen nur Mitglieder und Anwärter.' );
+			}
+			if ( ! in_array( $status, MKL_Attendance::STATUSES, true ) ) {
+				return self::error( 'Ungültiger Status.' );
+			}
+			$entries[ $user_id ] = $status;
+		}
+
+		$saved = MKL_Attendance::save( $id, $source, $event_key, $title, $date, $entries, get_current_user_id() );
+		if ( is_wp_error( $saved ) ) {
+			return $saved;
+		}
+		return new WP_REST_Response( self::attendance_detail( MKL_Attendance::get( $saved ) ), $id ? 200 : 201 );
+	}
+
+	public static function delete_attendance_list( WP_REST_Request $req ) {
+		if ( ! MKL_Attendance::delete( (int) $req['id'] ) ) {
+			return self::error( 'Anwesenheitsliste nicht gefunden.', 404 );
+		}
 		return rest_ensure_response( array( 'deleted' => true ) );
 	}
 

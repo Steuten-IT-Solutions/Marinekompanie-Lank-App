@@ -7,16 +7,16 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
   - Anwärter und Mitglieder sehen den Google Kalender mit allen Terminen.
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
-- **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt).
+- **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt), eigene Anwesenheit.
 - **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
-- **Spieß:** Punkte und Strafen vergeben, Anwärter zu Mitgliedern befördern, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
+- **Spieß:** Punkte und Strafen vergeben, Anwesenheit je Termin erfassen, Anwärter zu Mitgliedern befördern, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
 
 ### Rollen
 
 | Rolle | Darf |
 |---|---|
 | **Admin** (WordPress-Administrator) | alles: öffentliche Termine und Dokumente pflegen, Mitglieder anlegen, Rollen vergeben, Konten bearbeiten und Passwörter zurücksetzen, dazu alles vom Spieß |
-| **Spieß** | Punkte und Strafen vergeben und verwalten, Punktekatalog, Dienstgrade und Titel pflegen, befördern und degradieren, Titel vergeben, Anwärter zum Mitglied befördern |
+| **Spieß** | Punkte und Strafen vergeben und verwalten, Anwesenheit erfassen, Punktekatalog, Dienstgrade und Titel pflegen, befördern und degradieren, Titel vergeben, Anwärter zum Mitglied befördern |
 | **Mitglied** | die eigenen Punkte, den eigenen Dienstgrad und die eigenen Strafen sehen, den Google Kalender mit allen Terminen, die Dokumente für Mitglieder |
 | **Anwärter** | wie „Ohne Rolle“, sieht aber den Google Kalender mit allen Terminen statt der öffentlichen Terminliste |
 
@@ -59,7 +59,7 @@ Alles steckt in einem **WordPress-Plugin** (`plugin/mk-lank-app`). Es läuft auf
 
 ```
 app/                       React + TypeScript (Vite) – Quellcode der PWA
-  src/views/               Termine, News, Galerie, Meins (Punkte/Strafen), Spieß-Bereich, Konto
+  src/views/               Termine, News, Galerie, Meins (Punkte/Strafen/Anwesenheit), Spieß-Bereich, Konto
   public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten)
   e2e/                     Playwright-Tests
 plugin/mk-lank-app/        WordPress-Plugin
@@ -70,6 +70,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-titles.php    Titel (Kapitän, Ehrenkapitän, …) und ihre Zuweisung
   includes/class-mkl-documents.php Dokumente und Kategorien: Prüfung, geschützte Ablage, Auslieferung
   includes/class-mkl-events.php    Öffentliche Terminliste
+  includes/class-mkl-attendance.php Anwesenheitslisten je Termin
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
   includes/class-mkl-drive.php     Google Drive über „Mit Google verbinden“ (OAuth) oder Dienstkonto, ohne Bibliothek
   includes/class-mkl-gallery.php   Galerie: Abgleich, Bildgrößen, Ablage, Auslieferung
@@ -148,6 +149,13 @@ scripts/                   Build- und Test-Skripte
    - Die Regeln gelten auch für Admins.
    - **Spieß → Dienstgrade** zeigt, wer fällig ist (mit Datum, seit wann) und wem wie viele Punkte fehlen.
    - Mitglieder sehen unter **Meins** ihren eigenen Dienstgrad, die fehlenden Punkte bis zum nächsten Dienstgrad, die Dienstgrade und ihren Verlauf, aber nicht die Dienstgrade anderer.
+
+   **Anwesenheit:** Unter **Spieß → Anwesenheit** wählt der Spieß einen Termin aus dem internen Kalender der letzten 90 Tage oder legt einen **freien Termin** mit Titel und Datum an. Bei laufenden Terminen führt auch der Knopf **„Anwesenheit“** in der Terminansicht dorthin.
+   - In der Liste stehen alle Mitglieder und Anwärter. Ein Tipp auf eine der Zahlen (anwesend, entschuldigt, fehlt) zeigt, wie viele davon Mitglieder, Jungmariner und Anwärter sind (Jungmariner zählen dabei nicht zusätzlich als Mitglieder). Anwärter bekommen keine Punkte oder Strafen und werden bei den Vorschlägen ausgelassen. Je Mitglied gibt es drei Häkchen (anwesend, entschuldigt, fehlt), von denen immer genau eins gesetzt ist; anfangs ist es „fehlt“. „Alle anwesend“ setzt alle (bzw. alle Suchtreffer) auf anwesend.
+   - **„Punkte für N Anwesende“** öffnet das Punkte-Formular: vorausgewählt sind die Anwesenden, die für diesen Termin noch keine Punkte haben, dazu das Termindatum und – wenn der Titel passt – eine Vorlage aus dem Punktekatalog. Der Spieß kann alles ändern und bestätigt. Wer für den Termin schon Punkte hat, wird beim Buchen übersprungen; nach einer Stornierung kann man neu buchen.
+   - **„Strafe für N Unentschuldigte“** öffnet das Strafen-Formular mit allen, die „fehlt“ haben, und dem Grund „Unentschuldigt gefehlt: <Termin>“. Betrag und Auswahl bestätigt der Spieß; automatisch gebucht wird nichts.
+   - Titel und Datum werden mit der Liste gespeichert. Sie bleibt also erhalten, auch wenn der Termin später aus dem Kalender verschwindet. Löscht man eine Liste, bleiben bereits gebuchte Punkte bestehen.
+   - Mitglieder sehen unter **Meins → Anwesenheit** nur ihre eigene Anwesenheit.
 
    **Titel:** Kapitän, Ehrenkapitän, Ehrenspieß und Ehrenmitglied sind schon angelegt. Weitere Titel, Umbenennen und Löschen unter **Spieß → Einrichtung → Titel**. Vergeben werden Titel in den Mitgliedsdetails unter **„Titel ändern“**; ein Mitglied kann mehrere Titel haben. Titel hängen nicht von Punkten ab und werden zusätzlich zum Dienstgrad angezeigt: in der Mitgliederliste, in der Beförderungsübersicht und beim Mitglied selbst unter **Meins**. Das dürfen Spieße und Admins. Zugewiesene Titel lassen sich erst löschen, wenn sie niemand mehr hat.
 10. **Dokumente hinterlegen:** Als Admin in der App unter **Dokumente → „Dokumente verwalten“**.

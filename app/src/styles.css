@@ -532,3 +532,72 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   background: none; color: var(--muted); font-size: 1.5rem; line-height: 1; cursor: pointer;
 }
 .bulk-remove:hover { color: var(--danger); }
+
+/* Anwesenheit */
+.badge-list { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-att-anwesend { background: #d8ead9; color: #1d5a31; }
+.badge-att-entschuldigt { background: #f3e6c4; color: #6b4e10; }
+.badge-att-fehlt { background: #f6d9cf; color: #7a2412; }
+.attendance-meta { margin-bottom: 4px; }
+.attendance-counts { margin: 10px 2px 12px; font-weight: 650; color: var(--ink-2); }
+.count-item { position: relative; }
+.count-button {
+  padding: 2px 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 4px;
+}
+.count-tooltip {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 5; display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 12px; border-radius: 10px; background: var(--navy); color: #fff; white-space: nowrap;
+  font-size: 0.85rem; font-weight: 600; box-shadow: var(--shadow);
+}
+.count-tooltip::before {
+  content: ''; position: absolute; top: -6px; left: 16px; border: 6px solid transparent; border-top: 0; border-bottom-color: var(--navy);
+}
+.count-item-2 .count-tooltip { left: auto; right: 0; }
+.count-item-2 .count-tooltip::before { left: auto; right: 16px; }
+.attendance-name .badge { margin-left: 6px; vertical-align: 2px; }
+.attendance-list { max-height: none; }
+.attendance-list { padding: 0; }
+.attendance-list li { border-bottom: 1px solid var(--line); }
+.attendance-list li:last-child { border-bottom: 0; }
+.attendance-grid { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 74px); align-items: center; padding: 0 4px 0 14px; }
+.attendance-head { padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.attendance-col { text-align: center; font-size: 0.74rem; font-weight: 700; }
+@media (max-width: 380px) {
+  .attendance-grid { grid-template-columns: minmax(0, 1fr) repeat(3, 66px); padding-left: 12px; }
+  .attendance-col { font-size: 0.68rem; }
+}
+.attendance-col-anwesend { color: var(--good); }
+.attendance-col-entschuldigt { color: var(--ink-2); }
+.attendance-col-fehlt { color: var(--danger); }
+.attendance-cell { display: flex; justify-content: center; }
+.attendance-name { display: flex; flex-direction: column; min-width: 0; padding: 11px 0; overflow-wrap: anywhere; }
+/* Optionsfelder als Häkchen: je Mitglied ist genau eins gesetzt. */
+.attendance-check {
+  appearance: none; -webkit-appearance: none; margin: 0; width: 28px; height: 28px; cursor: pointer;
+  border: 2px solid var(--line-strong); border-radius: 7px; background: var(--card);
+  display: grid; place-content: center;
+}
+.attendance-check::after { content: ''; width: 8px; height: 14px; border: solid transparent; border-width: 0 3px 3px 0; transform: translateY(-2px) rotate(45deg); }
+.attendance-check:checked::after { border-color: #fff; }
+.attendance-check-anwesend:checked { background: #1f6b3a; border-color: #1f6b3a; }
+.attendance-check-entschuldigt:checked { background: #8a6a1c; border-color: #8a6a1c; }
+.attendance-check-fehlt:checked { background: #a3301a; border-color: #a3301a; }
+.attendance-check:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
+.attendance-booked { font-size: 0.78rem; color: var(--good); font-weight: 650; }
+.attendance-save { margin-top: 14px; }
+.attendance-note { padding: 10px 14px; }
+.attendance-note p { margin: 2px 0 0; font-size: 0.9rem; color: var(--ink-2); }
+.free-event { margin-top: 18px; }
+.free-event p { margin: 0; }
+.danger-link { color: var(--danger); }
+.btn-link.nowrap { white-space: nowrap; }
+@media (prefers-color-scheme: dark) {
+  .badge-att-anwesend { background: #163a24; color: #9fdcb2; }
+  .badge-att-entschuldigt { background: #3d3115; color: #ecd28f; }
+  .badge-att-fehlt { background: #4a1e14; color: #f6b8a6; }
+}
+/* Sechs Spieß-Reiter: auf Handys in zwei Reihen zu je drei. */
+@media (max-width: 430px) {
+  .segmented-spiess { display: grid; grid-template-columns: repeat(3, 1fr); }
+}

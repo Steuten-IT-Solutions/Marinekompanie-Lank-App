@@ -440,6 +440,11 @@ $matrix = array(
 	array( 'POST', '/documents', array( 'date' => '2026-01-01' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'DELETE', '/documents/999999', array(), array( 401, 403, 403, 403, 404 ) ),
 	array( 'POST', '/document-categories', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'GET', '/me/attendance', array(), array( 401, 403, 200, 200, 200 ) ),
+	array( 'GET', '/attendance', array(), array( 401, 403, 403, 200, 200 ) ),
+	array( 'PUT', '/attendance', array( 'source' => 'x' ), array( 401, 403, 403, 400, 400 ) ),
+	array( 'GET', '/attendance/999999', array(), array( 401, 403, 403, 404, 404 ) ),
+	array( 'DELETE', '/attendance/999999', array(), array( 401, 403, 403, 404, 404 ) ),
 );
 $who = array( 0, $ohne, $m1, $spiess, $admin );
 foreach ( $matrix as $row ) {
@@ -1159,6 +1164,180 @@ if ( $migrated ) {
 }
 wp_delete_user( $doc_admin );
 wp_delete_user( $doc_ohne );
+
+echo "Anwesenheit\n";
+$att_anw = mkl_test_user( 'mkltest_att_anwaerter', 'anwaerter' );
+$att_ohne = mkl_test_user( 'mkltest_att_ohne', 'ohne' );
+
+wp_set_current_user( $m1 );
+list( $s ) = mkl_req( 'GET', '/attendance/events' );
+mkl_assert( 403 === $s, 'GET /attendance/events als Mitglied → 403' );
+
+wp_set_current_user( $spiess );
+$att_body = array(
+	'source'  => 'frei',
+	'title'   => 'Arbeitsdienst Schützenplatz',
+	'date'    => '2026-09-12',
+	'entries' => array(
+		array( 'user_id' => $m1, 'status' => 'anwesend' ),
+		array( 'user_id' => $m2, 'status' => 'entschuldigt' ),
+	),
+);
+list( $s, $att ) = mkl_req( 'PUT', '/attendance', $att_body );
+mkl_assert( 201 === $s && 'frei' === $att['source'] && 32 === strlen( $att['event_key'] ) && 'Arbeitsdienst Schützenplatz' === $att['title'] && '2026-09-12' === $att['date'], 'Freie Anwesenheitsliste anlegen' );
+$att_status = wp_list_pluck( $att['members'], 'status', 'id' );
+mkl_assert( 'anwesend' === $att_status[ $m1 ] && 'entschuldigt' === $att_status[ $m2 ] && 'fehlt' === $att_status[ $spiess ], 'Stati gespeichert, Mitglieder ohne Eintrag gelten als „fehlt“' );
+$att_anw_flag = wp_list_pluck( $att['members'], 'is_anwaerter', 'id' );
+mkl_assert( 'fehlt' === $att_status[ $att_anw ] && true === $att_anw_flag[ $att_anw ] && false === $att_anw_flag[ $m1 ], 'Anwärter stehen in der Liste und sind markiert' );
+mkl_assert( ! isset( $att_status[ $att_ohne ] ), 'Konten ohne Rolle stehen nicht in der Liste' );
+
+foreach (
+	array(
+		'Konto ohne Rolle' => array( 'entries' => array( array( 'user_id' => $att_ohne, 'status' => 'anwesend' ) ) ),
+		'Unbekannter Status' => array( 'entries' => array( array( 'user_id' => $m1, 'status' => 'krank' ) ) ),
+		'Ohne Titel'       => array( 'title' => '' ),
+		'Ohne Datum'       => array( 'date' => '' ),
+		'Ungültiges Datum' => array( 'date' => '2026-02-30' ),
+		'Unbekannte Terminart' => array( 'source' => 'public' ),
+		'Kalender ohne gültigen Termin' => array( 'source' => 'kalender', 'event_key' => '../x' ),
+	) as $label => $override
+) {
+	list( $s ) = mkl_req( 'PUT', '/attendance', array_merge( $att_body, $override ) );
+	mkl_assert( 400 === $s, "Anwesenheit speichern abgelehnt: $label → 400" );
+}
+
+$cal_key  = md5( 'mkltest-termin' );
+$cal_body = array(
+	'source'    => 'kalender',
+	'event_key' => $cal_key,
+	'title'     => 'Kompanieabend',
+	'date'      => '2026-09-05',
+	'entries'   => array( array( 'user_id' => $m2, 'status' => 'anwesend' ) ),
+);
+list( $s, $cal ) = mkl_req( 'PUT', '/attendance', $cal_body );
+list( $s2, $cal2 ) = mkl_req( 'PUT', '/attendance', array_merge( $cal_body, array( 'entries' => array( array( 'user_id' => $m1, 'status' => 'fehlt' ) ) ) ) );
+mkl_assert( 201 === $s && in_array( $s2, array( 200, 201 ), true ) && $cal['id'] === $cal2['id'], 'Kalendertermin bekommt nur eine Liste, erneutes Speichern ergänzt sie' );
+$cal_status = wp_list_pluck( $cal2['members'], 'status', 'id' );
+mkl_assert( 'anwesend' === $cal_status[ $m2 ] && 'fehlt' === $cal_status[ $m1 ], 'Ergänzen lässt bestehende Einträge stehen' );
+list( $s, $d ) = mkl_req( 'GET', '/attendance/' . $cal['id'] );
+mkl_assert( 200 === $s && 'Kompanieabend' === $d['title'] && '2026-09-05' === $d['date'], 'Liste behält Titel und Datum, auch ohne Termin im Kalender' );
+
+list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'date' => '2026-09-12', 'attendance_id' => $att['id'] ) );
+mkl_assert( 201 === $s && 1 === count( $d ) && $m1 === $d[0]['user_id'], 'Punkte aus Anwesenheitsliste gebucht' );
+$att_point_m1 = $d[0]['id'];
+list( $s, $d ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1, $m2 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'date' => '2026-09-12', 'attendance_id' => $att['id'] ) );
+mkl_assert( 201 === $s && 1 === count( $d ) && $m2 === $d[0]['user_id'], 'Zweite Buchung: schon gebuchte Mitglieder werden übersprungen, nicht Anwesende sind erlaubt' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1, $m2 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'attendance_id' => $att['id'] ) );
+mkl_assert( 400 === $s, 'Alle schon gebucht → 400' );
+list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'id' => $att['id'], 'title' => $att['title'], 'date' => $att['date'], 'entries' => array( array( 'user_id' => $att_anw, 'status' => 'anwesend' ) ) ) );
+$att_status = wp_list_pluck( $d['members'], 'status', 'id' );
+mkl_assert( 200 === $s && 'anwesend' === $att_status[ $att_anw ], 'Anwärter als anwesend speichern' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $att_anw ), 'points' => 3, 'reason' => 'x', 'attendance_id' => $att['id'] ) );
+mkl_assert( 400 === $s, 'Anwärter bekommen auch über die Anwesenheit keine Punkte → 400' );
+list( $s ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'x', 'attendance_id' => 999999 ) );
+mkl_assert( 400 === $s, 'Unbekannte Anwesenheitsliste → 400' );
+list( $s, $d ) = mkl_req( 'GET', '/attendance/' . $att['id'] );
+$att_booked = wp_list_pluck( $d['members'], 'booked', 'id' );
+mkl_assert( true === $att_booked[ $m1 ] && true === $att_booked[ $m2 ] && false === $att_booked[ $spiess ], 'Liste zeigt, wer schon Punkte hat' );
+
+mkl_req( 'DELETE', '/points/' . $att_point_m1 );
+list( $s, $d ) = mkl_req( 'GET', '/attendance/' . $att['id'] );
+$att_booked = wp_list_pluck( $d['members'], 'booked', 'id' );
+list( $s2, $d2 ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'attendance_id' => $att['id'] ) );
+mkl_assert( false === $att_booked[ $m1 ] && 201 === $s2 && 1 === count( $d2 ), 'Nach Stornierung kann man neu buchen' );
+
+list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'id' => $att['id'], 'title' => 'Arbeitsdienst', 'date' => '2026-09-13', 'entries' => array( array( 'user_id' => $m1, 'status' => 'fehlt' ) ) ) );
+$att_status = wp_list_pluck( $d['members'], 'status', 'id' );
+mkl_assert( 200 === $s && 'Arbeitsdienst' === $d['title'] && '2026-09-13' === $d['date'] && 'fehlt' === $att_status[ $m1 ] && 'entschuldigt' === $att_status[ $m2 ], 'Liste ändern: Titel, Datum und Status' );
+
+list( $s, $d ) = mkl_req( 'GET', '/attendance' );
+$att_recent = wp_list_pluck( $d, 'counts', 'id' );
+mkl_assert( 200 === $s && isset( $att_recent[ $att['id'] ] ) && array( 'anwesend' => 1, 'entschuldigt' => 1, 'fehlt' => 1 ) === $att_recent[ $att['id'] ], 'Letzte Listen mit Zählern' );
+
+wp_set_current_user( $m1 );
+list( $s, $d ) = mkl_req( 'GET', '/me/attendance' );
+$mine = wp_list_pluck( $d, 'status', 'list_id' );
+mkl_assert( 200 === $s && 'fehlt' === $mine[ $att['id'] ] && 'fehlt' === $mine[ $cal['id'] ], 'Mitglied sieht die eigene Anwesenheit' );
+wp_set_current_user( $m2 );
+list( $s, $d ) = mkl_req( 'GET', '/me/attendance' );
+$mine = wp_list_pluck( $d, 'status', 'list_id' );
+mkl_assert( 'entschuldigt' === $mine[ $att['id'] ] && 'anwesend' === $mine[ $cal['id'] ] && array( 'list_id', 'title', 'date', 'status' ) === array_keys( $d[0] ), 'Anwesenheit nur eigene, ohne Angaben zu anderen' );
+
+// Kalendertermine für die Anwesenheit: vergangene und heutige, keine künftigen; gleiche IDs wie /calendar.
+$att_ics = implode(
+	"\r\n",
+	array(
+		'BEGIN:VCALENDAR',
+		'BEGIN:VEVENT',
+		'UID:mkltest-past',
+		'DTSTART;VALUE=DATE:' . wp_date( 'Ymd', time() - 3 * DAY_IN_SECONDS ),
+		'SUMMARY:Vergangener Termin',
+		'END:VEVENT',
+		'BEGIN:VEVENT',
+		'UID:mkltest-today',
+		'DTSTART;VALUE=DATE:' . wp_date( 'Ymd' ),
+		'SUMMARY:Heutiger Termin',
+		'END:VEVENT',
+		'BEGIN:VEVENT',
+		'UID:mkltest-future',
+		'DTSTART;VALUE=DATE:' . wp_date( 'Ymd', time() + 5 * DAY_IN_SECONDS ),
+		'SUMMARY:Künftiger Termin',
+		'END:VEVENT',
+		'BEGIN:VEVENT',
+		'UID:mkltest-old',
+		'DTSTART;VALUE=DATE:' . wp_date( 'Ymd', time() - 120 * DAY_IN_SECONDS ),
+		'SUMMARY:Zu alter Termin',
+		'END:VEVENT',
+		'END:VCALENDAR',
+	)
+);
+$att_ics_filter = function ( $pre, $args, $url ) use ( $att_ics ) {
+	if ( 'https://mkltest.invalid/kalender.ics' !== $url ) {
+		return $pre;
+	}
+	return array(
+		'headers'  => array(),
+		'body'     => $att_ics,
+		'response' => array( 'code' => 200, 'message' => 'OK' ),
+		'cookies'  => array(),
+		'filename' => null,
+	);
+};
+$att_saved_options = array();
+foreach ( array( 'mkl_ics_url', 'mkl_calendar_ids', 'mkl_google_api_key' ) as $opt ) {
+	$att_saved_options[ $opt ] = get_option( $opt, null );
+}
+update_option( 'mkl_ics_url', 'https://mkltest.invalid/kalender.ics' );
+update_option( 'mkl_calendar_ids', '' );
+update_option( 'mkl_google_api_key', '' );
+add_filter( 'pre_http_request', $att_ics_filter, 10, 3 );
+MKL_Calendar::clear_cache();
+wp_set_current_user( $spiess );
+list( $s, $d ) = mkl_req( 'GET', '/attendance/events' );
+$att_titles = wp_list_pluck( $d, 'title' );
+mkl_assert( 200 === $s && array( 'Heutiger Termin', 'Vergangener Termin' ) === $att_titles, 'Termine für die Anwesenheit: heute und vergangene, neueste zuerst' );
+list( $s, $cal_events ) = mkl_req( 'GET', '/calendar' );
+$today_key = $d[0]['key'];
+mkl_assert( in_array( $today_key, wp_list_pluck( $cal_events, 'id' ), true ) && wp_date( 'Y-m-d' ) === $d[0]['date'], 'Gleiche Termin-ID wie im Kalender' );
+list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'source' => 'kalender', 'event_key' => $today_key, 'title' => 'Heutiger Termin', 'date' => wp_date( 'Y-m-d' ) ) );
+$att_today_id = $d['id'];
+MKL_Calendar::clear_cache();
+list( $s, $d ) = mkl_req( 'GET', '/attendance/events' );
+mkl_assert( $att_today_id === $d[0]['list_id'] && null === $d[1]['list_id'], 'Termine zeigen die vorhandene Liste' );
+remove_filter( 'pre_http_request', $att_ics_filter, 10 );
+foreach ( $att_saved_options as $opt => $value ) {
+	null === $value ? delete_option( $opt ) : update_option( $opt, $value );
+}
+MKL_Calendar::clear_cache();
+
+list( $s ) = mkl_req( 'DELETE', '/attendance/' . $att['id'] );
+$left = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'points' ) . ' WHERE attendance_id = %d', $att['id'] ) );
+$kept = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'points' ) . " WHERE reason = 'Arbeitsdienst' AND user_id = %d AND deleted_at IS NULL", $m2 ) );
+mkl_assert( 200 === $s && null === MKL_Attendance::get( $att['id'] ) && 0 === $left && 1 === $kept, 'Liste löschen: gebuchte Punkte bleiben' );
+MKL_Attendance::delete( $cal['id'] );
+MKL_Attendance::delete( $att_today_id );
+wp_delete_user( $att_anw );
+wp_delete_user( $att_ohne );
 
 // Aufräumen.
 global $wpdb;

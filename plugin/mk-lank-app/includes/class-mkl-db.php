@@ -46,13 +46,15 @@ class MKL_DB {
   halved tinyint(1) NOT NULL DEFAULT 0,
   reason varchar(255) NOT NULL DEFAULT '',
   catalog_id bigint(20) unsigned DEFAULT NULL,
+  attendance_id bigint(20) unsigned DEFAULT NULL,
   entry_date date NOT NULL,
   created_by bigint(20) unsigned NOT NULL,
   created_at datetime NOT NULL,
   deleted_at datetime DEFAULT NULL,
   deleted_by bigint(20) unsigned DEFAULT NULL,
   PRIMARY KEY  (id),
-  KEY user_id (user_id)
+  KEY user_id (user_id),
+  KEY attendance_id (attendance_id)
 ) $charset;"
 		);
 
@@ -201,6 +203,10 @@ class MKL_DB {
 ) $charset;"
 		);
 
+		foreach ( MKL_Attendance::schema( $charset ) as $sql ) {
+			dbDelta( $sql );
+		}
+
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}
 
@@ -316,9 +322,10 @@ class MKL_DB {
 	 * Legt für jeden Benutzer einen Punkte-Eintrag an. Ob der Eintrag halbiert
 	 * zählt, wird bei der Vergabe festgehalten und ändert sich später nicht mehr.
 	 *
+	 * @param int|null $attendance_id Anwesenheitsliste, aus der die Buchung stammt.
 	 * @return int[] IDs der angelegten Einträge.
 	 */
-	public static function add_points( array $user_ids, $points, $reason, $catalog_id, $entry_date, $created_by ) {
+	public static function add_points( array $user_ids, $points, $reason, $catalog_id, $entry_date, $created_by, $attendance_id = null ) {
 		global $wpdb;
 		$t   = self::table( 'points' );
 		$ids = array();
@@ -330,12 +337,13 @@ class MKL_DB {
 					'points'     => $points,
 					'halved'     => self::halves_points( $user_id, $points ) ? 1 : 0,
 					'reason'     => $reason,
-					'catalog_id' => $catalog_id,
-					'entry_date' => $entry_date,
-					'created_by' => $created_by,
-					'created_at' => self::now(),
+					'catalog_id'    => $catalog_id,
+					'attendance_id' => $attendance_id,
+					'entry_date'    => $entry_date,
+					'created_by'    => $created_by,
+					'created_at'    => self::now(),
 				),
-				array( '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
+				array( '%d', '%d', '%d', '%s', '%d', '%d', '%s', '%d', '%s' )
 			);
 			$ids[] = (int) $wpdb->insert_id;
 		}

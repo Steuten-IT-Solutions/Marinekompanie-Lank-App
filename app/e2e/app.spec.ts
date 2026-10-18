@@ -3,14 +3,25 @@ import { devices, expect, test, type Page } from '@playwright/test';
 const PASSWORD = process.env.MKL_TEST_PASSWORD ?? 'test1234';
 const SHOTS = process.env.MKL_SCREENSHOT_DIR;
 
+/**
+ * Füllt das WordPress-Anmeldeformular aus. WordPress setzt 200 ms nach dem Laden
+ * den Fokus auf „Benutzername“ und markiert den Inhalt (wp_attempt_focus). Wer
+ * vorher tippt, landet sonst mit dem Passwort im Benutzernamen-Feld.
+ */
+async function fillLoginForm(page: Page, user: string, password: string) {
+  await page.waitForFunction(() => document.activeElement?.id === 'user_login');
+  await page.fill('#user_login', user);
+  await page.fill('#user_pass', password);
+  await expect(page.locator('#user_login')).toHaveValue(user);
+}
+
 async function login(page: Page, user: string, password = PASSWORD) {
   await page.context().clearCookies();
   await page.goto('/app/');
   // Gäste sehen die öffentliche Ansicht; angemeldet wird über den Knopf in der Kopfleiste.
   await page.getByRole('link', { name: 'Anmelden' }).click();
   await expect(page).toHaveURL(/wp-login\.php/);
-  await page.fill('#user_login', user);
-  await page.fill('#user_pass', password);
+  await fillLoginForm(page, user, password);
   await page.click('#wp-submit');
   await expect(page).toHaveURL(/\/app\/?(#.*)?$/);
   await expect(page.locator('.topbar')).toBeVisible();
@@ -596,8 +607,7 @@ test('Angemeldet bleiben ist vorausgewählt und hält rund 400 Tage', async ({ p
   await page.goto('/app/');
   await page.getByRole('link', { name: 'Anmelden' }).click();
   await expect(page.locator('#rememberme')).toBeChecked();
-  await page.fill('#user_login', 'mariner1');
-  await page.fill('#user_pass', PASSWORD);
+  await fillLoginForm(page, 'mariner1', PASSWORD);
   await page.click('#wp-submit');
   await expect(page.locator('.topbar')).toBeVisible();
   const cookie = (await page.context().cookies()).find((c) => c.name.startsWith('wordpress_logged_in_'));
@@ -918,4 +928,99 @@ test('Einrichtung: Spieß sieht keine Kontenverwaltung, Admin ändert Namen, Ben
   // Anmelden nur noch mit neuem Benutzernamen und neuem Passwort.
   await login(page, `neu.${tag}`, password);
   await expect(page.locator('.topbar-sub')).toHaveText(`Ahoi, Umbenannt ${tag}`);
+});
+
+test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehen nur die eigene Anwesenheit', async ({ page }) => {
+  await login(page, 'spiess');
+  // Künftige Termine haben noch keinen Anwesenheits-Knopf.
+  await page.getByText('Kompanieabend').click();
+  await expect(page.getByRole('button', { name: 'In meinen Kalender' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Anwesenheit' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Punktekatalog');
+  await page.getByPlaceholder('z. B. Teilnahme Schützenfest').fill('Arbeitsdienst');
+  await page.locator('.field.narrow input').fill('3');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Vorlage angelegt');
+
+  // Vergangener Kalendertermin aus dem Test-Kalender.
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' }).click();
+  await expect(page.locator('.member-name')).toHaveText('Arbeitsdienst Schützenplatz');
+  // Anfangs ist bei allen „fehlt“ angehakt; je Mitglied ist genau ein Häkchen gesetzt.
+  await expect(page.getByLabel('Mariner1: fehlt')).toBeChecked();
+  await page.getByLabel('Mariner1: anwesend').check();
+  await page.getByLabel('Mariner2: anwesend').check();
+  await page.getByLabel('Spiess: anwesend').check();
+  await page.getByLabel('Spiess: entschuldigt').check();
+  await expect(page.getByLabel('Spiess: anwesend')).not.toBeChecked();
+  await expect(page.getByLabel('Mariner1: fehlt')).not.toBeChecked();
+  // Anwärter stehen mit in der Liste, bekommen aber keine Punkte.
+  await page.getByLabel('Anwaerter: anwesend', { exact: true }).check();
+  await page.getByLabel('Neuer Mariner: anwesend').check();
+  await expect(page.locator('.attendance-counts')).toContainText('4 anwesend · 1 entschuldigt');
+  // Ein Tipp auf die Zahl zeigt die Aufteilung der Gruppe.
+  await page.getByRole('button', { name: '4 anwesend' }).click();
+  await expect(page.getByRole('tooltip')).toContainText('2 Mitglieder');
+  await expect(page.getByRole('tooltip')).toContainText('1 Jungmariner');
+  await expect(page.getByRole('tooltip')).toContainText('1 Anwärter');
+  await page.getByRole('button', { name: '1 entschuldigt' }).click();
+  await expect(page.getByRole('tooltip')).toHaveCount(1);
+  await expect(page.getByRole('tooltip')).toContainText('1 Mitglied');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await shot(page, '12-anwesenheit');
+
+  // Punktevorschlag: Formular mit den Anwesenden, Termindatum und passender Vorlage.
+  await page.getByLabel('Neuer Mariner: fehlt').check();
+  await page.getByRole('button', { name: 'Punkte für 2 Anwesende' }).click();
+  await expect(page.locator('.attendance-note')).toContainText('Arbeitsdienst Schützenplatz');
+  await expect(page.locator('select')).toHaveValue(/\d+/);
+  await expect(page.locator('select option:checked')).toHaveText('Arbeitsdienst (+3)');
+  await expect(page.getByLabel('Mariner1')).toBeChecked();
+  await expect(page.getByLabel('Mariner2')).toBeChecked();
+  await expect(page.getByLabel('Spiess')).not.toBeChecked();
+  await shot(page, '13-anwesenheit-punkte');
+  await page.getByRole('button', { name: 'Punkte vergeben' }).click();
+  await expect(page.locator('.toast')).toHaveText('+3 Punkte an 2 Mitglieder vergeben');
+
+  // Zurück in der Liste: gebucht, kein zweiter Vorschlag.
+  await expect(page.locator('.member-name')).toHaveText('Arbeitsdienst Schützenplatz');
+  await expect(page.locator('.attendance-booked')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Punkte für 0 Anwesende' })).toBeDisabled();
+  await expect(page.getByText('Punkte bereits gebucht.')).toBeVisible();
+
+  // Strafvorschlag: nur wer unentschuldigt fehlt.
+  await page.getByRole('button', { name: /^Strafe für \d+ Unentschuldigte/ }).click();
+  await expect(page.getByPlaceholder('z. B. Zu spät beim Antreten')).toHaveValue('Unentschuldigt gefehlt: Arbeitsdienst Schützenplatz');
+  await expect(page.getByLabel('Mariner1')).not.toBeChecked();
+  await expect(page.getByLabel('Spiess')).not.toBeChecked();
+  await page.getByRole('button', { name: '‹ Zurück zur Anwesenheit' }).click();
+
+  // Freier Termin ohne Kalendereintrag.
+  await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
+  await page.getByPlaceholder('z. B. Arbeitsdienst').fill('Sonderdienst Bootshaus');
+  await page.getByRole('button', { name: 'Liste anlegen' }).click();
+  await page.getByLabel('Mariner1: entschuldigt').check();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Anwesenheit gespeichert');
+  await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('0 anwesend · 1 entschuldigt');
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' }).first()).toContainText('Liste vorhanden');
+
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst' })).toContainText('+3');
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('entschuldigt');
+  await expect(page.locator('.stat-value')).toHaveText('1');
+  await shot(page, '14-meine-anwesenheit');
+
+  await login(page, 'mariner2');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('fehlt');
 });
