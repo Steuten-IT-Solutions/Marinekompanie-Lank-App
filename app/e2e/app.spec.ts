@@ -855,12 +855,20 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await page.getByLabel('Anwaerter: anwesend', { exact: true }).check();
   await page.getByLabel('Neuer Mariner: anwesend').check();
   await expect(page.locator('.attendance-counts')).toContainText('4 anwesend · 1 entschuldigt');
-  await expect(page.locator('.attendance-breakdown')).toHaveText('davon 2 Mitglieder · 1 Jungmariner · 1 Anwärter');
+  // Ein Tipp auf die Zahl zeigt die Aufteilung der Gruppe.
+  await page.getByRole('button', { name: '4 anwesend' }).click();
+  await expect(page.getByRole('tooltip')).toContainText('2 Mitglieder');
+  await expect(page.getByRole('tooltip')).toContainText('1 Jungmariner');
+  await expect(page.getByRole('tooltip')).toContainText('1 Anwärter');
+  await page.getByRole('button', { name: '1 entschuldigt' }).click();
+  await expect(page.getByRole('tooltip')).toHaveCount(1);
+  await expect(page.getByRole('tooltip')).toContainText('1 Mitglied');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await shot(page, '12-anwesenheit');
 
   // Punktevorschlag: Formular mit den Anwesenden, Termindatum und passender Vorlage.
   await page.getByLabel('Neuer Mariner: fehlt').check();
-  await expect(page.locator('.attendance-breakdown')).toHaveText('davon 2 Mitglieder · 0 Jungmariner · 1 Anwärter');
   await page.getByRole('button', { name: 'Punkte für 2 Anwesende' }).click();
   await expect(page.locator('.attendance-note')).toContainText('Arbeitsdienst Schützenplatz');
   await expect(page.locator('select')).toHaveValue(/\d+/);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   api,
   ATTENDANCE_LABELS,
@@ -27,12 +27,65 @@ export function countsText(c: Record<AttendanceStatus, number>): string {
   return `${c.anwesend} anwesend · ${c.entschuldigt} entschuldigt · ${c.fehlt} fehlt`;
 }
 
-/** „davon 5 Mitglieder · 2 Jungmariner · 1 Anwärter“; Jungmariner zählen nicht zusätzlich als Mitglieder. */
-export function presentBreakdown(present: AttendanceMember[]): string {
-  const anw = present.filter((m) => m.is_anwaerter).length;
-  const jung = present.filter((m) => !m.is_anwaerter && m.is_jungmariner).length;
-  const members = present.length - anw - jung;
-  return `davon ${members} ${members === 1 ? 'Mitglied' : 'Mitglieder'} · ${jung} Jungmariner · ${anw} Anwärter`;
+/** Aufteilung einer Gruppe; Jungmariner zählen nicht zusätzlich als Mitglieder. */
+export function breakdown(group: AttendanceMember[]): string[] {
+  const anw = group.filter((m) => m.is_anwaerter).length;
+  const jung = group.filter((m) => !m.is_anwaerter && m.is_jungmariner).length;
+  const members = group.length - anw - jung;
+  return [`${members} ${members === 1 ? 'Mitglied' : 'Mitglieder'}`, `${jung} Jungmariner`, `${anw} Anwärter`];
+}
+
+/**
+ * Zähler „4 anwesend · 1 entschuldigt · 2 fehlt“. Ein Tipp auf eine Zahl zeigt,
+ * wie viele davon Mitglieder, Jungmariner und Anwärter sind.
+ */
+function StatusCounts({ members, statuses }: { members: AttendanceMember[]; statuses: Record<number, AttendanceStatus> }) {
+  const [open, setOpen] = useState<AttendanceStatus | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(null);
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="attendance-counts" ref={ref} role="status">
+      {STATUS_COLUMNS.map((st, i) => {
+        const group = members.filter((m) => statuses[m.id] === st);
+        const isOpen = open === st;
+        return (
+          <span key={st} className={`count-item count-item-${i}`}>
+            {i > 0 && <span aria-hidden="true"> · </span>}
+            <button
+              type="button"
+              className="count-button"
+              aria-expanded={isOpen}
+              aria-describedby={isOpen ? `count-tip-${st}` : undefined}
+              onClick={() => setOpen(isOpen ? null : st)}
+            >
+              {group.length} {ATTENDANCE_LABELS[st]}
+            </button>
+            {isOpen && (
+              <span className="count-tooltip" role="tooltip" id={`count-tip-${st}`}>
+                {breakdown(group).map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Punkte und Strafen gibt es nur für Mitglieder, nicht für Anwärter. */
@@ -318,12 +371,7 @@ function Editor({
           <p className="muted small">{when ?? formatDate(list.date)}</p>
         </>
       )}
-      <p className="attendance-counts" role="status">
-        {countsText(counts)}
-      </p>
-      <p className="attendance-breakdown muted small">
-        {presentBreakdown(members.filter((m) => statuses[m.id] === 'anwesend'))}
-      </p>
+      <StatusCounts members={members} statuses={statuses} />
 
       <div className="picker">
         <div className="picker-head">
