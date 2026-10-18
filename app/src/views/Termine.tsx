@@ -4,17 +4,18 @@ import { navigate } from '../router';
 import { eventEnd, eventStart, formatEventWhen, formatMonth } from '../format';
 import { downloadIcs } from '../ics';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
+import Benachrichtigungen from './Benachrichtigungen';
 
 type EventLike = CalendarEvent & { url?: string };
 
-/** Mitglieder sehen den Google Kalender (alle Termine), Gäste die öffentliche Terminliste. */
+/** Anwärter und Mitglieder sehen den Google Kalender (alle Termine), Gäste die öffentliche Terminliste. */
 async function loadEvents(): Promise<EventLike[]> {
-  if (config?.user?.isMember) return api.calendar();
+  if (config?.user?.canSeeCalendar) return api.calendar();
   const list = await api.events();
   return list.map((ev) => ({ ...ev, id: `p${ev.id}` }));
 }
 
-export default function Termine() {
+export default function Termine({ onToast }: { onToast: (msg: string) => void }) {
   const { data, error, loading, reload } = useAsync(loadEvents);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -32,11 +33,14 @@ export default function Termine() {
     return Array.from(map.values());
   }, [data]);
 
+  const isSpiess = !!config?.user?.isSpiess && !!config.user.canSeeCalendar;
   const manage = config?.user?.canManageEvents ? (
     <button className="btn btn-secondary btn-block manage-events" onClick={() => navigate('termine/verwalten')}>
       Öffentliche Termine verwalten
     </button>
   ) : null;
+  // Gäste ohne Konto schalten Benachrichtigungen hier ein, Angemeldete unter Konto.
+  const push = config?.user ? null : <Benachrichtigungen onToast={onToast} />;
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -45,6 +49,7 @@ export default function Termine() {
       <>
         {manage}
         <Empty>Keine anstehenden Termine.</Empty>
+        {push}
       </>
     );
 
@@ -58,6 +63,8 @@ export default function Termine() {
             {evs.map((ev) => {
               const s = eventStart(ev);
               const isOpen = open === ev.id;
+              // Laufende Termine: Spieße können direkt die Anwesenheit erfassen.
+              const started = isSpiess && s.getTime() <= Date.now();
               return (
                 <li key={ev.id} className={`card event ${isOpen ? 'open' : ''}`}>
                   <button className="event-head" onClick={() => setOpen(isOpen ? null : ev.id)} aria-expanded={isOpen}>
@@ -75,6 +82,11 @@ export default function Termine() {
                     <div className="event-body">
                       {ev.description && <p className="event-desc">{ev.description}</p>}
                       <div className="event-actions">
+                        {started && (
+                          <button className="btn" onClick={() => navigate(`spiess/anwesenheit/termin/${ev.id}`)}>
+                            Anwesenheit
+                          </button>
+                        )}
                         <button className="btn btn-secondary" onClick={() => downloadIcs(ev)}>
                           In meinen Kalender
                         </button>
@@ -102,6 +114,7 @@ export default function Termine() {
           </ul>
         </section>
       ))}
+      {push}
     </div>
   );
 }

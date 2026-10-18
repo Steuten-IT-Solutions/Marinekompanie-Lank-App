@@ -202,7 +202,8 @@ button, input, select { font: inherit; color: inherit; }
 .badge-open { background: #f6d9cf; color: #7a2412; }
 .badge-paid { background: #d8ead9; color: #1d5a31; }
 .badge-role, .badge-level-spiess, .badge-level-admin { background: var(--brass); color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
-.badge-level-gast { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-level-ohne, .badge-level-anwaerter { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-jungmariner { background: #d6e0f5; color: var(--navy-ink); margin-left: 6px; vertical-align: 2px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -343,6 +344,7 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
   .error { background: #3d1a14; color: #f6c7b9; border-color: #6e2c15; }
   .badge-open { background: #4a1e14; color: #f6b8a6; }
   .badge-paid { background: #163a24; color: #9fdcb2; }
+  .badge-jungmariner { background: #22355f; color: #c9d6f5; }
   .row::before { background: var(--brass); opacity: 0.7; }
   .segmented button.active { background: var(--navy); }
 }
@@ -351,8 +353,12 @@ button:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; color: var(--ink-2); margin: 0 2px 14px; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--navy); }
 .role-control { margin: -4px 0 16px; }
+.promote-anwaerter { margin-bottom: 16px; }
 .field-label { display: block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .segmented.small { margin-bottom: 0; }
+.segmented button.pending { animation: pending-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes pending-pulse { from { opacity: 1; } to { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .segmented button.pending { animation: none; opacity: 0.8; } }
 .member-level { margin: -8px 0 14px; }
 .manage-events, .add-event { margin-bottom: 16px; }
 .event-form { margin-top: 12px; }
@@ -379,16 +385,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .news-content .wp-block-gallery, .news-content .wp-block-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 
 /* Galerie */
-.album-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.album-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .album-card {
   display: flex; flex-direction: column; width: 100%; padding: 0; text-align: left; cursor: pointer;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
 }
 .album-card img, .album-placeholder { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--line); border-bottom: 3px solid var(--brass); }
-.album-title { font-family: var(--font-head); font-weight: 600; font-size: 1rem; padding: 8px 10px 0; line-height: 1.2; }
+.album-title { font-family: var(--font-head); font-weight: 600; font-size: 1rem; padding: 8px 10px 0; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto; }
 .album-count { font-size: 0.78rem; color: var(--muted); padding: 2px 10px 10px; }
 .album-year { font-family: var(--font-body); font-weight: 400; font-size: 1rem; }
-.photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .photo { position: relative; display: block; width: 100%; padding: 0; border: 0; aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: var(--line); cursor: zoom-in; }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .photo-lock { position: absolute; right: 4px; bottom: 4px; font-size: 0.7rem; background: rgb(13 33 82 / 80%); border-radius: 999px; padding: 1px 5px; }
@@ -428,6 +434,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   margin-bottom: 16px; padding: 14px 16px; border-radius: var(--radius); font-size: 1rem;
   background: #f6dfb6; color: #5a3a06; border: 1px solid var(--line-strong);
 }
+.install-chrome { margin: 12px 0; text-decoration: none; }
 .install-copy { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .install-copy code { overflow-wrap: anywhere; font-size: 0.9rem; }
 .install-foot { margin-top: 16px; }
@@ -439,4 +446,159 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 
 @media (prefers-color-scheme: dark) {
   .install-warn { background: #3a2c0c; color: #f3dca4; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dienstgrade                                                         */
+/* ------------------------------------------------------------------ */
+
+.rank-card, .rank-control { padding: 16px 18px; margin-top: 12px; border-left: 4px solid var(--brass); }
+.rank-card.clickable { cursor: pointer; }
+.rank-card.my-titles { margin: 0 0 12px; }
+.rank-card.my-titles .title-badges { margin-bottom: 0; }
+.rank-control { margin: 14px 0; }
+.rank-label { font-family: var(--font-head); font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.78rem; color: var(--muted); }
+.rank-title { font-family: var(--font-head); font-weight: 700; font-size: 1.5rem; line-height: 1.15; color: var(--accent-text); margin-bottom: 8px; }
+.rank-next { font-size: 0.92rem; color: var(--ink-2); }
+.rank-more { margin-top: 8px; font-size: 0.85rem; font-weight: 650; color: var(--accent-text); }
+.progress { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 4px 0 8px; }
+.progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brass-dark), var(--brass)); }
+.rank-list .row-value { font-size: 1rem; color: var(--ink-2); }
+.rank-mine { border-color: var(--brass); }
+.rank-mine::before { background: var(--brass); opacity: 1; }
+.rank-history-degradierung::before { background: var(--wood); }
+.promo-due { color: var(--good); font-weight: 650; }
+.promo-missing { text-align: right; font-size: 1.05rem; }
+.promo-missing small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+.rank-form { margin-top: 12px; }
+.rank-control .section-title { margin-top: 18px; }
+
+/* Titel (z. B. Ehrenkapitän), zusätzlich zum Dienstgrad */
+.title-badges { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; vertical-align: 2px; }
+.row-title .title-badges { margin-left: 6px; }
+.title-control { padding: 16px 18px; margin: 14px 0; border-left: 4px solid var(--brass); }
+.rank-card .title-badges, .title-control .title-badges { display: flex; margin: 2px 0 8px; }
+.badge-title { background: transparent; color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--brass); }
+.title-picker { border: 1.5px solid var(--line-strong); border-radius: 12px; margin-bottom: 4px; }
+.title-edit { margin-top: 8px; }
+
+/* Einrichtung */
+.inline-link { padding: 0; min-height: 0; font-size: inherit; vertical-align: baseline; }
+.account-points { margin-bottom: 14px; }
+.account-form, .account-password { margin-bottom: 14px; }
+.account-password { padding: 16px 18px; }
+.fieldset { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fieldset legend { padding: 0 6px; font-family: var(--font-head); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85rem; color: var(--accent-text); }
+
+/* ------------------------------------------------------------------ */
+/* Dokumente                                                           */
+/* ------------------------------------------------------------------ */
+
+.doc-card { padding: 14px 16px 2px; }
+.doc-head { display: flex; gap: 12px; align-items: flex-start; }
+.doc-icon { flex: none; color: var(--wood); padding-top: 2px; }
+.doc-offline { margin-top: 4px; font-size: 0.82rem; color: var(--good); font-weight: 650; }
+.doc-stand { margin-bottom: 12px; }
+.pdf-viewer { display: flex; flex-direction: column; gap: 10px; }
+.pdf-page { display: block; width: 100%; height: auto; background: #fff; border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); }
+.pdf-progress { text-align: center; }
+
+/* Handys: fünf Spieß-Reiter (Mitglieder … Einrichtung) ohne Umbruch, auch auf 360 px. */
+@media (max-width: 430px) {
+  .segmented button { white-space: nowrap; padding: 9px 2px; font-size: 0.74rem; letter-spacing: 0.02em; }
+}
+/* Schmale Handys (z. B. 360 px): sechs Tabs ohne Umbruch. */
+@media (max-width: 380px) {
+  .tabbar button { letter-spacing: 0.04em; }
+}
+
+/* Dokumente mit Kategorien und verschiedenen Dateitypen */
+.doc-group + .doc-group { margin-top: 6px; }
+.doc-icon-bild { color: var(--navy); }
+.doc-icon-datei { color: var(--brass-dark); }
+.button-row.single { grid-template-columns: 1fr; }
+.doc-admin-group + .doc-admin-group { margin-top: 10px; }
+.doc-edit { padding: 14px 16px; }
+
+/* Mehrere Mitglieder anlegen */
+.segmented.new-member-mode { margin: 4px 0 16px; }
+.created-list { list-style: none; margin: 16px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.created-list li { padding-top: 12px; border-top: 1px solid var(--line); }
+.created-name { font-weight: 700; }
+.created-list .credentials { margin: 8px 0; }
+.bulk-card { position: relative; background: var(--card); }
+.bulk-card.has-error { border-color: var(--danger); }
+.bulk-remove {
+  position: absolute; top: 4px; right: 6px; width: 40px; height: 40px; border: 0; border-radius: 8px;
+  background: none; color: var(--muted); font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.bulk-remove:hover { color: var(--danger); }
+
+/* Anwesenheit */
+.badge-list { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-att-anwesend { background: #d8ead9; color: #1d5a31; }
+.badge-att-entschuldigt { background: #f3e6c4; color: #6b4e10; }
+.badge-att-fehlt { background: #f6d9cf; color: #7a2412; }
+.attendance-meta { margin-bottom: 4px; }
+.attendance-counts { margin: 10px 2px 12px; font-weight: 650; color: var(--ink-2); }
+.count-item { position: relative; }
+.count-button {
+  padding: 2px 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 4px;
+}
+.count-tooltip {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 5; display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 12px; border-radius: 10px; background: var(--navy); color: #fff; white-space: nowrap;
+  font-size: 0.85rem; font-weight: 600; box-shadow: var(--shadow);
+}
+.count-tooltip::before {
+  content: ''; position: absolute; top: -6px; left: 16px; border: 6px solid transparent; border-top: 0; border-bottom-color: var(--navy);
+}
+.count-item-2 .count-tooltip { left: auto; right: 0; }
+.count-item-2 .count-tooltip::before { left: auto; right: 16px; }
+.attendance-name .badge { margin-left: 6px; vertical-align: 2px; }
+.attendance-list { max-height: none; }
+.attendance-list { padding: 0; }
+.attendance-list li { border-bottom: 1px solid var(--line); }
+.attendance-list li:last-child { border-bottom: 0; }
+.attendance-grid { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 74px); align-items: center; padding: 0 4px 0 14px; }
+.attendance-head { padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.attendance-col { text-align: center; font-size: 0.74rem; font-weight: 700; }
+@media (max-width: 380px) {
+  .attendance-grid { grid-template-columns: minmax(0, 1fr) repeat(3, 66px); padding-left: 12px; }
+  .attendance-col { font-size: 0.68rem; }
+}
+.attendance-col-anwesend { color: var(--good); }
+.attendance-col-entschuldigt { color: var(--ink-2); }
+.attendance-col-fehlt { color: var(--danger); }
+.attendance-cell { display: flex; justify-content: center; }
+.attendance-name { display: flex; flex-direction: column; min-width: 0; padding: 11px 0; overflow-wrap: anywhere; }
+/* Optionsfelder als Häkchen: je Mitglied ist genau eins gesetzt. */
+.attendance-check {
+  appearance: none; -webkit-appearance: none; margin: 0; width: 28px; height: 28px; cursor: pointer;
+  border: 2px solid var(--line-strong); border-radius: 7px; background: var(--card);
+  display: grid; place-content: center;
+}
+.attendance-check::after { content: ''; width: 8px; height: 14px; border: solid transparent; border-width: 0 3px 3px 0; transform: translateY(-2px) rotate(45deg); }
+.attendance-check:checked::after { border-color: #fff; }
+.attendance-check-anwesend:checked { background: #1f6b3a; border-color: #1f6b3a; }
+.attendance-check-entschuldigt:checked { background: #8a6a1c; border-color: #8a6a1c; }
+.attendance-check-fehlt:checked { background: #a3301a; border-color: #a3301a; }
+.attendance-check:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
+.attendance-booked { font-size: 0.78rem; color: var(--good); font-weight: 650; }
+.attendance-save { margin-top: 14px; }
+.attendance-note { padding: 10px 14px; }
+.attendance-note p { margin: 2px 0 0; font-size: 0.9rem; color: var(--ink-2); }
+.free-event { margin-top: 18px; }
+.free-event p { margin: 0; }
+.danger-link { color: var(--danger); }
+.btn-link.nowrap { white-space: nowrap; }
+@media (prefers-color-scheme: dark) {
+  .badge-att-anwesend { background: #163a24; color: #9fdcb2; }
+  .badge-att-entschuldigt { background: #3d3115; color: #ecd28f; }
+  .badge-att-fehlt { background: #4a1e14; color: #f6b8a6; }
+}
+/* Sechs Spieß-Reiter: auf Handys in zwei Reihen zu je drei. */
+@media (max-width: 430px) {
+  .segmented-spiess { display: grid; grid-template-columns: repeat(3, 1fr); }
 }

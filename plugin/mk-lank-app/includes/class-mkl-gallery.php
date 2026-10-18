@@ -5,7 +5,7 @@
  * Ordnerstruktur in Drive:  Galerie → Jahr → Album → Bilder
  *                                                   └ intern → Bilder nur für Mitglieder
  *
- * Ein Sync (stündlich per WP-Cron oder per Knopf) gleicht den Index in eigenen
+ * Ein Sync (alle 15 Minuten per WP-Cron oder per Knopf) gleicht den Index in eigenen
  * Tabellen ab. Danach werden die Bilder einmalig heruntergeladen und in zwei
  * Größen (400 px / 1600 px) auf dem eigenen Server abgelegt:
  *
@@ -21,6 +21,7 @@ class MKL_Gallery {
 	const ROOT_OPTION   = 'mkl_gallery_root';
 	const STATUS_OPTION = 'mkl_gallery_status';
 	const CRON_HOOK     = 'mkl_gallery_cron';
+	const CRON_SCHEDULE = 'mkl_15min';
 	const INTERN_FOLDER = 'intern';
 
 	const SIZES = array(
@@ -35,11 +36,27 @@ class MKL_Gallery {
 	public static function init() {
 		add_action( self::CRON_HOOK, array( __CLASS__, 'cron' ) );
 		add_action( 'init', array( __CLASS__, 'schedule' ) );
+		add_filter( 'cron_schedules', array( __CLASS__, 'cron_schedules' ) );
+	}
+
+	public static function cron_schedules( $schedules ) {
+		$schedules[ self::CRON_SCHEDULE ] = array(
+			'interval' => 15 * MINUTE_IN_SECONDS,
+			'display'  => 'Alle 15 Minuten',
+		);
+		return $schedules;
 	}
 
 	public static function schedule() {
-		if ( get_option( self::ROOT_OPTION ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
-			wp_schedule_event( time() + 60, 'hourly', self::CRON_HOOK );
+		if ( ! get_option( self::ROOT_OPTION ) ) {
+			return;
+		}
+		// Ältere Versionen haben stündlich geplant: auf 15 Minuten umstellen.
+		if ( wp_next_scheduled( self::CRON_HOOK ) && self::CRON_SCHEDULE !== wp_get_schedule( self::CRON_HOOK ) ) {
+			wp_clear_scheduled_hook( self::CRON_HOOK );
+		}
+		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_event( time() + 60, self::CRON_SCHEDULE, self::CRON_HOOK );
 		}
 	}
 

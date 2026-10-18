@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, config, LEVEL_LABELS } from '../api';
 import { isStandalone } from '../install';
 import { navigate } from '../router';
+import Benachrichtigungen from './Benachrichtigungen';
 
 const MIN_LENGTH = 8;
 
@@ -37,7 +38,7 @@ export default function Konto({ onToast, onLogout }: { onToast: (msg: string) =>
     <div>
       <div className="card account-card">
         <h2 className="account-name">{config?.user?.name}</h2>
-        <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'gast']}</p>
+        <p className="muted small">Rolle: {LEVEL_LABELS[config?.user?.level ?? 'ohne']}</p>
       </div>
 
       {!isStandalone() && (
@@ -49,6 +50,8 @@ export default function Konto({ onToast, onLogout }: { onToast: (msg: string) =>
           </button>
         </div>
       )}
+
+      <Benachrichtigungen onToast={onToast} />
 
       <form className="form card account-card" onSubmit={submit}>
         <h3>Passwort ändern</h3>

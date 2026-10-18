@@ -40,6 +40,9 @@ jobs:
       - name: REST-API-Tests
         run: php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
+      - name: Push-Tests (RFC-8291-Testvektor, VAPID, simulierter Push-Dienst)
+        run: php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/push-test.php
+
       - name: E2E-Tests (Playwright)
         working-directory: app
         run: |

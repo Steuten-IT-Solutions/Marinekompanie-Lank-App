@@ -42,6 +42,10 @@ for u in spiess mariner1 mariner2; do
     $WP user create "$u" "$u@example.com" --user_pass=test1234 --role=mkl_mitglied --display_name="${u^}" >/dev/null
 done
 $WP user add-role spiess mkl_spiess >/dev/null
+# Anwärter: bei jedem Lauf zurücksetzen, weil die E2E-Tests ihn befördern.
+$WP user get anwaerter >/dev/null 2>&1 || \
+  $WP user create anwaerter anwaerter@example.com --user_pass=test1234 --role=mkl_anwaerter --display_name=Anwaerter >/dev/null
+$WP user set-role anwaerter mkl_anwaerter >/dev/null
 
 # Beispieltermine als iCal-Feed (ersetzt im Test den Google Kalender).
 Y=$(date +%Y); N=$((Y + 1))
@@ -62,6 +66,13 @@ DTEND;TZID=Europe/Berlin:$(date -d '+7 days' +%Y%m%d)T230000
 SUMMARY:Kompanieabend
 LOCATION:Vereinslokal
 DESCRIPTION:Antreten in Uniform.\nBitte pünktlich sein!
+END:VEVENT
+BEGIN:VEVENT
+UID:e4
+DTSTART;TZID=Europe/Berlin:$(date -d '-3 days' +%Y%m%d)T100000
+DTEND;TZID=Europe/Berlin:$(date -d '-3 days' +%Y%m%d)T140000
+SUMMARY:Arbeitsdienst Schützenplatz
+LOCATION:Schützenplatz
 END:VEVENT
 BEGIN:VEVENT
 UID:e3
