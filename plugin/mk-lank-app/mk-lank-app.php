@@ -70,6 +70,7 @@ function mkl_deactivate() {
 
 add_action( 'plugins_loaded', array( 'MKL_DB', 'maybe_upgrade' ) );
 add_action( 'rest_api_init', array( 'MKL_REST', 'register_routes' ) );
+add_action( 'deleted_user', array( 'MKL_DB', 'delete_user_data' ) );
 MKL_Roles::init();
 MKL_Session::init();
 MKL_App_Page::init();

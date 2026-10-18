@@ -1339,8 +1339,35 @@ MKL_Attendance::delete( $att_today_id );
 wp_delete_user( $att_anw );
 wp_delete_user( $att_ohne );
 
-// Aufräumen.
+// Konto löschen: alle Daten des Mitglieds verschwinden, die der anderen bleiben.
 global $wpdb;
+$del_user = mkl_test_user( 'mkl_loeschtest' );
+MKL_DB::add_points( array( $del_user, $m1 ), 2, 'Löschtest', null, '2026-10-01', $spiess );
+MKL_DB::add_penalty( array( $del_user ), 300, 'Löschtest', '2026-10-01', $spiess );
+$del_pen = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . MKL_DB::table( 'penalties' ) . ' WHERE user_id = %d', $del_user ) );
+MKL_DB::soft_delete( 'penalties', (int) $del_pen, $spiess );
+MKL_DB::add_penalty( array( $del_user ), 100, 'Löschtest', '2026-10-01', $spiess );
+MKL_Ranks::set_rank( $del_user, null, null, 'manual', 0, 'Löschtest', $spiess );
+$del_list = MKL_Attendance::save( null, MKL_Attendance::SOURCE_FREI, '', 'Löschtest', '2026-10-01', array( $del_user => 'anwesend', $m1 => 'anwesend' ), $spiess );
+// Eintrag, den das zu löschende Konto für ein anderes Mitglied angelegt hat.
+MKL_DB::add_penalty( array( $m1 ), 50, 'Löschtest von', '2026-10-01', $del_user );
+$del_count = function ( $table, $uid ) use ( $wpdb ) {
+	return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE user_id = %d", $uid ) );
+};
+$del_tables = array( MKL_DB::table( 'points' ), MKL_DB::table( 'penalties' ), MKL_Ranks::history_table(), MKL_Attendance::entries_table() );
+$before     = array_sum( array_map( function ( $t ) use ( $del_count, $del_user ) { return $del_count( $t, $del_user ); }, $del_tables ) );
+mkl_assert( 5 === $before, 'Löschtest: Punkte, 2 Strafen, Dienstgradverlauf und Anwesenheit angelegt' );
+wp_delete_user( $del_user );
+$after = array_sum( array_map( function ( $t ) use ( $del_count, $del_user ) { return $del_count( $t, $del_user ); }, $del_tables ) );
+mkl_assert( 0 === $after, 'Konto gelöscht: Punkte, Strafen (auch stornierte), Dienstgradverlauf und Anwesenheit entfernt' );
+$m1_points = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'points' ) . " WHERE user_id = %d AND reason = 'Löschtest'", $m1 ) );
+$m1_pen    = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'penalties' ) . " WHERE user_id = %d AND reason = 'Löschtest von'", $m1 ) );
+$m1_att    = MKL_Attendance::statuses( $del_list );
+mkl_assert( 1 === $m1_points && 1 === $m1_pen && isset( $m1_att[ $m1 ] ) && ! isset( $m1_att[ $del_user ] ), 'Konto gelöscht: Einträge anderer Mitglieder bleiben' );
+MKL_Attendance::delete( $del_list );
+$wpdb->query( 'DELETE FROM ' . MKL_DB::table( 'penalties' ) . " WHERE reason = 'Löschtest von'" );
+
+// Aufräumen.
 foreach ( array( $spiess, $m1, $m2, $jung ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
 	$wpdb->delete( MKL_DB::table( 'penalties' ), array( 'user_id' => $uid ) );
