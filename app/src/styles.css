@@ -518,3 +518,37 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .button-row.single { grid-template-columns: 1fr; }
 .doc-admin-group + .doc-admin-group { margin-top: 10px; }
 .doc-edit { padding: 14px 16px; }
+
+/* Anwesenheit */
+.badge-list { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+.badge-att-anwesend { background: #d8ead9; color: #1d5a31; }
+.badge-att-entschuldigt { background: #f3e6c4; color: #6b4e10; }
+.badge-att-fehlt { background: #f6d9cf; color: #7a2412; }
+.attendance-meta { margin-bottom: 4px; }
+.attendance-counts { margin: 10px 2px 12px; font-weight: 650; color: var(--ink-2); }
+.attendance-list { max-height: none; }
+.attendance-list li { border-bottom: 1px solid var(--line); }
+.attendance-list li:last-child { border-bottom: 0; }
+.attendance-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  padding: 11px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.attendance-row .badge { flex: none; min-width: 92px; text-align: center; }
+.attendance-name { display: flex; flex-direction: column; min-width: 0; }
+.attendance-booked { font-size: 0.78rem; color: var(--good); font-weight: 650; }
+.attendance-save { margin-top: 14px; }
+.attendance-note { padding: 10px 14px; }
+.attendance-note p { margin: 2px 0 0; font-size: 0.9rem; color: var(--ink-2); }
+.free-event { margin-top: 18px; }
+.free-event p { margin: 0; }
+.danger-link { color: var(--danger); }
+.btn-link.nowrap { white-space: nowrap; }
+@media (prefers-color-scheme: dark) {
+  .badge-att-anwesend { background: #163a24; color: #9fdcb2; }
+  .badge-att-entschuldigt { background: #3d3115; color: #ecd28f; }
+  .badge-att-fehlt { background: #4a1e14; color: #f6b8a6; }
+}
+/* Sechs Spieß-Reiter: auf Handys in zwei Reihen zu je drei. */
+@media (max-width: 430px) {
+  .segmented-spiess { display: grid; grid-template-columns: repeat(3, 1fr); }
+}

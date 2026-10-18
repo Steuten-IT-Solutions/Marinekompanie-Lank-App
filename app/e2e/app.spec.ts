@@ -814,3 +814,82 @@ test('Einrichtung: Spieß sieht keine Kontenverwaltung, Admin ändert Namen, Ben
   await login(page, `neu.${tag}`, password);
   await expect(page.locator('.topbar-sub')).toHaveText(`Ahoi, Umbenannt ${tag}`);
 });
+
+test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehen nur die eigene Anwesenheit', async ({ page }) => {
+  await login(page, 'spiess');
+  // Künftige Termine haben noch keinen Anwesenheits-Knopf.
+  await page.getByText('Kompanieabend').click();
+  await expect(page.getByRole('button', { name: 'In meinen Kalender' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Anwesenheit' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await openSetup(page, 'Punktekatalog');
+  await page.getByPlaceholder('z. B. Teilnahme Schützenfest').fill('Arbeitsdienst');
+  await page.locator('.field.narrow input').fill('3');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await expect(page.locator('.toast')).toHaveText('Vorlage angelegt');
+
+  // Vergangener Kalendertermin aus dem Test-Kalender.
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' }).click();
+  await expect(page.locator('.member-name')).toHaveText('Arbeitsdienst Schützenplatz');
+  await page.getByRole('button', { name: /^Mariner1: fehlt/ }).click();
+  await page.getByRole('button', { name: /^Mariner2: fehlt/ }).click();
+  await page.getByRole('button', { name: /^Spiess: fehlt/ }).click();
+  await page.getByRole('button', { name: /^Spiess: anwesend/ }).click();
+  await expect(page.getByRole('button', { name: /^Spiess: entschuldigt/ })).toBeVisible();
+  await expect(page.locator('.attendance-counts')).toContainText('2 anwesend · 1 entschuldigt');
+  await shot(page, '12-anwesenheit');
+
+  // Punktevorschlag: Formular mit den Anwesenden, Termindatum und passender Vorlage.
+  await page.getByRole('button', { name: 'Punkte für 2 Anwesende' }).click();
+  await expect(page.locator('.attendance-note')).toContainText('Arbeitsdienst Schützenplatz');
+  await expect(page.locator('select')).toHaveValue(/\d+/);
+  await expect(page.locator('select option:checked')).toHaveText('Arbeitsdienst (+3)');
+  await expect(page.getByLabel('Mariner1')).toBeChecked();
+  await expect(page.getByLabel('Mariner2')).toBeChecked();
+  await expect(page.getByLabel('Spiess')).not.toBeChecked();
+  await shot(page, '13-anwesenheit-punkte');
+  await page.getByRole('button', { name: 'Punkte vergeben' }).click();
+  await expect(page.locator('.toast')).toHaveText('+3 Punkte an 2 Mitglieder vergeben');
+
+  // Zurück in der Liste: gebucht, kein zweiter Vorschlag.
+  await expect(page.locator('.member-name')).toHaveText('Arbeitsdienst Schützenplatz');
+  await expect(page.locator('.attendance-booked')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Punkte für 0 Anwesende' })).toBeDisabled();
+  await expect(page.getByText('Punkte bereits gebucht.')).toBeVisible();
+
+  // Strafvorschlag: nur wer unentschuldigt fehlt.
+  await page.getByRole('button', { name: /^Strafe für \d+ Unentschuldigte/ }).click();
+  await expect(page.getByPlaceholder('z. B. Zu spät beim Antreten')).toHaveValue('Unentschuldigt gefehlt: Arbeitsdienst Schützenplatz');
+  await expect(page.getByLabel('Mariner1')).not.toBeChecked();
+  await expect(page.getByLabel('Spiess')).not.toBeChecked();
+  await page.getByRole('button', { name: '‹ Zurück zur Anwesenheit' }).click();
+
+  // Freier Termin ohne Kalendereintrag.
+  await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
+  await page.getByPlaceholder('z. B. Arbeitsdienst').fill('Sonderdienst Bootshaus');
+  await page.getByRole('button', { name: 'Liste anlegen' }).click();
+  await page.getByRole('button', { name: /^Mariner1: fehlt/ }).click();
+  await page.getByRole('button', { name: /^Mariner1: anwesend/ }).click();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Anwesenheit gespeichert');
+  await page.getByRole('button', { name: '‹ Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('0 anwesend · 1 entschuldigt');
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' }).first()).toContainText('Liste vorhanden');
+
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst' })).toContainText('+3');
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('entschuldigt');
+  await expect(page.locator('.stat-value')).toHaveText('1');
+  await shot(page, '14-meine-anwesenheit');
+
+  await login(page, 'mariner2');
+  await page.getByRole('button', { name: 'Meins' }).click();
+  await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
+  await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('fehlt');
+});
