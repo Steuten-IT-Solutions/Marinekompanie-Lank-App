@@ -49,6 +49,11 @@ export function detectPlatform(ua = navigator.userAgent): Platform {
   // iPadOS meldet sich als Mac; erkennbar an Touch-Unterstützung.
   if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
   if (/android/i.test(ua)) return 'android';
+  // „Desktop-Website“ auf Android meldet sich als Linux-Rechner („X11; Linux x86_64“).
+  // Ein Linux-Rechner mit Finger als Hauptbedienung ist praktisch immer ein Handy/Tablet.
+  if (/linux/i.test(ua) && !/cros/i.test(ua) && navigator.maxTouchPoints > 0 && window.matchMedia?.('(pointer: coarse)').matches) {
+    return 'android';
+  }
   return 'other';
 }
 
