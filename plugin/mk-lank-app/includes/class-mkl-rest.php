@@ -1003,8 +1003,8 @@ class MKL_REST {
 	 *
 	 * Zuerst werden alle Einträge geprüft, auch gegeneinander (z. B. doppelte
 	 * E-Mail-Adressen). Ist einer fehlerhaft, wird niemand angelegt und die Meldung
-	 * nennt die Zeile. Scheitert danach noch etwas beim Speichern, werden alle in
-	 * diesem Durchgang angelegten Konten wieder entfernt.
+	 * nennt die Person (gezählt ab 1, wie in der App). Scheitert danach noch etwas
+	 * beim Speichern, werden alle in diesem Durchgang angelegten Konten wieder entfernt.
 	 * Antwort: Liste der angelegten Konten mit Startpasswörtern.
 	 */
 	public static function create_users_bulk( WP_REST_Request $req ) {
@@ -1033,7 +1033,7 @@ class MKL_REST {
 			$extras   = is_wp_error( $identity ) ? $identity : self::validate_extras( $entry, $is_member );
 			if ( is_wp_error( $extras ) ) {
 				$name = isset( $entry['name'] ) ? trim( sanitize_text_field( (string) $entry['name'] ) ) : '';
-				return self::error( sprintf( 'Zeile %d%s: %s Es wurde niemand angelegt.', $i + 1, '' !== $name ? ' (' . $name . ')' : '', $extras->get_error_message() ) );
+				return self::error( sprintf( 'Person %d%s: %s Es wurde niemand angelegt.', $i + 1, '' !== $name ? ' (' . $name . ')' : '', $extras->get_error_message() ) );
 			}
 			$valid[] = array( $identity, $extras );
 		}

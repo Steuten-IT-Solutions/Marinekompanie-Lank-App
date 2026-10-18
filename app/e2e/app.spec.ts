@@ -154,47 +154,61 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
 test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
   const tag = Date.now().toString(36);
   const rank = `Bulkrang ${tag}`;
+  const min = 50000 + Math.floor(Math.random() * 40000);
   await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
   // Eigener Dienstgrad mit einer Schwelle, die sonst niemand nutzt.
-  const rankId = await page.evaluate(async (title) => {
-    const cfg = window.MKL_CONFIG!;
-    const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
-    const res = await fetch(cfg.restUrl + 'ranks', {
-      method: 'POST',
-      headers,
-      credentials: 'same-origin',
-      body: JSON.stringify({ title, min_points: 50000 + Math.floor(Math.random() * 40000) }),
-    });
-    return ((await res.json()) as { id: number }).id;
-  }, rank);
+  const rankId = await page.evaluate(
+    async ({ title, min_points }) => {
+      const cfg = window.MKL_CONFIG!;
+      const headers = { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' };
+      const res = await fetch(cfg.restUrl + 'ranks', { method: 'POST', headers, credentials: 'same-origin', body: JSON.stringify({ title, min_points }) });
+      return ((await res.json()) as { id: number }).id;
+    },
+    { title: rank, min_points: min },
+  );
 
   await page.getByRole('button', { name: 'Spieß' }).click();
   await openSetup(page, 'Mitglieder verwalten');
   await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
   await page.getByRole('button', { name: 'Mehrere' }).click();
 
-  const list = page.getByLabel('Eine Person pro Zeile');
-  // Anwärter (Standard): keine Punkte erlaubt.
-  await list.fill('Bulk Eins;;10');
-  await expect(page.getByRole('alert')).toContainText('nur bei der Rolle Mitglied oder Spieß');
+  const rows = page.getByTestId('bulk-row');
+  await expect(rows).toHaveCount(1);
+  // Als Anwärter (Standard) gibt es nur Name und E-Mail.
+  await expect(rows.nth(0).getByLabel('Punkte')).toHaveCount(0);
   await page.getByRole('button', { name: 'Mitglied', exact: true }).click();
-  await list.fill('Bulk Eins\nMüller, Max');
-  await expect(page.getByRole('alert')).toContainText('Zeile 2');
-  await expect(page.getByRole('button', { name: 'Konten anlegen' })).toBeDisabled();
-  await list.fill(`Bulk Eins;;10;${rank}`);
-  await expect(page.getByRole('alert')).toContainText('mindestens');
 
-  await list.fill(
-    [
-      'Name\tE-Mail\tPunkte\tDienstgrad\tJungmariner',
-      `Bulk Eins\t\t90.000\t${rank.toLowerCase()}`,
-      '',
-      `Bulk Zwei\tbulk.zwei.${tag}@example.com\t12\t\tja`,
-      `Bulk Drei; bulk.drei.${tag}@example.com`,
-    ].join('\n'),
-  );
-  await expect(page.getByText('Erkannt: 3 Personen')).toBeVisible();
-  await expect(page.locator('.bulk-preview li').first()).toContainText(`90.000 Punkte · ${rank}`);
+  // Person 1: Punkte und Dienstgrad. Der Dienstgrad steht erst zur Wahl, wenn die Punkte reichen.
+  await rows.nth(0).getByLabel('Name').fill('Bulk Eins');
+  await rows.nth(0).getByLabel('Punkte').fill(String(min - 1));
+  await expect(rows.nth(0).getByLabel('Dienstgrad').locator('option', { hasText: rank })).toHaveCount(0);
+  await rows.nth(0).getByLabel('Punkte').fill(String(min));
+  await rows.nth(0).getByLabel('Dienstgrad').selectOption({ label: `${rank} (ab ${min.toLocaleString('de-DE')})` });
+
+  // Person 2 über das Plus: Jungmariner. Das neue Namensfeld hat sofort den Fokus.
+  await page.getByRole('button', { name: '+ Weitere Person' }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1).getByLabel('Name')).toBeFocused();
+  await rows.nth(1).getByLabel('Name').fill('Bulk Zwei');
+  await rows.nth(1).getByLabel('E-Mail (optional)').fill(`bulk.zwei.${tag}@example.com`);
+  await rows.nth(1).getByLabel('Punkte').fill('12');
+  await rows.nth(1).getByLabel('Jungmariner').check();
+
+  // Person 3 ohne Namen → Fehler an der Karte, nichts wird angelegt.
+  await page.getByRole('button', { name: '+ Weitere Person' }).click();
+  await rows.nth(2).getByLabel('E-Mail (optional)').fill(`bulk.drei.${tag}@example.com`);
+  await page.getByRole('button', { name: '3 Konten anlegen' }).click();
+  await expect(rows.nth(2).getByRole('alert')).toHaveText('Bitte einen Namen angeben.');
+  await rows.nth(2).getByLabel('Name').fill('Bulk Drei');
+  await expect(rows.nth(2).getByRole('alert')).toHaveCount(0);
+
+  // Eine vierte, leere Karte wird beim Anlegen einfach weggelassen; eine Karte lässt sich entfernen.
+  await page.getByRole('button', { name: '+ Weitere Person' }).click();
+  await page.getByRole('button', { name: '+ Weitere Person' }).click();
+  await rows.nth(4).getByLabel('Name').fill('Wieder weg');
+  await page.getByRole('button', { name: 'Person 5 entfernen' }).click();
+  await expect(rows).toHaveCount(4);
+
   await page.getByLabel('Punktestand vom (für alle)').fill('2025-12-31');
   await shot(page, '8b-mehrere-mitglieder');
   await page.getByRole('button', { name: '3 Konten anlegen' }).click();
@@ -202,7 +216,7 @@ test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
   await expect(page.getByTestId('bulk-level')).toHaveText('Mitglied');
   const created = page.getByTestId('created-user');
   await expect(created).toHaveCount(3);
-  await expect(created.nth(0).getByTestId('created-extras')).toHaveText(`90.000 Punkte · Dienstgrad: ${rank}`);
+  await expect(created.nth(0).getByTestId('created-extras')).toHaveText(`${min.toLocaleString('de-DE')} Punkte · Dienstgrad: ${rank}`);
   await expect(created.nth(1).getByTestId('created-extras')).toHaveText('12 Punkte · ohne Dienstgrad · Jungmariner');
   await expect(created.nth(2).getByTestId('created-extras')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Alle Zugangsdaten kopieren' })).toBeVisible();
@@ -224,6 +238,22 @@ test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
   await expect(page.locator('.topbar-sub')).toHaveText('Ahoi, Bulk Zwei');
   await page.getByRole('button', { name: 'Meins' }).click();
   await expect(page.getByText('Als Jungmariner erhältst du laut Satzung die halbe Punktzahl.')).toBeVisible();
+});
+
+test('Mehrere anlegen: Server-Fehler wird an der richtigen Person angezeigt', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.goto('/app/#/spiess/einrichtung/mitglieder/neu');
+  await page.getByRole('button', { name: 'Mehrere' }).click();
+  const rows = page.getByTestId('bulk-row');
+  await rows.nth(0).getByLabel('Name').fill('Doppelt Eins');
+  await rows.nth(0).getByLabel('E-Mail (optional)').fill('doppelt@example.com');
+  await page.getByRole('button', { name: '+ Weitere Person' }).click();
+  await rows.nth(1).getByLabel('Name').fill('Doppelt Zwei');
+  await rows.nth(1).getByLabel('E-Mail (optional)').fill('Doppelt@example.com');
+  await page.getByRole('button', { name: '2 Konten anlegen' }).click();
+  await expect(rows.nth(1).getByRole('alert')).toContainText('Diese E-Mail-Adresse wird schon verwendet.');
+  await expect(rows.nth(0).getByRole('alert')).toHaveCount(0);
+  await expect(page.getByText('Konten sind angelegt')).toHaveCount(0);
 });
 
 test('Admin legt einen Anwärter an', async ({ page }) => {

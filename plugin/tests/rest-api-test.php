@@ -332,9 +332,9 @@ list( $s, $d ) = mkl_req(
 		),
 	)
 );
-mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 3' ), 'Doppelte E-Mail in derselben Liste → 400 mit Zeilennummer' );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 3' ), 'Doppelte E-Mail in derselben Liste → 400 mit Nummer der Person' );
 list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => '' ) ) ) );
-mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 2' ), 'Leerer Name in Zeile 2 → 400' );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 2' ), 'Leerer Name bei Person 2 → 400' );
 wp_update_user( array( 'ID' => $m1, 'user_email' => 'mkltest.mariner1@example.com' ) );
 list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.mariner1@example.com' ) ) ) );
 mkl_assert( 400 === $s && false !== strpos( $d['message'], 'schon verwendet' ), 'Bereits vorhandene E-Mail → 400' );
@@ -813,9 +813,9 @@ list( $s, $d ) = mkl_req(
 		),
 	)
 );
-mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 2' ) && false !== strpos( $d['message'], 'mindestens' ), 'Dienstgrad mit zu wenig Punkten in Zeile 2 → 400' );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 2' ) && false !== strpos( $d['message'], 'mindestens' ), 'Dienstgrad mit zu wenig Punkten bei Person 2 → 400' );
 list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => -1 ) ) ) );
-mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 1' ), 'Negativer Anfangsbestand → 400' );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 1' ), 'Negativer Anfangsbestand → 400' );
 list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) ) ) );
 mkl_assert( 400 === $s, 'Deaktivierter Dienstgrad → 400' );
 list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'anwaerter', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'jungmariner' => true ) ) ) );

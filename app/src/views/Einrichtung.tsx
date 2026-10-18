@@ -670,109 +670,202 @@ function NewSingleMember() {
   );
 }
 
-/** Spalten bei „Mehrere anlegen“, in dieser Reihenfolge. */
-const BULK_COLUMNS = 'Name, E-Mail, Punkte, Dienstgrad, Jungmariner';
+/** Eine Person bei „Mehrere anlegen“, so wie sie in den Feldern steht. */
+interface BulkRow {
+  key: number;
+  name: string;
+  email: string;
+  points: string;
+  rankId: string;
+  jungmariner: boolean;
+}
 
-/** Jungmariner-Spalte: „ja“, „x“, „1“ … bzw. leer oder „nein“. */
-function parseYesNo(raw: string): boolean | null {
-  const v = raw.trim().toLowerCase();
-  if (['', 'nein', 'n', 'no', '0', '-', 'falsch', 'false'].includes(v)) return false;
-  if (['ja', 'j', 'x', '1', 'yes', 'wahr', 'true', 'jm', 'jungmariner'].includes(v)) return true;
+let nextRowKey = 1;
+function emptyRow(): BulkRow {
+  return { key: nextRowKey++, name: '', email: '', points: '', rankId: '', jungmariner: false };
+}
+
+function isEmptyRow(r: BulkRow) {
+  return !r.name.trim() && !r.email.trim() && !r.points.trim() && !r.rankId && !r.jungmariner;
+}
+
+/** Prüft eine Person wie der Server; null = in Ordnung. */
+function rowError(r: BulkRow, ranks: Rank[], memberRole: boolean): string | null {
+  if (!r.name.trim()) return 'Bitte einen Namen angeben.';
+  if (r.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email.trim())) return 'Die E-Mail-Adresse ist ungültig.';
+  if (!memberRole) return null;
+  const points = r.points.trim() === '' ? 0 : Number(r.points);
+  if (!Number.isInteger(points) || points < 0) return 'Bitte als Anfangsbestand eine ganze Punktzahl ab 0 angeben.';
+  const rank = ranks.find((x) => String(x.id) === r.rankId);
+  if (rank && points < rank.min_points) return `Für „${rank.title}“ sind mindestens ${rank.min_points.toLocaleString('de-DE')} Punkte nötig.`;
   return null;
 }
 
-/** Ganze Punktzahl ab 0, auch mit Tausenderpunkt („1.200“) wie aus Excel kopiert. */
-function parsePoints(raw: string): number | null {
-  const v = raw.trim().replace(/\s/g, '');
-  if (!/^\d+$/.test(v) && !/^\d{1,3}(\.\d{3})+$/.test(v)) return null;
-  return Number(v.replace(/\./g, ''));
+function toInput(r: BulkRow, memberRole: boolean): BulkUserInput {
+  const points = r.points.trim() === '' ? 0 : Number(r.points);
+  return {
+    name: r.name.trim(),
+    ...(r.email.trim() ? { email: r.email.trim() } : {}),
+    ...(memberRole && points > 0 ? { initial_points: points } : {}),
+    ...(memberRole && r.rankId ? { rank_id: Number(r.rankId) } : {}),
+    ...(memberRole && r.jungmariner ? { jungmariner: true } : {}),
+  };
 }
 
-interface BulkRow extends BulkUserInput {
-  rank_title?: string;
-}
-
-/**
- * Eine Zeile pro Person, Spalten getrennt durch Tabulator, Semikolon oder Komma
- * (z. B. aus Excel kopiert): Name, E-Mail, Punkte, Dienstgrad, Jungmariner.
- * Nur der Name ist Pflicht; hintere Spalten dürfen fehlen, mittlere leer bleiben.
- * Eine Kopfzeile, die mit „Name“ beginnt, wird übersprungen.
- */
-function parseMemberLines(
-  text: string,
-  ranks: Rank[],
-  memberRole: boolean,
-): { users: BulkRow[]; errors: string[] } {
-  const users: BulkRow[] = [];
-  const errors: string[] = [];
-  const lines = text.split(/\r?\n/);
-  lines.forEach((raw, i) => {
-    if (!raw.trim()) return;
-    const cols = raw.split(/[\t;,]/).map((c) => c.trim().replace(/\s+/g, ' '));
-    const [name = '', email = '', points = '', rankTitle = '', jung = ''] = cols;
-    if (users.length === 0 && errors.length === 0 && name.toLowerCase() === 'name') return;
-    const at = `Zeile ${i + 1}`;
-    if (!name) return void errors.push(`${at}: Name fehlt.`);
-    if (name.includes('@')) return void errors.push(`${at}: In der ersten Spalte steht eine E-Mail-Adresse statt des Namens.`);
-    if (email && !email.includes('@'))
-      return void errors.push(
-        `${at}: „${email}“ ist keine E-Mail-Adresse. Den Namen bitte als „Vorname Nachname“ ohne Komma schreiben; Spalten: ${BULK_COLUMNS}.`,
-      );
-    if (cols.length > 5 && cols.slice(5).some(Boolean)) return void errors.push(`${at}: zu viele Spalten (erwartet: ${BULK_COLUMNS}).`);
-    const initial = points === '' ? 0 : parsePoints(points);
-    if (initial === null) return void errors.push(`${at}: „${points}“ ist keine ganze Punktzahl ab 0.`);
-    let rank: Rank | undefined;
-    if (rankTitle) {
-      rank = ranks.find((r) => r.active && r.title.toLowerCase() === rankTitle.toLowerCase());
-      if (!rank) return void errors.push(`${at}: Dienstgrad „${rankTitle}“ gibt es nicht (oder er ist deaktiviert).`);
-      if (initial < rank.min_points)
-        return void errors.push(`${at}: Für „${rank.title}“ sind mindestens ${rank.min_points.toLocaleString('de-DE')} Punkte nötig.`);
-    }
-    const jm = parseYesNo(jung);
-    if (jm === null) return void errors.push(`${at}: „${jung}“ bei Jungmariner bitte als „ja“ oder leer angeben.`);
-    if (!memberRole && (initial > 0 || rank || jm))
-      return void errors.push(`${at}: Punkte, Dienstgrad und Jungmariner gibt es nur bei der Rolle Mitglied oder Spieß.`);
-    users.push({
-      name,
-      ...(email ? { email } : {}),
-      ...(initial > 0 ? { initial_points: initial } : {}),
-      ...(rank ? { rank_id: rank.id, rank_title: rank.title } : {}),
-      ...(jm ? { jungmariner: true } : {}),
-    });
-  });
-  return { users, errors };
+function BulkRowCard({
+  index,
+  row,
+  ranks,
+  memberRole,
+  error,
+  autoFocus,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  row: BulkRow;
+  ranks: Rank[];
+  memberRole: boolean;
+  error: string | null;
+  autoFocus: boolean;
+  onChange: (patch: Partial<BulkRow>) => void;
+  onRemove?: () => void;
+}) {
+  const points = row.points.trim() === '' ? 0 : Number(row.points);
+  // Nur Dienstgrade, deren Schwelle der Anfangsbestand erreicht (prüft auch der Server).
+  const reachable = ranks.filter((r) => r.active && Number.isInteger(points) && r.min_points <= points);
+  const label = `Person ${index + 1}`;
+  return (
+    <fieldset className={`fieldset bulk-card${error ? ' has-error' : ''}`} data-testid="bulk-row" aria-label={label}>
+      <legend>{label}</legend>
+      {onRemove && (
+        <button type="button" className="bulk-remove" aria-label={`${label} entfernen`} onClick={onRemove}>
+          ×
+        </button>
+      )}
+      <label className="field">
+        <span>Name</span>
+        <input
+          type="text"
+          autoComplete="off"
+          placeholder="Vorname Nachname"
+          autoFocus={autoFocus}
+          value={row.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+      </label>
+      <label className="field">
+        <span>E-Mail (optional)</span>
+        <input type="email" autoComplete="off" value={row.email} onChange={(e) => onChange({ email: e.target.value })} />
+      </label>
+      {memberRole && (
+        <>
+          <div className="field-row">
+            <label className="field narrow">
+              <span>Punkte</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={row.points}
+                onChange={(e) => onChange({ points: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Dienstgrad</span>
+              <select value={row.rankId} onChange={(e) => onChange({ rankId: e.target.value })}>
+                <option value="">Kein Dienstgrad</option>
+                {reachable.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title} (ab {r.min_points.toLocaleString('de-DE')})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={row.jungmariner} onChange={(e) => onChange({ jungmariner: e.target.checked })} />
+            Jungmariner
+          </label>
+        </>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
 }
 
 function NewMembersBulk() {
   const ranks = useAsync(api.ranks);
-  const [text, setText] = useState('');
+  const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow()]);
+  const [focusKey, setFocusKey] = useState<number | null>(null);
   const [level, setLevel] = useState<Exclude<Level, 'admin'>>('anwaerter');
   const [pointsDate, setPointsDate] = useState(todayYmd());
   const [busy, setBusy] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  /** Vom Server gemeldete Person (Index) mit Meldung. */
+  const [serverError, setServerError] = useState<{ index: number; message: string } | null>(null);
   const [created, setCreated] = useState<CreatedUser[] | null>(null);
   const [copied, setCopied] = useState<number | 'alle' | null>(null);
   const memberRole = isMemberLevel(level);
-  const { users, errors } = useMemo(() => parseMemberLines(text, ranks.data ?? [], memberRole), [text, ranks.data, memberRole]);
-  const hasPoints = users.some((u) => u.initial_points);
+  const rankList = ranks.data ?? [];
+
+  // Ein Dienstgrad, den die Punkte nicht (mehr) erreichen, gilt als nicht gewählt – wie im Einzelformular.
+  const effective = rows.map((r) => {
+    const points = r.points.trim() === '' ? 0 : Number(r.points);
+    const rank = rankList.find((x) => String(x.id) === r.rankId);
+    return rank && (!Number.isInteger(points) || points < rank.min_points) ? { ...r, rankId: '' } : r;
+  });
+  const filled = effective.filter((r) => !isEmptyRow(r));
+  const hasPoints = memberRole && filled.some((r) => r.points.trim() !== '' && Number(r.points) > 0);
+
+  function update(key: number, patch: Partial<BulkRow>) {
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setServerError(null);
+  }
+
+  function add() {
+    const row = emptyRow();
+    setRows((rs) => [...rs, row]);
+    setFocusKey(row.key);
+  }
+
+  function remove(key: number) {
+    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
+    setServerError(null);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    if (errors.length) return setFormError(errors[0]);
-    if (users.length === 0) return setFormError('Bitte mindestens einen Namen eintragen.');
-    if (users.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} auf einmal anlegen.`);
+    setServerError(null);
+    // Ganz leere Karten fallen weg, damit die Nummern zu den Meldungen des Servers passen.
+    const list = filled.length ? filled : effective;
+    setRows(list);
+    setShowErrors(true);
+    if (filled.length === 0) return setFormError('Bitte mindestens eine Person eintragen.');
+    if (filled.some((r) => rowError(r, rankList, memberRole))) return setFormError('Bitte die markierten Angaben korrigieren.');
+    if (filled.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} auf einmal anlegen.`);
     setBusy(true);
     try {
       setCreated(
         await api.createUsers({
-          users: users.map(({ rank_title, ...u }) => u),
+          users: filled.map((r) => toInput(r, memberRole)),
           level,
           ...(hasPoints ? { initial_points_date: pointsDate } : {}),
         }),
       );
     } catch (err) {
-      setFormError((err as Error).message);
+      const message = (err as Error).message;
+      const m = /^Person (\d+)[^:]*: (.*)$/.exec(message);
+      if (m && Number(m[1]) <= filled.length) setServerError({ index: Number(m[1]) - 1, message: m[2] });
+      else setFormError(message);
     } finally {
       setBusy(false);
     }
@@ -830,78 +923,49 @@ function NewMembersBulk() {
   }
 
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form" onSubmit={submit} noValidate>
       <LevelPicker level={level} onChange={setLevel} />
-      <label className="field">
-        <span>Eine Person pro Zeile</span>
-        <textarea
-          rows={8}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={
-            memberRole
-              ? 'Max Müller\nErika Mustermann; erika@example.de; 120; Bootsmann\nTim Klein;;30;;ja'
-              : 'Max Müller\nErika Mustermann; erika@example.de'
-          }
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </label>
       <p className="muted small">
-        {memberRole ? (
-          <>
-            Spalten: <strong>{BULK_COLUMNS}</strong>, getrennt durch Semikolon, Komma oder Tab. Nur der Name ist Pflicht,
-            leere Spalten bleiben einfach leer. Eine Excel-Tabelle mit diesen Spalten kann direkt hineinkopiert werden,
-            auch mit Kopfzeile. Der Dienstgrad muss so heißen wie unter „Dienstgrade“ und mit den Punkten erreicht sein;
-            bei Jungmariner „ja“ eintragen.
-          </>
-        ) : (
-          <>Pro Zeile „Vorname Nachname“, optional mit Semikolon oder Komma und E-Mail-Adresse dahinter.</>
-        )}{' '}
-        Benutzernamen werden aus den Namen gebildet, jede Person bekommt ein eigenes zufälliges Startpasswort. Enthält eine
-        Zeile einen Fehler, wird niemand angelegt.
+        Alle bekommen diese Rolle und je ein eigenes zufälliges Startpasswort. Benutzernamen werden aus den Namen gebildet.
+        {memberRole && ' Punkte, Dienstgrad und Jungmariner sind optional und gelten je Person.'}
       </p>
+      {effective.map((r, i) => (
+        <BulkRowCard
+          key={r.key}
+          index={i}
+          row={r}
+          ranks={rankList}
+          memberRole={memberRole}
+          error={
+            serverError?.index === i
+              ? serverError.message
+              : showErrors && !isEmptyRow(r)
+                ? rowError(r, rankList, memberRole)
+                : null
+          }
+          autoFocus={r.key === focusKey}
+          onChange={(patch) => update(r.key, patch)}
+          onRemove={rows.length > 1 ? () => remove(r.key) : undefined}
+        />
+      ))}
+      <button type="button" className="btn btn-secondary btn-block" onClick={add} disabled={rows.length >= MAX_BULK_USERS}>
+        + Weitere Person
+      </button>
       {memberRole && hasPoints && (
         <label className="field">
           <span>Punktestand vom (für alle)</span>
           <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
         </label>
       )}
-      {users.length > 0 && (
-        <div className="bulk-preview" aria-live="polite">
-          <span className="field-label">Erkannt: {users.length === 1 ? '1 Person' : `${users.length} Personen`}</span>
-          <ul>
-            {users.map((u, i) => (
-              <li key={i}>
-                {u.name}
-                {u.email && <span className="muted"> · {u.email}</span>}
-                {(u.initial_points || u.rank_title || u.jungmariner) && (
-                  <span className="muted">
-                    {' '}
-                    ·{' '}
-                    {[
-                      `${(u.initial_points ?? 0).toLocaleString('de-DE')} Punkte`,
-                      ...(u.rank_title ? [u.rank_title] : []),
-                      ...(u.jungmariner ? ['Jungmariner'] : []),
-                    ].join(' · ')}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {ranks.error && memberRole && <p className="form-error">Dienstgrade konnten nicht geladen werden: {ranks.error}</p>}
+      {formError && (
+        <p className="form-error" role="alert">
+          {formError}
+        </p>
       )}
-      {ranks.error && <p className="form-error">Dienstgrade konnten nicht geladen werden: {ranks.error}</p>}
-      {errors.length > 0 && (
-        <ul className="form-error bulk-errors" role="alert">
-          {errors.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-      )}
-      {formError && !errors.includes(formError) && <p className="form-error" role="alert">{formError}</p>}
-      <button className="btn btn-block" type="submit" disabled={busy || ranks.loading || errors.length > 0 || users.length === 0}>
-        {busy ? 'Legt an …' : users.length > 1 ? `${users.length} Konten anlegen` : 'Konten anlegen'}
+      <p className="muted small">Enthält eine Angabe einen Fehler, wird niemand angelegt.</p>
+      <button className="btn btn-block" type="submit" disabled={busy || ranks.loading}>
+        {busy ? 'Legt an …' : filled.length > 1 ? `${filled.length} Konten anlegen` : 'Konten anlegen'}
       </button>
     </form>
   );
