@@ -151,8 +151,9 @@ class MKL_Settings {
 				In der Warteschlange: <?php echo esc_html( $count['queued'] ); ?>.
 			</p>
 			<p class="description">
-				Mitglieder schalten Benachrichtigungen in der App unter Konto → Benachrichtigungen ein. Auf dem iPhone geht das nur in der
-				über „Zum Home-Bildschirm“ installierten App (ab iOS 16.4). Der Versand läuft über WP-Cron, also beim nächsten Seitenaufruf.
+				Angemeldete schalten Benachrichtigungen in der App unter Konto → Benachrichtigungen ein, Gäste unten auf der Seite Termine.
+				Auf dem iPhone geht das nur in der über „Zum Home-Bildschirm“ installierten App (ab iOS 16.4). Versand, Kalender-Abgleich
+				und die Erinnerung um 18 Uhr laufen über WP-Cron, also nur, wenn jemand die Webseite aufruft.
 			</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="mkl_push_test" />

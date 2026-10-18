@@ -6,9 +6,14 @@
  *   RFC 8292 (JWT mit ES256). Nur PHP-Bordmittel (OpenSSL), keine Bibliothek.
  * - Das VAPID-Schlüsselpaar entsteht beim ersten Bedarf und liegt in einer
  *   Option; der private Schlüssel wird nie ausgegeben.
- * - Ein Abo gehört zu einem Gerät (Endpoint) und einem Konto. Je Abo wird
- *   gespeichert, welche Ereignisse es erhält und ob Strafen mit Betrag und Grund
- *   angezeigt werden.
+ * - Ein Abo gehört zu einem Gerät (Endpoint) und einem Konto, bei Gästen ohne
+ *   Anmeldung zu keinem Konto (user_id 0). Je Abo wird gespeichert, welche
+ *   Ereignisse es erhält und ob Strafen mit Betrag und Grund angezeigt werden.
+ *   Gäste weisen sich beim Ändern und Abbestellen mit dem auth-Geheimnis ihres
+ *   Abos aus, das nur ihr Browser kennt.
+ * - Termine: Kalender-Berechtigte (Anwärter, Mitglieder) erhalten Nachrichten
+ *   zum Google Kalender, alle anderen zu den öffentlichen Terminen. Die
+ *   öffentlichen Termine stehen auch im Google Kalender, so kommt nichts doppelt.
  * - Nachrichten landen in einer Warteschlange und werden über WP-Cron
  *   verschickt, damit z. B. das Vergeben einer Strafe nicht auf die Push-Dienste
  *   wartet. Abos, die der Push-Dienst nicht mehr kennt (404/410), werden gelöscht.
@@ -18,19 +23,41 @@ defined( 'ABSPATH' ) || exit;
 
 class MKL_Push {
 
-	const VAPID_OPTION = 'mkl_push_vapid';
-	const CRON_HOOK    = 'mkl_push_send';
+	const VAPID_OPTION    = 'mkl_push_vapid';
+	const CRON_HOOK       = 'mkl_push_send';
+	const WATCH_HOOK      = 'mkl_push_watch';
+	const WATCH_SCHEDULE  = 'mkl_push_15min';
+	const SNAPSHOT_OPTION = 'mkl_push_calendar_snapshot';
+	const REMINDER_OPTION = 'mkl_push_reminder_date';
 
 	const TYPE_STRAFEN    = 'strafen';
 	const TYPE_PUNKTE     = 'punkte';
 	const TYPE_DIENSTGRAD = 'dienstgrad';
+	const TYPE_TERMINE    = 'termine';
+	const TYPE_ERINNERUNG = 'erinnerung';
+	const TYPE_NEWS       = 'news';
 
-	/** Ereignistypen mit Bezeichnung für die App. */
+	/** Ereignistypen mit Bezeichnung für die App, in Anzeigereihenfolge. */
 	const TYPE_LABELS = array(
 		self::TYPE_STRAFEN    => 'Neue Strafen',
 		self::TYPE_PUNKTE     => 'Punkte',
 		self::TYPE_DIENSTGRAD => 'Dienstgrad',
+		self::TYPE_TERMINE    => 'Neue und geänderte Termine',
+		self::TYPE_ERINNERUNG => 'Erinnerung am Vortag (18 Uhr)',
+		self::TYPE_NEWS       => 'Neuigkeiten',
 	);
+
+	/** Ab dieser Uhrzeit (lokal) geht die Erinnerung für morgen raus, bis REMINDER_UNTIL. */
+	const REMINDER_HOUR  = 18;
+	const REMINDER_UNTIL = 22;
+	/** Neue Kalendertermine weiter in der Zukunft werden nur gemerkt (Rand des Abrufzeitraums von 1 Jahr). */
+	const NEW_EVENT_HORIZON = 300 * DAY_IN_SECONDS;
+	/** Ab so vielen neuen Terminen auf einmal gibt es eine Sammelnachricht. */
+	const SUMMARY_FROM = 4;
+	/** Neue Gäste-Abos je IP-Adresse und Stunde. */
+	const GUEST_RATE = 20;
+	/** Höchstzahl Gäste-Abos insgesamt. */
+	const MAX_GUESTS = 2000;
 
 	/** Höchstzahl Geräte je Konto; beim Überschreiten fällt das älteste Abo weg. */
 	const MAX_PER_USER = 10;
@@ -45,8 +72,29 @@ class MKL_Push {
 
 	public static function init() {
 		add_action( self::CRON_HOOK, array( __CLASS__, 'cron' ) );
+		add_action( self::WATCH_HOOK, array( __CLASS__, 'watch' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
 		add_action( 'deleted_user', array( __CLASS__, 'delete_for_user' ) );
+		add_action( 'transition_post_status', array( __CLASS__, 'post_status_changed' ), 10, 3 );
+		add_filter( 'cron_schedules', array( __CLASS__, 'cron_schedules' ) );
+		add_action( 'init', array( __CLASS__, 'schedule_watch' ) );
+	}
+
+	public static function cron_schedules( $schedules ) {
+		$schedules[ self::WATCH_SCHEDULE ] = array(
+			'interval' => 15 * MINUTE_IN_SECONDS,
+			'display'  => 'Alle 15 Minuten (Benachrichtigungen)',
+		);
+		return $schedules;
+	}
+
+	/** Kalender-Abgleich und Erinnerungen laufen nur, wenn es Abos gibt (Prüfung bei jedem Seitenaufruf, daher billig). */
+	public static function schedule_watch() {
+		global $wpdb;
+		if ( wp_next_scheduled( self::WATCH_HOOK ) || ! $wpdb->get_var( 'SELECT 1 FROM ' . self::subscriptions_table() . ' LIMIT 1' ) || ! self::is_supported() ) { // phpcs:ignore WordPress.DB.PreparedSQL
+			return;
+		}
+		wp_schedule_event( time() + 60, self::WATCH_SCHEDULE, self::WATCH_HOOK );
 	}
 
 	public static function subscriptions_table() {
@@ -317,9 +365,18 @@ class MKL_Push {
 	/* Abos                                                                */
 	/* ------------------------------------------------------------------ */
 
-	/** Ereignistypen, die ein Konto abonnieren kann. */
+	/** Ereignistypen, die ein Konto (0 = Gast ohne Anmeldung) abonnieren kann. */
 	public static function available_types( $user_id ) {
-		return MKL_Roles::is_member( $user_id ) ? array( self::TYPE_STRAFEN, self::TYPE_PUNKTE, self::TYPE_DIENSTGRAD ) : array();
+		$types = array( self::TYPE_TERMINE, self::TYPE_ERINNERUNG, self::TYPE_NEWS );
+		if ( $user_id && MKL_Roles::is_member( $user_id ) ) {
+			$types = array_merge( array( self::TYPE_STRAFEN, self::TYPE_PUNKTE, self::TYPE_DIENSTGRAD ), $types );
+		}
+		return $types;
+	}
+
+	/** Termine aus dem Google Kalender (true) oder aus der öffentlichen Liste (false). */
+	public static function uses_calendar( $user_id ) {
+		return $user_id && MKL_Roles::can_see_calendar( $user_id );
 	}
 
 	public static function get_by_endpoint( $endpoint ) {
@@ -368,6 +425,11 @@ class MKL_Push {
 		$existing = self::get_by_endpoint( $endpoint );
 		$now      = self::now();
 		$same     = $existing && (int) $existing['user_id'] === (int) $user_id;
+
+		// Ein bestehendes Abo übernimmt nur, wer dasselbe Gerät hat (gleiches auth-Geheimnis).
+		if ( $existing && ! hash_equals( (string) $existing['auth'], (string) $auth ) ) {
+			return new WP_Error( 'mkl_forbidden', 'Dieses Gerät ist bereits anders angemeldet.', array( 'status' => 403 ) );
+		}
 
 		$types   = null !== $types ? self::clean_types( $types, $allowed ) : ( $same ? self::clean_types( self::split_types( $existing['types'] ), $allowed ) : $allowed );
 		$details = null !== $details ? (bool) $details : ( $same && (bool) $existing['details'] );
@@ -470,6 +532,45 @@ class MKL_Push {
 		return $count;
 	}
 
+	/**
+	 * Stellt eine Nachricht an alle Abos mit dem Typ zu.
+	 *
+	 * @param bool|null $calendar true = nur Kalender-Berechtigte, false = nur alle anderen
+	 *                              (Gäste, Konten ohne Kalender), null = alle.
+	 * @return int Anzahl eingereihter Nachrichten.
+	 */
+	public static function notify_all( $type, array $message, $calendar = null ) {
+		global $wpdb;
+		$t     = self::subscriptions_table();
+		$rows  = $wpdb->get_results( "SELECT id, user_id, types FROM $t", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$json  = wp_json_encode( $message, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		$count = 0;
+		foreach ( $rows as $sub ) {
+			if ( ! in_array( $type, self::split_types( $sub['types'] ), true ) ) {
+				continue;
+			}
+			if ( null !== $calendar && self::uses_calendar( (int) $sub['user_id'] ) !== $calendar ) {
+				continue;
+			}
+			$wpdb->insert(
+				self::queue_table(),
+				array(
+					'subscription_id' => $sub['id'],
+					'payload'         => $json,
+					'urgency'         => 'normal',
+					'attempts'        => 0,
+					'next_try'        => self::now(),
+					'created_at'      => self::now(),
+				)
+			);
+			++$count;
+		}
+		if ( $count ) {
+			self::schedule();
+		}
+		return $count;
+	}
+
 	/** Versand im Hintergrund anstoßen. */
 	public static function schedule() {
 		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
@@ -482,6 +583,7 @@ class MKL_Push {
 
 	public static function unschedule() {
 		wp_clear_scheduled_hook( self::CRON_HOOK );
+		wp_clear_scheduled_hook( self::WATCH_HOOK );
 	}
 
 	public static function cron() {
@@ -633,22 +735,221 @@ class MKL_Push {
 	}
 
 	/* ------------------------------------------------------------------ */
+	/* Termine, News, Erinnerungen                                         */
+	/* ------------------------------------------------------------------ */
+
+	/** Beginn eines Termins (Format von MKL_Calendar/MKL_Events) in lokaler Zeit. */
+	private static function event_start( array $ev ) {
+		$tz = wp_timezone();
+		return ( new DateTimeImmutable( $ev['start'], $tz ) )->setTimezone( $tz );
+	}
+
+	/** „Sa 05.09.2026, 14:00 Uhr“ bzw. „Fr 04.09.2026 – Mo 07.09.2026“. */
+	public static function format_when( array $ev ) {
+		$days  = array( 'So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa' );
+		$day   = function ( DateTimeImmutable $d ) use ( $days ) {
+			return $days[ (int) $d->format( 'w' ) ] . ' ' . $d->format( 'd.m.Y' );
+		};
+		$start = self::event_start( $ev );
+		if ( ! empty( $ev['all_day'] ) ) {
+			$last = ( new DateTimeImmutable( $ev['end'], wp_timezone() ) )->modify( '-1 day' );
+			return $last > $start ? $day( $start ) . ' – ' . $day( $last ) : $day( $start );
+		}
+		return $day( $start ) . ', ' . $start->format( 'H:i' ) . ' Uhr';
+	}
+
+	private static function event_body( array $ev ) {
+		return $ev['title'] . ' – ' . self::format_when( $ev ) . ( ! empty( $ev['location'] ) ? ' – ' . $ev['location'] : '' );
+	}
+
+	/** Für Nachrichten wichtige Angaben: Änderungen am Titel oder an der Beschreibung lösen nichts aus. */
+	private static function event_signature( array $ev ) {
+		return array( (string) $ev['start'], (string) $ev['end'], trim( (string) $ev['location'] ) );
+	}
+
+	/** Liegt der Termin (oder sein Ende) heute oder später? */
+	private static function is_upcoming( array $ev ) {
+		$end = ( new DateTimeImmutable( $ev['end'], wp_timezone() ) )->setTimezone( wp_timezone() );
+		if ( ! empty( $ev['all_day'] ) ) {
+			$end = $end->modify( '-1 day' ); // Ende exklusiv
+		}
+		return $end->format( 'Y-m-d' ) >= wp_date( 'Y-m-d' );
+	}
+
+	/**
+	 * Öffentlicher Termin angelegt oder geändert (MKL_Events::format()).
+	 * Geht an Gäste und Konten ohne Kalender.
+	 */
+	public static function public_event_saved( array $ev, $before = null ) {
+		if ( ! self::is_upcoming( $ev ) ) {
+			return 0;
+		}
+		if ( $before && self::event_signature( $before ) === self::event_signature( $ev ) ) {
+			return 0;
+		}
+		$title = $before ? 'Termin geändert' : 'Neuer Termin';
+		return self::notify_all( self::TYPE_TERMINE, self::message( $title, self::event_body( $ev ), 'termine', 'termin-p' . $ev['id'] ), false );
+	}
+
+	/** Neuer Blogbeitrag veröffentlicht (Hook transition_post_status). */
+	public static function post_status_changed( $new_status, $old_status, $post ) {
+		if ( 'publish' !== $new_status || 'publish' === $old_status || 'post' !== $post->post_type || '' !== $post->post_password ) {
+			return;
+		}
+		$title = wp_strip_all_tags( html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ) );
+		self::notify_all( self::TYPE_NEWS, self::message( 'Neuigkeiten', $title, 'news/' . $post->ID, 'news-' . $post->ID ) );
+	}
+
+	/** Alle 15 Minuten: Kalender abgleichen, Erinnerungen verschicken. */
+	public static function watch() {
+		self::check_calendar();
+		self::send_reminders();
+	}
+
+	/**
+	 * Vergleicht den Kalender mit dem letzten Stand.
+	 *
+	 * @param array $snapshot Letzter Stand: id → Signatur.
+	 * @param array $events   Aktuelle Termine (MKL_Calendar).
+	 * @return array{new: array[], changed: array[], snapshot: array}
+	 */
+	public static function calendar_changes( array $snapshot, array $events, $now = null ) {
+		$now     = $now ? $now : time();
+		$new     = array();
+		$changed = array();
+		$next    = array();
+		foreach ( $events as $ev ) {
+			$sig               = self::event_signature( $ev );
+			$next[ $ev['id'] ] = $sig;
+			$start             = self::event_start( $ev )->getTimestamp();
+			if ( ! self::is_upcoming( $ev ) ) {
+				continue;
+			}
+			if ( ! isset( $snapshot[ $ev['id'] ] ) ) {
+				if ( $start <= $now + self::NEW_EVENT_HORIZON ) {
+					$new[] = $ev;
+				}
+			} elseif ( $snapshot[ $ev['id'] ] !== $sig ) {
+				$changed[] = $ev;
+			}
+		}
+		return array(
+			'new'      => $new,
+			'changed'  => $changed,
+			'snapshot' => $next,
+		);
+	}
+
+	/**
+	 * Neue und geänderte Kalendertermine an Kalender-Berechtigte. Beim ersten
+	 * Lauf wird nur der Stand gemerkt; bei einem Abruffehler bleibt er unverändert.
+	 *
+	 * @return int Anzahl eingereihter Nachrichten.
+	 */
+	public static function check_calendar() {
+		$events = MKL_Calendar::get_events();
+		if ( is_wp_error( $events ) ) {
+			return 0;
+		}
+		$snapshot = get_option( self::SNAPSHOT_OPTION, null );
+		$diff     = self::calendar_changes( is_array( $snapshot ) ? $snapshot : array(), $events );
+		update_option( self::SNAPSHOT_OPTION, $diff['snapshot'], false );
+		if ( ! is_array( $snapshot ) ) {
+			return 0;
+		}
+		$count = 0;
+		if ( count( $diff['new'] ) >= self::SUMMARY_FROM ) {
+			$titles = implode( ', ', wp_list_pluck( array_slice( $diff['new'], 0, 3 ), 'title' ) );
+			$count += self::notify_all( self::TYPE_TERMINE, self::message( 'Neue Termine', sprintf( '%d neue Termine im Kalender, z. B. %s', count( $diff['new'] ), $titles ), 'termine', 'termine-neu' ), true );
+		} else {
+			foreach ( $diff['new'] as $ev ) {
+				$count += self::notify_all( self::TYPE_TERMINE, self::message( 'Neuer Termin', self::event_body( $ev ), 'termine', 'termin-' . $ev['id'] ), true );
+			}
+		}
+		foreach ( $diff['changed'] as $ev ) {
+			$count += self::notify_all( self::TYPE_TERMINE, self::message( 'Termin geändert', self::event_body( $ev ), 'termine', 'termin-' . $ev['id'] ), true );
+		}
+		return $count;
+	}
+
+	/** Termine, die am Tag $date (Y-m-d, lokal) beginnen. */
+	public static function events_on( array $events, $date ) {
+		return array_values(
+			array_filter(
+				$events,
+				function ( $ev ) use ( $date ) {
+					return self::event_start( $ev )->format( 'Y-m-d' ) === $date;
+				}
+			)
+		);
+	}
+
+	private static function reminder_message( array $events ) {
+		$parts = array();
+		foreach ( $events as $ev ) {
+			$extra   = array_filter( array( empty( $ev['all_day'] ) ? self::event_start( $ev )->format( 'H:i' ) . ' Uhr' : '', (string) $ev['location'] ) );
+			$parts[] = $ev['title'] . ( $extra ? ' (' . implode( ', ', $extra ) . ')' : '' );
+		}
+		$title = 1 === count( $events ) ? 'Morgen: ' . $events[0]['title'] : sprintf( 'Morgen: %d Termine', count( $events ) );
+		return self::message( $title, implode( ' · ', $parts ), 'termine', 'erinnerung' );
+	}
+
+	/**
+	 * Erinnerung an die Termine von morgen, einmal am Tag ab 18 Uhr (lokal).
+	 *
+	 * @param DateTimeImmutable|null $now Nur für Tests.
+	 * @return int Anzahl eingereihter Nachrichten.
+	 */
+	public static function send_reminders( $now = null ) {
+		$now  = $now ? $now : new DateTimeImmutable( 'now', wp_timezone() );
+		$hour = (int) $now->format( 'G' );
+		if ( $hour < self::REMINDER_HOUR || $hour >= self::REMINDER_UNTIL || get_option( self::REMINDER_OPTION ) === $now->format( 'Y-m-d' ) ) {
+			return 0;
+		}
+		update_option( self::REMINDER_OPTION, $now->format( 'Y-m-d' ), false );
+		$tomorrow = $now->modify( '+1 day' )->format( 'Y-m-d' );
+		$count    = 0;
+
+		$calendar = MKL_Calendar::get_events();
+		if ( ! is_wp_error( $calendar ) ) {
+			$list = self::events_on( $calendar, $tomorrow );
+			if ( $list ) {
+				$count += self::notify_all( self::TYPE_ERINNERUNG, self::reminder_message( $list ), true );
+			}
+		}
+		$public = self::events_on( MKL_Events::upcoming(), $tomorrow );
+		if ( $public ) {
+			$count += self::notify_all( self::TYPE_ERINNERUNG, self::reminder_message( $public ), false );
+		}
+		return $count;
+	}
+
+	/* ------------------------------------------------------------------ */
 	/* REST                                                                */
 	/* ------------------------------------------------------------------ */
 
 	public static function register_routes() {
 		$logged_in = array( 'MKL_REST', 'can_read' );
-		register_rest_route( MKL_REST::NS, '/me/push/status', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_status' ), 'permission_callback' => $logged_in ) );
-		register_rest_route(
-			MKL_REST::NS,
-			'/me/push',
-			array(
-				array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_subscribe' ), 'permission_callback' => $logged_in ),
-				array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'rest_update' ), 'permission_callback' => $logged_in ),
-				array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'rest_unsubscribe' ), 'permission_callback' => $logged_in ),
-			)
-		);
-		register_rest_route( MKL_REST::NS, '/me/push/test', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_test' ), 'permission_callback' => $logged_in ) );
+		$public    = '__return_true';
+		foreach ( array( '/me/push' => $logged_in, '/push' => $public ) as $base => $perm ) {
+			$guest = '/push' === $base;
+			$cb    = function ( $handler ) use ( $guest ) {
+				return function ( WP_REST_Request $req ) use ( $handler, $guest ) {
+					return call_user_func( array( __CLASS__, $handler ), $req, $guest ? 0 : get_current_user_id() );
+				};
+			};
+			register_rest_route( MKL_REST::NS, $base . '/status', array( 'methods' => 'POST', 'callback' => $cb( 'rest_status' ), 'permission_callback' => $perm ) );
+			register_rest_route(
+				MKL_REST::NS,
+				$base,
+				array(
+					array( 'methods' => 'POST', 'callback' => $cb( 'rest_subscribe' ), 'permission_callback' => $perm ),
+					array( 'methods' => 'PUT', 'callback' => $cb( 'rest_update' ), 'permission_callback' => $perm ),
+					array( 'methods' => 'DELETE', 'callback' => $cb( 'rest_unsubscribe' ), 'permission_callback' => $perm ),
+				)
+			);
+			register_rest_route( MKL_REST::NS, $base . '/test', array( 'methods' => 'POST', 'callback' => $cb( 'rest_test' ), 'permission_callback' => $perm ) );
+		}
 	}
 
 	private static function error( $message, $status = 400 ) {
@@ -667,14 +968,22 @@ class MKL_Push {
 		return $endpoint;
 	}
 
-	/** Eigenes Abo zum Endpoint oder 404. */
-	private static function own_subscription( WP_REST_Request $req ) {
+	/**
+	 * Abo zum Endpoint, das dem Anfragenden gehört, sonst 404. Konten über die
+	 * Anmeldung, Gäste (0) über das auth-Geheimnis des Abos.
+	 */
+	private static function own_subscription( WP_REST_Request $req, $user_id ) {
 		$endpoint = self::endpoint_param( $req );
 		if ( is_wp_error( $endpoint ) ) {
 			return $endpoint;
 		}
 		$sub = self::get_by_endpoint( $endpoint );
-		if ( ! $sub || (int) $sub['user_id'] !== get_current_user_id() ) {
+		$ok  = $sub && (int) $sub['user_id'] === (int) $user_id;
+		if ( $ok && ! $user_id ) {
+			$auth = self::b64u_decode( (string) $req->get_param( 'auth' ) );
+			$ok   = $auth && hash_equals( (string) $sub['auth'], self::b64u_encode( $auth ) );
+		}
+		if ( ! $ok ) {
 			return self::error( 'Für dieses Gerät sind keine Benachrichtigungen aktiviert.', 404 );
 		}
 		return $sub;
@@ -688,17 +997,16 @@ class MKL_Push {
 	}
 
 	/** Verfügbare Typen und das Abo dieses Geräts (Endpoint im Body, nicht in der Adresse). */
-	public static function rest_status( WP_REST_Request $req ) {
-		$sub      = null;
-		$endpoint = $req->get_param( 'endpoint' );
-		if ( $endpoint ) {
-			$sub = self::own_subscription( $req );
+	public static function rest_status( WP_REST_Request $req, $user_id ) {
+		$sub = null;
+		if ( $req->get_param( 'endpoint' ) ) {
+			$sub = self::own_subscription( $req, $user_id );
 			if ( is_wp_error( $sub ) ) {
 				$sub = null;
 			}
 		}
 		$types = array();
-		foreach ( self::available_types( get_current_user_id() ) as $type ) {
+		foreach ( self::available_types( $user_id ) as $type ) {
 			$types[] = array(
 				'key'   => $type,
 				'label' => self::TYPE_LABELS[ $type ],
@@ -714,7 +1022,24 @@ class MKL_Push {
 		);
 	}
 
-	public static function rest_subscribe( WP_REST_Request $req ) {
+	/** Gäste: Begrenzung neuer Abos je IP-Adresse und insgesamt. */
+	private static function guest_limit() {
+		global $wpdb;
+		$t = self::subscriptions_table();
+		if ( (int) $wpdb->get_var( "SELECT COUNT(*) FROM $t WHERE user_id = 0" ) >= self::MAX_GUESTS ) { // phpcs:ignore WordPress.DB.PreparedSQL
+			return self::error( 'Zurzeit sind keine weiteren Abos möglich.', 503 );
+		}
+		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$key = 'mkl_push_rl_' . md5( $ip . wp_salt( 'nonce' ) );
+		$n   = (int) get_transient( $key );
+		if ( $n >= self::GUEST_RATE ) {
+			return self::error( 'Zu viele Anfragen. Bitte später erneut versuchen.', 429 );
+		}
+		set_transient( $key, $n + 1, HOUR_IN_SECONDS );
+		return true;
+	}
+
+	public static function rest_subscribe( WP_REST_Request $req, $user_id ) {
 		if ( ! self::is_supported() ) {
 			return self::error( 'Push-Benachrichtigungen werden auf diesem Server nicht unterstützt.', 501 );
 		}
@@ -730,9 +1055,11 @@ class MKL_Push {
 		if ( ! $raw_pk || 65 !== strlen( $raw_pk ) || "\x04" !== $raw_pk[0] || ! self::public_key_from_raw( $raw_pk ) || ! $raw_au || 16 !== strlen( $raw_au ) ) {
 			return self::error( 'Ungültige Schlüssel des Geräts.' );
 		}
-		$user_id = get_current_user_id();
-		if ( ! self::available_types( $user_id ) ) {
-			return self::error( 'Für dein Konto gibt es noch keine Benachrichtigungen.', 403 );
+		if ( ! $user_id && ! self::get_by_endpoint( $endpoint ) ) {
+			$limit = self::guest_limit();
+			if ( is_wp_error( $limit ) ) {
+				return $limit;
+			}
 		}
 		$details = $req->get_param( 'details' );
 		$sub     = self::subscribe( $user_id, $endpoint, self::b64u_encode( $raw_pk ), self::b64u_encode( $raw_au ), $req->get_param( 'types' ), null === $details ? null : (bool) $details );
@@ -742,15 +1069,15 @@ class MKL_Push {
 		return rest_ensure_response( self::format_subscription( $sub ) );
 	}
 
-	public static function rest_update( WP_REST_Request $req ) {
-		$sub = self::own_subscription( $req );
+	public static function rest_update( WP_REST_Request $req, $user_id ) {
+		$sub = self::own_subscription( $req, $user_id );
 		if ( is_wp_error( $sub ) ) {
 			return $sub;
 		}
 		global $wpdb;
 		$data = array( 'updated_at' => self::now() );
 		if ( null !== $req->get_param( 'types' ) ) {
-			$data['types'] = implode( ',', self::clean_types( (array) $req->get_param( 'types' ), self::available_types( get_current_user_id() ) ) );
+			$data['types'] = implode( ',', self::clean_types( (array) $req->get_param( 'types' ), self::available_types( $user_id ) ) );
 		}
 		if ( null !== $req->get_param( 'details' ) ) {
 			$data['details'] = $req->get_param( 'details' ) ? 1 : 0;
@@ -759,8 +1086,8 @@ class MKL_Push {
 		return rest_ensure_response( self::format_subscription( self::get_by_endpoint( $sub['endpoint'] ) ) );
 	}
 
-	public static function rest_unsubscribe( WP_REST_Request $req ) {
-		$sub = self::own_subscription( $req );
+	public static function rest_unsubscribe( WP_REST_Request $req, $user_id ) {
+		$sub = self::own_subscription( $req, $user_id );
 		if ( is_wp_error( $sub ) ) {
 			return 404 === $sub->get_error_data()['status'] ? rest_ensure_response( array( 'deleted' => false ) ) : $sub;
 		}
@@ -768,8 +1095,8 @@ class MKL_Push {
 	}
 
 	/** Testbenachrichtigung sofort an dieses Gerät, mit der Antwort des Push-Dienstes. */
-	public static function rest_test( WP_REST_Request $req ) {
-		$sub = self::own_subscription( $req );
+	public static function rest_test( WP_REST_Request $req, $user_id ) {
+		$sub = self::own_subscription( $req, $user_id );
 		if ( is_wp_error( $sub ) ) {
 			return $sub;
 		}

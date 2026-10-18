@@ -499,6 +499,16 @@ export interface PushStatus {
   subscription: PushSubscriptionPrefs | null;
 }
 
+/** Kennung eines Abos gegenüber dem Server; auth nur für Gäste nötig. */
+export interface PushRef {
+  endpoint: string;
+  auth?: string;
+}
+
+function pushBase(): string {
+  return config?.user ? '/me/push' : '/push';
+}
+
 export const api = {
   me: () => request<Me>('GET', '/me'),
   myPoints: () => request<PointEntry[]>('GET', '/me/points'),
@@ -621,12 +631,15 @@ export const api = {
   updateDocCategory: (id: number, title: string) => request<DocCategory>('PATCH', `/document-categories/${id}`, { title }),
   deleteDocCategory: (id: number) => request<{ deleted: boolean }>('DELETE', `/document-categories/${id}`),
 
-  /** Endpoint im Body statt in der Adresse, damit er nicht in Server-Logs landet. */
-  pushStatus: (endpoint?: string) => request<PushStatus>('POST', '/me/push/status', endpoint ? { endpoint } : {}),
+  /**
+   * Endpoint im Body statt in der Adresse, damit er nicht in Server-Logs landet.
+   * Angemeldete nutzen /me/push, Gäste /push und weisen sich mit dem auth-Geheimnis ihres Abos aus.
+   */
+  pushStatus: (ref?: PushRef) => request<PushStatus>('POST', `${pushBase()}/status`, ref ?? {}),
   pushSubscribe: (sub: PushSubscriptionJSON, prefs?: Partial<PushSubscriptionPrefs>) =>
-    request<PushSubscriptionPrefs>('POST', '/me/push', { endpoint: sub.endpoint, keys: sub.keys, ...prefs }),
-  pushUpdate: (endpoint: string, prefs: Partial<PushSubscriptionPrefs>) =>
-    request<PushSubscriptionPrefs>('PUT', '/me/push', { endpoint, ...prefs }),
-  pushUnsubscribe: (endpoint: string) => request<{ deleted: boolean }>('DELETE', '/me/push', { endpoint }),
-  pushTest: (endpoint: string) => request<{ sent: boolean }>('POST', '/me/push/test', { endpoint }),
+    request<PushSubscriptionPrefs>('POST', pushBase(), { endpoint: sub.endpoint, keys: sub.keys, ...prefs }),
+  pushUpdate: (ref: PushRef, prefs: Partial<PushSubscriptionPrefs>) =>
+    request<PushSubscriptionPrefs>('PUT', pushBase(), { ...ref, ...prefs }),
+  pushUnsubscribe: (ref: PushRef) => request<{ deleted: boolean }>('DELETE', pushBase(), ref),
+  pushTest: (ref: PushRef) => request<{ sent: boolean }>('POST', `${pushBase()}/test`, ref),
 };

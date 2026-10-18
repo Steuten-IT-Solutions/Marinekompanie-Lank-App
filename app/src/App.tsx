@@ -227,7 +227,7 @@ export default function App() {
 
       <main className="content">
         {tab === 'termine' &&
-          (path[1] === 'verwalten' && user?.canManageEvents ? <TermineVerwalten onToast={showToast} /> : <Termine />)}
+          (path[1] === 'verwalten' && user?.canManageEvents ? <TermineVerwalten onToast={showToast} /> : <Termine onToast={showToast} />)}
         {tab === 'news' && <News id={newsId} />}
         {tab === 'galerie' && <Galerie albumId={albumId} />}
         {tab === 'meins' && <Meins sub={path[1]} />}

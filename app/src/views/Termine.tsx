@@ -4,6 +4,7 @@ import { navigate } from '../router';
 import { eventEnd, eventStart, formatEventWhen, formatMonth } from '../format';
 import { downloadIcs } from '../ics';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
+import Benachrichtigungen from './Benachrichtigungen';
 
 type EventLike = CalendarEvent & { url?: string };
 
@@ -14,7 +15,7 @@ async function loadEvents(): Promise<EventLike[]> {
   return list.map((ev) => ({ ...ev, id: `p${ev.id}` }));
 }
 
-export default function Termine() {
+export default function Termine({ onToast }: { onToast: (msg: string) => void }) {
   const { data, error, loading, reload } = useAsync(loadEvents);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -38,6 +39,8 @@ export default function Termine() {
       Öffentliche Termine verwalten
     </button>
   ) : null;
+  // Gäste ohne Konto schalten Benachrichtigungen hier ein, Angemeldete unter Konto.
+  const push = config?.user ? null : <Benachrichtigungen onToast={onToast} />;
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -46,6 +49,7 @@ export default function Termine() {
       <>
         {manage}
         <Empty>Keine anstehenden Termine.</Empty>
+        {push}
       </>
     );
 
@@ -110,6 +114,7 @@ export default function Termine() {
           </ul>
         </section>
       ))}
+      {push}
     </div>
   );
 }

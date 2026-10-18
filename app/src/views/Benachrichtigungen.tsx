@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, type PushStatus, type PushSubscriptionPrefs } from '../api';
-import { browserSupportsPush, currentSubscription, disablePush, enablePush, needsInstallForPush } from '../push';
+import { api, type PushRef, type PushStatus, type PushSubscriptionPrefs } from '../api';
+import { browserSupportsPush, currentSubscription, disablePush, enablePush, needsInstallForPush, pushRef } from '../push';
 import { navigate } from '../router';
 
-/** Konto → Benachrichtigungen: Push auf diesem Gerät ein-/ausschalten und Ereignisse wählen. */
+/** Push auf diesem Gerät ein-/ausschalten und Ereignisse wählen (Konto; für Gäste auf der Termine-Seite). */
 export default function Benachrichtigungen({ onToast }: { onToast: (msg: string) => void }) {
   const [status, setStatus] = useState<PushStatus | null>(null);
-  const [endpoint, setEndpoint] = useState<string | null>(null);
+  const [ref, setRef] = useState<PushRef | null>(null);
   const [prefs, setPrefs] = useState<PushSubscriptionPrefs | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,12 +16,12 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
     let cancelled = false;
     (async () => {
       const sub = supported ? await currentSubscription().catch(() => null) : null;
-      const s = await api.pushStatus(sub?.endpoint).catch(() => null);
+      const s = await api.pushStatus(sub ? pushRef(sub) : undefined).catch(() => null);
       if (cancelled || !s) return;
       setStatus(s);
       // Nur als aktiv zeigen, wenn Browser und Server das Abo kennen.
       if (sub && s.subscription) {
-        setEndpoint(sub.endpoint);
+        setRef(pushRef(sub));
         setPrefs(s.subscription);
       }
     })();
@@ -47,7 +47,7 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
   const enable = () =>
     run(async () => {
       const { sub, prefs: p } = await enablePush(status.public_key!);
-      setEndpoint(sub.endpoint);
+      setRef(pushRef(sub));
       setPrefs(p);
       onToast('Benachrichtigungen aktiviert');
     });
@@ -55,7 +55,7 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
   const disable = () =>
     run(async () => {
       await disablePush();
-      setEndpoint(null);
+      setRef(null);
       setPrefs(null);
       onToast('Benachrichtigungen ausgeschaltet');
     });
@@ -66,7 +66,7 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
     setPrefs({ ...before, ...next });
     return run(async () => {
       try {
-        setPrefs(await api.pushUpdate(endpoint!, next));
+        setPrefs(await api.pushUpdate(ref!, next));
       } catch (err) {
         setPrefs(before);
         throw err;
@@ -76,7 +76,7 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
 
   const test = () =>
     run(async () => {
-      await api.pushTest(endpoint!);
+      await api.pushTest(ref!);
       onToast('Testbenachrichtigung verschickt');
     });
 
@@ -105,7 +105,11 @@ export default function Benachrichtigungen({ onToast }: { onToast: (msg: string)
   } else if (!prefs) {
     body = (
       <>
-        <p className="muted small">Erhalte eine Nachricht aufs Handy, z. B. bei einer neuen Strafe oder neuen Punkten.</p>
+        <p className="muted small">
+          {status.types.some((t) => t.key === 'strafen')
+            ? 'Erhalte eine Nachricht aufs Handy, z. B. bei einer neuen Strafe, neuen Punkten oder neuen Terminen.'
+            : 'Erhalte eine Nachricht aufs Handy bei neuen Terminen, am Vortag eines Termins und bei Neuigkeiten.'}
+        </p>
         {Notification.permission === 'denied' && (
           <p className="form-error">
             Benachrichtigungen sind für diese App blockiert. Bitte in den Einstellungen des Handys bzw. Browsers erlauben.
