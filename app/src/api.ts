@@ -157,6 +157,73 @@ export interface DocumentMeta {
   visibility: DocVisibility;
 }
 
+export type AttendanceStatus = 'anwesend' | 'entschuldigt' | 'fehlt';
+
+export const ATTENDANCE_LABELS: Record<AttendanceStatus, string> = {
+  anwesend: 'anwesend',
+  entschuldigt: 'entschuldigt',
+  fehlt: 'fehlt',
+};
+
+export interface AttendanceList {
+  id: number;
+  source: 'kalender' | 'frei';
+  event_key: string;
+  title: string;
+  /** Termindatum 'YYYY-MM-DD' (Momentaufnahme). */
+  date: string;
+  updated_at: string;
+  updated_by_name: string | null;
+}
+
+export interface AttendanceSummary extends AttendanceList {
+  counts: Record<AttendanceStatus, number>;
+}
+
+export interface AttendanceMember {
+  id: number;
+  name: string;
+  /** Anwärter stehen in der Liste, bekommen aber keine Punkte oder Strafen. */
+  is_anwaerter: boolean;
+  is_jungmariner: boolean;
+  status: AttendanceStatus;
+  /** Hat für diesen Termin schon Punkte (nicht storniert). */
+  booked: boolean;
+}
+
+export interface AttendanceDetail extends AttendanceList {
+  members: AttendanceMember[];
+}
+
+/** Kalendertermin, zu dem sich eine Anwesenheitsliste anlegen lässt. */
+export interface AttendanceEvent {
+  key: string;
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  all_day: boolean;
+  location: string;
+  list_id: number | null;
+}
+
+export interface MyAttendance {
+  list_id: number;
+  title: string;
+  date: string;
+  status: AttendanceStatus;
+}
+
+export type AttendanceInput = (
+  | { id: number }
+  | { source: 'kalender'; event_key: string }
+  | { source: 'frei' }
+) & {
+  title: string;
+  date: string;
+  entries: { user_id: number; status: AttendanceStatus }[];
+};
+
 export interface PointEntry {
   id: number;
   user_id: number;
@@ -408,6 +475,7 @@ export const api = {
   myPoints: () => request<PointEntry[]>('GET', '/me/points'),
   myPenalties: () => request<Penalty[]>('GET', '/me/penalties'),
   myRankHistory: () => request<RankHistoryEntry[]>('GET', '/me/rank-history'),
+  myAttendance: () => request<MyAttendance[]>('GET', '/me/attendance'),
   calendar: () => request<CalendarEvent[]>('GET', '/calendar'),
 
   events: () => request<PublicEvent[]>('GET', '/events'),
@@ -456,8 +524,15 @@ export const api = {
   resetPassword: (id: number) =>
     request<{ id: number; name: string; username: string; password: string }>('POST', `/accounts/${id}/password`),
 
-  givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
-    request<PointEntry[]>('POST', '/points', data),
+  /** Mit attendance_id werden Mitglieder übersprungen, die für den Termin schon Punkte haben. */
+  givePoints: (data: {
+    user_ids: number[];
+    points?: number;
+    catalog_id?: number;
+    reason?: string;
+    date?: string;
+    attendance_id?: number;
+  }) => request<PointEntry[]>('POST', '/points', data),
   deletePoints: (id: number) => request<{ deleted: boolean }>('DELETE', `/points/${id}`),
 
   givePenalty: (data: { user_ids: number[]; amount_cents: number; reason: string; date?: string }) =>
@@ -465,6 +540,12 @@ export const api = {
   setPenaltyStatus: (id: number, status: 'open' | 'paid') =>
     request<Penalty>('PATCH', `/penalties/${id}`, { status }),
   deletePenalty: (id: number) => request<{ deleted: boolean }>('DELETE', `/penalties/${id}`),
+
+  attendanceLists: () => request<AttendanceSummary[]>('GET', '/attendance'),
+  attendanceEvents: () => request<AttendanceEvent[]>('GET', '/attendance/events'),
+  attendance: (id: number) => request<AttendanceDetail>('GET', `/attendance/${id}`),
+  saveAttendance: (data: AttendanceInput) => request<AttendanceDetail>('PUT', '/attendance', data),
+  deleteAttendance: (id: number) => request<{ deleted: boolean }>('DELETE', `/attendance/${id}`),
 
   ranks: (all = false) => request<Rank[]>('GET', '/ranks', undefined, all ? { all: '1' } : undefined),
   createRank: (title: string, min_points: number) => request<Rank>('POST', '/ranks', { title, min_points }),

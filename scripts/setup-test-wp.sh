@@ -68,6 +68,13 @@ LOCATION:Vereinslokal
 DESCRIPTION:Antreten in Uniform.\nBitte pünktlich sein!
 END:VEVENT
 BEGIN:VEVENT
+UID:e4
+DTSTART;TZID=Europe/Berlin:$(date -d '-3 days' +%Y%m%d)T100000
+DTEND;TZID=Europe/Berlin:$(date -d '-3 days' +%Y%m%d)T140000
+SUMMARY:Arbeitsdienst Schützenplatz
+LOCATION:Schützenplatz
+END:VEVENT
+BEGIN:VEVENT
 UID:e3
 DTSTART;VALUE=DATE:${N}0625
 DTEND;VALUE=DATE:${N}0629

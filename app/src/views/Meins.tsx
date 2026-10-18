@@ -1,11 +1,12 @@
 import { navigate } from '../router';
+import MeineAnwesenheit from './MeineAnwesenheit';
 import Punkte from './Punkte';
 import Rang from './Rang';
 import Strafen from './Strafen';
 
-/** „Meins“: eigene Punkte, Dienstgrad und Strafen, umschaltbar. */
+/** „Meins“: eigene Punkte, Dienstgrad, Strafen und Anwesenheit, umschaltbar. */
 export default function Meins({ sub }: { sub?: string }) {
-  const active = sub === 'strafen' || sub === 'rang' ? sub : 'punkte';
+  const active = sub === 'strafen' || sub === 'rang' || sub === 'anwesenheit' ? sub : 'punkte';
   return (
     <div>
       <nav className="segmented" aria-label="Meine Daten">
@@ -14,6 +15,7 @@ export default function Meins({ sub }: { sub?: string }) {
             ['punkte', 'Punkte'],
             ['rang', 'Dienstgrad'],
             ['strafen', 'Strafen'],
+            ['anwesenheit', 'Anwesenheit'],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -26,7 +28,15 @@ export default function Meins({ sub }: { sub?: string }) {
           </button>
         ))}
       </nav>
-      {active === 'punkte' ? <Punkte /> : active === 'rang' ? <Rang /> : <Strafen />}
+      {active === 'punkte' ? (
+        <Punkte />
+      ) : active === 'rang' ? (
+        <Rang />
+      ) : active === 'anwesenheit' ? (
+        <MeineAnwesenheit />
+      ) : (
+        <Strafen />
+      )}
     </div>
   );
 }

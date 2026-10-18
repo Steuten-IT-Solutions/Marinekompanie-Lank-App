@@ -32,6 +32,7 @@ export default function Termine() {
     return Array.from(map.values());
   }, [data]);
 
+  const isSpiess = !!config?.user?.isSpiess && !!config.user.canSeeCalendar;
   const manage = config?.user?.canManageEvents ? (
     <button className="btn btn-secondary btn-block manage-events" onClick={() => navigate('termine/verwalten')}>
       Öffentliche Termine verwalten
@@ -58,6 +59,8 @@ export default function Termine() {
             {evs.map((ev) => {
               const s = eventStart(ev);
               const isOpen = open === ev.id;
+              // Laufende Termine: Spieße können direkt die Anwesenheit erfassen.
+              const started = isSpiess && s.getTime() <= Date.now();
               return (
                 <li key={ev.id} className={`card event ${isOpen ? 'open' : ''}`}>
                   <button className="event-head" onClick={() => setOpen(isOpen ? null : ev.id)} aria-expanded={isOpen}>
@@ -75,6 +78,11 @@ export default function Termine() {
                     <div className="event-body">
                       {ev.description && <p className="event-desc">{ev.description}</p>}
                       <div className="event-actions">
+                        {started && (
+                          <button className="btn" onClick={() => navigate(`spiess/anwesenheit/termin/${ev.id}`)}>
+                            Anwesenheit
+                          </button>
+                        )}
                         <button className="btn btn-secondary" onClick={() => downloadIcs(ev)}>
                           In meinen Kalender
                         </button>

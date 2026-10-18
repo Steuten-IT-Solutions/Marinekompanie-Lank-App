@@ -1,14 +1,15 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api, config, isMemberLevel, LEVEL_LABELS, type CatalogItem, type MemberSummary } from '../api';
-import { caps, formatDate, formatEuro, formatPoints, halvedNote, parseEuroToCents, todayYmd } from '../format';
+import { api, config, isMemberLevel, LEVEL_LABELS, type AttendanceDetail, type CatalogItem, type MemberSummary } from '../api';
+import { caps, formatDate, formatEuro, formatPoints, halvedNote, matchCatalog, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, TitleBadges, useAsync } from '../ui';
+import Anwesenheit, { canBook } from './Anwesenheit';
 import Einrichtung, { canManageAccounts } from './Einrichtung';
 import { Promotions, RankControl } from './SpiessRaenge';
 import { TitleControl } from './SpiessTitel';
 import { PenaltyRow } from './Strafen';
 
-type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'raenge' | 'einrichtung';
+type Sub = 'mitglieder' | 'punkte' | 'strafe' | 'anwesenheit' | 'raenge' | 'einrichtung';
 
 /** Frühere Adressen, die jetzt unter „Einrichtung“ liegen. */
 function setupAlias(path: string[]): string[] | null {
@@ -23,11 +24,14 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
   const [sub, arg] = [path[0] as Sub | 'mitglied' | undefined, path[1]];
   const setup = setupAlias(path);
   const preselect = arg && /^\d+$/.test(arg) ? [Number(arg)] : [];
+  // #/spiess/punkte/anwesenheit/<id>: Vorschlag aus einer Anwesenheitsliste.
+  const attendanceId = arg === 'anwesenheit' && /^\d+$/.test(path[2] ?? '') ? Number(path[2]) : undefined;
 
   const tabs: { id: Sub; label: string }[] = [
     { id: 'mitglieder', label: 'Mitglieder' },
     { id: 'punkte', label: 'Punkte +' },
     { id: 'strafe', label: 'Strafe +' },
+    { id: 'anwesenheit', label: 'Anwesenheit' },
     { id: 'raenge', label: 'Dienstgrade' },
     { id: 'einrichtung', label: 'Einrichtung' },
   ];
@@ -35,7 +39,7 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
 
   return (
     <div>
-      <nav className="segmented" aria-label="Spieß-Bereich">
+      <nav className="segmented segmented-spiess" aria-label="Spieß-Bereich">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -52,9 +56,11 @@ export default function Spiess({ path, onToast }: { path: string[]; onToast: (ms
       ) : sub === 'mitglied' && arg ? (
         <MemberDetailView id={Number(arg)} startPromote={path[2] === 'befoerdern'} onToast={onToast} />
       ) : active === 'punkte' ? (
-        <GivePoints key={path.join('/')} preselect={preselect} onToast={onToast} />
+        <GivePoints key={path.join('/')} preselect={preselect} attendanceId={attendanceId} onToast={onToast} />
       ) : active === 'strafe' ? (
-        <GivePenalty key={path.join('/')} preselect={preselect} onToast={onToast} />
+        <GivePenalty key={path.join('/')} preselect={preselect} attendanceId={attendanceId} onToast={onToast} />
+      ) : active === 'anwesenheit' ? (
+        <Anwesenheit path={path.slice(1)} onToast={onToast} />
       ) : active === 'raenge' ? (
         <Promotions />
       ) : (
@@ -319,23 +325,57 @@ function JungmarinerToggle({
 
 /* ------------------------------------------------------------------ */
 
-function useMembersAndCatalog() {
-  return useAsync(() => Promise.all([api.members(), api.catalog()]));
+type FormProps = { preselect: number[]; attendanceId?: number; onToast: (msg: string) => void };
+
+/** Hinweis über einem Formular, das aus einer Anwesenheitsliste vorausgefüllt wurde. */
+function AttendanceNote({ list, children }: { list: AttendanceDetail; children: React.ReactNode }) {
+  return (
+    <div className="card attendance-note">
+      <button type="button" className="btn btn-link back" onClick={() => navigate(`spiess/anwesenheit/${list.id}`)}>
+        ‹ Zurück zur Anwesenheit
+      </button>
+      <p>
+        <strong>{list.title}</strong> am {formatDate(list.date)}. {children}
+      </p>
+    </div>
+  );
 }
 
-function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useMembersAndCatalog();
-  const [selected, setSelected] = useState<number[]>(preselect);
-  const [catalogId, setCatalogId] = useState<string>('');
-  const [points, setPoints] = useState('');
-  const [reason, setReason] = useState('');
-  const [date, setDate] = useState(todayYmd());
+function GivePoints({ preselect, attendanceId, onToast }: FormProps) {
+  const { data, error, loading, reload } = useAsync(() =>
+    Promise.all([api.members(), api.catalog(), attendanceId ? api.attendance(attendanceId) : Promise.resolve(null)]),
+  );
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+  const [members, catalog, list] = data!;
+  return <GivePointsForm members={members} catalog={catalog} list={list} preselect={preselect} onToast={onToast} />;
+}
+
+function GivePointsForm({
+  members,
+  catalog,
+  list,
+  preselect,
+  onToast,
+}: {
+  members: MemberSummary[];
+  catalog: CatalogItem[];
+  list: AttendanceDetail | null;
+  preselect: number[];
+  onToast: (msg: string) => void;
+}) {
+  // Vorschlag aus der Anwesenheitsliste: Anwesende ohne Buchung, Termindatum, passende Vorlage.
+  const [suggested] = useState(() => (list ? matchCatalog(list.title, catalog) : null));
+  const [selected, setSelected] = useState<number[]>(() =>
+    list ? list.members.filter((m) => m.status === 'anwesend' && !m.booked && canBook(m)).map((m) => m.id) : preselect,
+  );
+  const [catalogId, setCatalogId] = useState<string>(suggested ? String(suggested.id) : '');
+  const [points, setPoints] = useState(suggested ? String(suggested.points) : '');
+  const [reason, setReason] = useState(suggested ? suggested.title : (list?.title ?? ''));
+  const [date, setDate] = useState(list ? list.date : todayYmd());
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  if (loading && !data) return <Loading />;
-  if (error) return <ErrorBox message={error} onRetry={reload} />;
-  const [members, catalog] = data as [MemberSummary[], CatalogItem[]];
   const n = Number(points);
   const juniors = members.filter((m) => m.is_jungmariner && selected.includes(m.id));
 
@@ -356,14 +396,23 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
     if (!reason.trim()) return setFormError('Bitte einen Grund angeben.');
     setBusy(true);
     try {
-      await api.givePoints({
+      const created = await api.givePoints({
         user_ids: selected,
         points: n,
         reason: reason.trim(),
         date,
         ...(catalogId ? { catalog_id: Number(catalogId) } : {}),
+        ...(list ? { attendance_id: list.id } : {}),
       });
-      onToast(`${formatPoints(n)} Punkte an ${selected.length} ${selected.length === 1 ? 'Mitglied' : 'Mitglieder'} vergeben`);
+      const skipped = selected.length - created.length;
+      onToast(
+        `${formatPoints(n)} Punkte an ${created.length} ${created.length === 1 ? 'Mitglied' : 'Mitglieder'} vergeben` +
+          (skipped > 0 ? ` (${skipped} hatten schon Punkte)` : ''),
+      );
+      if (list) {
+        navigate(`spiess/anwesenheit/${list.id}`);
+        return;
+      }
       setSelected([]);
     } catch (err) {
       setFormError((err as Error).message);
@@ -374,6 +423,11 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
 
   return (
     <form className="form" onSubmit={submit}>
+      {list && (
+        <AttendanceNote list={list}>
+          Vorausgewählt sind die Anwesenden ohne Punkte für diesen Termin. Wer schon Punkte hat, wird übersprungen.
+        </AttendanceNote>
+      )}
       <label className="field">
         <span>Vorlage aus dem Punktekatalog</span>
         <select value={catalogId} onChange={(e) => chooseCatalog(e.target.value)}>
@@ -417,17 +471,36 @@ function GivePoints({ preselect, onToast }: { preselect: number[]; onToast: (msg
   );
 }
 
-function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (msg: string) => void }) {
-  const { data, error, loading, reload } = useAsync(() => api.members());
-  const [selected, setSelected] = useState<number[]>(preselect);
-  const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
-  const [date, setDate] = useState(todayYmd());
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
+function GivePenalty({ preselect, attendanceId, onToast }: FormProps) {
+  const { data, error, loading, reload } = useAsync(() =>
+    Promise.all([api.members(), attendanceId ? api.attendance(attendanceId) : Promise.resolve(null)]),
+  );
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
+  const [members, list] = data!;
+  return <GivePenaltyForm members={members} list={list} preselect={preselect} onToast={onToast} />;
+}
+
+function GivePenaltyForm({
+  members,
+  list,
+  preselect,
+  onToast,
+}: {
+  members: MemberSummary[];
+  list: AttendanceDetail | null;
+  preselect: number[];
+  onToast: (msg: string) => void;
+}) {
+  // Vorschlag aus der Anwesenheitsliste: alle, die unentschuldigt gefehlt haben.
+  const [selected, setSelected] = useState<number[]>(() =>
+    list ? list.members.filter((m) => m.status === 'fehlt' && canBook(m)).map((m) => m.id) : preselect,
+  );
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState(list ? `Unentschuldigt gefehlt: ${list.title}` : '');
+  const [date, setDate] = useState(list ? list.date : todayYmd());
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -441,6 +514,10 @@ function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (ms
     try {
       await api.givePenalty({ user_ids: selected, amount_cents: cents, reason: reason.trim(), date });
       onToast(`Strafe über ${formatEuro(cents)} an ${selected.length} ${selected.length === 1 ? 'Mitglied' : 'Mitglieder'} vergeben`);
+      if (list) {
+        navigate(`spiess/anwesenheit/${list.id}`);
+        return;
+      }
       setSelected([]);
       setAmount('');
       setReason('');
@@ -453,6 +530,9 @@ function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (ms
 
   return (
     <form className="form" onSubmit={submit}>
+      {list && (
+        <AttendanceNote list={list}>Vorausgewählt sind alle, die unentschuldigt gefehlt haben.</AttendanceNote>
+      )}
       <div className="field-row">
         <label className="field">
           <span>Betrag in €</span>
@@ -469,7 +549,7 @@ function GivePenalty({ preselect, onToast }: { preselect: number[]; onToast: (ms
       </label>
       <div className="field">
         <span>Mitglieder</span>
-        <MemberPicker members={data ?? []} selected={selected} onChange={setSelected} />
+        <MemberPicker members={members} selected={selected} onChange={setSelected} />
       </div>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-warn btn-block" type="submit" disabled={busy}>
