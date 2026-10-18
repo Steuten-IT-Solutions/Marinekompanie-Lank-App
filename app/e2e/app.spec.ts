@@ -1026,3 +1026,80 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
   await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('fehlt');
 });
+
+test('Benachrichtigungen: iPhone-Hinweis für Mitglieder, nichts für Anwärter', async ({ page }) => {
+  await login(page, 'mariner1');
+  await page.goto('/app/#/konto');
+  const card = page.locator('.push-card');
+  await expect(card).toContainText('nur in der installierten App');
+  await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toHaveCount(0);
+
+  await login(page, 'anwaerter');
+  await page.goto('/app/#/konto');
+  await expect(page.getByText('Rolle: Anwärter')).toBeVisible();
+  await expect(page.locator('.push-card')).toHaveCount(0);
+});
+
+test.describe('Benachrichtigungen (Android)', () => {
+  const { defaultBrowserType: _ignored, ...pixel } = devices['Pixel 7'];
+  test.use({ ...pixel, permissions: ['notifications'] });
+
+  test('Mitglied aktiviert Benachrichtigungen, wählt Ereignisse und schaltet sie aus', async ({ page }) => {
+    // Der Test-Chromium hat keinen echten Push-Dienst: PushManager durch ein Gerät mit gültigem
+    // P-256-Schlüssel ersetzen. Der Server prüft und speichert das Abo wie bei einem echten Gerät.
+    const { createECDH, randomBytes } = await import('node:crypto');
+    const ecdh = createECDH('prime256v1');
+    const b64u = (b: Buffer) => b.toString('base64url');
+    const device = { p256dh: b64u(ecdh.generateKeys()), auth: b64u(randomBytes(16)) };
+    await page.addInitScript((dev) => {
+      const KEY = 'e2e-push-sub';
+      const make = (endpoint: string) => ({
+        endpoint,
+        options: {},
+        toJSON: () => ({ endpoint, keys: { p256dh: dev.p256dh, auth: dev.auth } }),
+        unsubscribe: async () => {
+          localStorage.removeItem(KEY);
+          return true;
+        },
+      });
+      PushManager.prototype.getSubscription = async function () {
+        const ep = localStorage.getItem(KEY);
+        return (ep ? make(ep) : null) as unknown as PushSubscription;
+      };
+      PushManager.prototype.subscribe = async function () {
+        const ep = 'https://push.example.test/e2e/' + Date.now();
+        localStorage.setItem(KEY, ep);
+        return make(ep) as unknown as PushSubscription;
+      };
+    }, device);
+
+    await login(page, 'mariner1');
+    await page.goto('/app/#/konto');
+    const card = page.locator('.push-card');
+    await card.getByRole('button', { name: 'Benachrichtigungen aktivieren' }).click();
+    await expect(page.locator('.toast')).toHaveText('Benachrichtigungen aktiviert');
+    for (const label of ['Neue Strafen', 'Punkte', 'Dienstgrad']) {
+      await expect(card.getByLabel(label)).toBeChecked();
+    }
+    const details = card.getByLabel(/Betrag und Grund/);
+    await expect(details).not.toBeChecked();
+    await shot(page, '14-benachrichtigungen');
+
+    await card.getByLabel('Punkte').uncheck();
+    await expect(card.getByLabel('Punkte')).not.toBeChecked();
+    await details.check();
+    await expect(details).toBeChecked();
+
+    // Einstellungen liegen auf dem Server.
+    await page.reload();
+    await expect(card.getByLabel('Neue Strafen')).toBeChecked();
+    await expect(card.getByLabel('Punkte')).not.toBeChecked();
+    await expect(card.getByLabel(/Betrag und Grund/)).toBeChecked();
+
+    await card.getByRole('button', { name: 'Ausschalten' }).click();
+    await expect(page.locator('.toast')).toHaveText('Benachrichtigungen ausgeschaltet');
+    await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toBeVisible();
+    await page.reload();
+    await expect(card.getByRole('button', { name: 'Benachrichtigungen aktivieren' })).toBeVisible();
+  });
+});
