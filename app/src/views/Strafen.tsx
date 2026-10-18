@@ -11,6 +11,7 @@ export function PenaltyRow({ p, actions }: { p: Penalty; actions?: React.ReactNo
           {formatDate(p.date)}
           {' · '}
           <span className={`badge badge-${p.status}`}>{p.status === 'paid' ? 'bezahlt' : 'offen'}</span>
+          {p.created_by_name && ` · von ${p.created_by_name}`}
         </div>
         {actions && <div className="row-actions">{actions}</div>}
       </div>
