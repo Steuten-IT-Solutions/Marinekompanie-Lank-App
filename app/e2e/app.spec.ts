@@ -153,6 +153,7 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   const password = (await page.getByTestId('new-password').textContent())!.trim();
   expect(username).toMatch(/^neuer\.mariner\d*$/);
   expect(password).toHaveLength(12);
+  await expect(page.getByTestId('new-app-url')).toHaveText(/\/app\/installieren\/$/);
   await shot(page, '8-mitglied-angelegt');
 
   await login(page, username, password);
@@ -225,6 +226,7 @@ test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
   await page.getByRole('button', { name: '3 Konten anlegen' }).click();
   await expect(page.getByText('3 Konten sind angelegt')).toBeVisible();
   await expect(page.getByTestId('bulk-level')).toHaveText('Mitglied');
+  await expect(page.getByTestId('bulk-app-url')).toHaveText(/\/app\/installieren\/$/);
   const created = page.getByTestId('created-user');
   await expect(created).toHaveCount(3);
   await expect(created.nth(0).getByTestId('created-extras')).toHaveText(`${min.toLocaleString('de-DE')} Punkte · Dienstgrad: ${rank}`);

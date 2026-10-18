@@ -14,6 +14,7 @@ import {
 import { caps, formatPoints, todayYmd } from '../format';
 import { navigate } from '../router';
 import { BackToSetup, Empty, ErrorBox, Loading, useAsync } from '../ui';
+import { installUrl } from './Installieren';
 import { RankList } from './SpiessRaenge';
 import { TitleList } from './SpiessTitel';
 
@@ -490,7 +491,7 @@ function LevelPicker({ level, onChange }: { level: Exclude<Level, 'admin'>; onCh
 }
 
 function credentialsText(u: Pick<CreatedUser, 'username' | 'password'>) {
-  return `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${u.username}\nPasswort: ${u.password}`;
+  return `Kompanie-App: ${installUrl()}\nBenutzername: ${u.username}\nPasswort: ${u.password}`;
 }
 
 async function copyText(text: string) {
@@ -562,7 +563,7 @@ function NewSingleMember() {
         </p>
         <dl className="credentials">
           <dt>App</dt>
-          <dd>{config?.appUrl}</dd>
+          <dd data-testid="new-app-url">{installUrl()}</dd>
           <dt>Rolle</dt>
           <dd data-testid="new-level">{LEVEL_LABELS[created.level]}</dd>
           <dt>Benutzername</dt>
@@ -884,7 +885,7 @@ function NewMembersBulk() {
           {copied === 'alle' ? 'Alle kopiert ✓' : 'Alle Zugangsdaten kopieren'}
         </button>
         <p className="muted small">
-          App: {config?.appUrl} · Rolle: <span data-testid="bulk-level">{created[0] ? LEVEL_LABELS[created[0].level] : ''}</span>
+          App: <span data-testid="bulk-app-url">{installUrl()}</span> · Rolle: <span data-testid="bulk-level">{created[0] ? LEVEL_LABELS[created[0].level] : ''}</span>
         </p>
         <ul className="created-list">
           {created.map((u) => (
