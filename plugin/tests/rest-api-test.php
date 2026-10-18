@@ -221,6 +221,68 @@ mkl_assert( 400 === $s, 'Leerer Name → 400' );
 
 list( $s, $members ) = mkl_req( 'GET', '/members' );
 mkl_assert( in_array( $u1['id'], wp_list_pluck( $members, 'id' ), true ), 'Neues Mitglied erscheint in der Mitgliederliste' );
+
+echo "Mehrere Mitglieder auf einmal anlegen\n";
+foreach ( array( 'mkltest.bulk.eins', 'mkltest.bulk.zwei', 'mkltest.bulk.zwei2', 'mkltest.bulk.drei' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+$count_before = count_users()['total_users'];
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'users' => array(
+			array( 'name' => 'Mkltest Bulk Eins' ),
+			array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.bulk@example.com' ),
+			array( 'name' => 'Mkltest Bulk Drei', 'email' => 'MKLTEST.bulk@example.com' ),
+		),
+	)
+);
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 3' ), 'Doppelte E-Mail in derselben Liste → 400 mit Zeilennummer' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => '' ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Zeile 2' ), 'Leerer Name in Zeile 2 → 400' );
+wp_update_user( array( 'ID' => $m1, 'user_email' => 'mkltest.mariner1@example.com' ) );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.mariner1@example.com' ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'schon verwendet' ), 'Bereits vorhandene E-Mail → 400' );
+mkl_assert( count_users()['total_users'] === $count_before, 'Bei einem Fehler wird niemand angelegt' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array() ) );
+mkl_assert( 400 === $s, 'Leere Liste → 400' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array_fill( 0, 51, array( 'name' => 'X' ) ) ) );
+mkl_assert( 400 === $s, 'Mehr als 50 auf einmal → 400' );
+
+list( $s, $bulk ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'users' => array(
+			array( 'name' => 'Mkltest Bulk Eins' ),
+			array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.bulk@example.com' ),
+			array( 'name' => 'Mkltest Bulk Zwei' ),
+			array( 'name' => 'Jemand', 'username' => 'mkltest.bulk.drei' ),
+		),
+	)
+);
+foreach ( (array) $bulk as $u ) {
+	$created[] = isset( $u['id'] ) ? $u['id'] : 0;
+}
+mkl_assert( 201 === $s && 4 === count( $bulk ), 'Admin legt 4 Mitglieder auf einmal an' );
+mkl_assert( array( 'mkltest.bulk.eins', 'mkltest.bulk.zwei', 'mkltest.bulk.zwei2', 'mkltest.bulk.drei' ) === wp_list_pluck( $bulk, 'username' ), 'Benutzernamen eindeutig, auch bei gleichem Namen in der Liste' );
+mkl_assert( 'mkltest.bulk@example.com' === get_userdata( $bulk[1]['id'] )->user_email, 'E-Mail gesetzt' );
+$ok = true;
+foreach ( $bulk as $u ) {
+	$auth = wp_authenticate( $u['username'], $u['password'] );
+	$ok   = $ok && $auth instanceof WP_User && 'mitglied' === MKL_Roles::get_level( $u['id'] ) && 12 === strlen( $u['password'] );
+}
+mkl_assert( $ok, 'Alle haben die Rolle Mitglied und können sich mit ihrem Startpasswort anmelden' );
+mkl_assert( 4 === count( array_unique( wp_list_pluck( $bulk, 'password' ) ) ), 'Jedes Mitglied hat ein eigenes Startpasswort' );
+
+wp_set_current_user( $spiess );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Hans Hacker' ) ) ) );
+mkl_assert( 403 === $s, 'Spieß darf nicht mehrere Benutzer anlegen → 403' );
+wp_set_current_user( $admin );
 foreach ( $created as $uid ) {
 	if ( $uid ) {
 		wp_delete_user( $uid );
@@ -263,6 +325,7 @@ $matrix = array(
 	array( 'POST', '/events', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'POST', '/users/bulk', array( 'users' => array() ), array( 401, 403, 403, 403, 400 ) ),
 );
 $who = array( 0, $gast, $m1, $spiess, $admin );
 foreach ( $matrix as $row ) {

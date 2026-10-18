@@ -8,7 +8,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog) und Strafen (Geldbeträge, offen/bezahlt).
-- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten.
+- **Spieß:** Punkte und Strafen vergeben, Mitglieder verwalten. Admins legen Mitglieder einzeln oder mehrere auf einmal an (eine Zeile pro Mitglied, optional mit E-Mail; eine Liste aus Excel lässt sich direkt hineinkopieren).
 
 ### Rollen
 

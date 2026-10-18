@@ -102,6 +102,38 @@ test('Admin legt ein Mitglied an, das sich mit dem Startpasswort anmelden kann',
   await expect(page.getByRole('button', { name: 'Spieß' })).toHaveCount(0);
 });
 
+test('Admin legt mehrere Mitglieder auf einmal an', async ({ page }) => {
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Spieß' }).click();
+  await page.getByRole('button', { name: '+ Mitglied anlegen' }).click();
+  await page.getByRole('button', { name: 'Mehrere' }).click();
+
+  const list = page.getByLabel('Ein Mitglied pro Zeile');
+  await list.fill('Bulk Eins\nMüller, Max');
+  await expect(page.getByRole('alert')).toContainText('Zeile 2');
+  await expect(page.getByRole('button', { name: 'Mitglieder anlegen' })).toBeDisabled();
+
+  const stamp = Date.now();
+  await list.fill(`Bulk Eins\n\nBulk Zwei\tbulk.zwei.${stamp}@example.com\nBulk Drei; bulk.drei.${stamp}@example.com`);
+  await expect(page.getByText('Erkannt: 3 Mitglieder')).toBeVisible();
+  await shot(page, '8b-mehrere-mitglieder');
+  await page.getByRole('button', { name: '3 Mitglieder anlegen' }).click();
+  await expect(page.getByText('3 Mitglieder sind angelegt')).toBeVisible();
+  await expect(page.getByTestId('created-user')).toHaveCount(3);
+  await shot(page, '8c-mehrere-angelegt');
+  await expect(page.getByRole('button', { name: 'Alle Zugangsdaten kopieren' })).toBeVisible();
+
+  const second = page.getByTestId('created-user').nth(1);
+  await expect(second).toContainText('Bulk Zwei');
+  const username = (await second.getByTestId('new-username').textContent())!.trim();
+  const password = (await second.getByTestId('new-password').textContent())!.trim();
+  expect(username).toMatch(/^bulk\.zwei\d*$/);
+  expect(password).toHaveLength(12);
+
+  await login(page, username, password);
+  await expect(page.locator('.topbar-sub')).toHaveText('Ahoi, Bulk Zwei');
+});
+
 test('Spieß ohne Admin-Rechte sieht keine Funktion zum Anlegen', async ({ page }) => {
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Spieß' }).click();

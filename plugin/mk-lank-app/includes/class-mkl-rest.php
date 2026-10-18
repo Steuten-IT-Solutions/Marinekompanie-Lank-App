@@ -78,6 +78,7 @@ class MKL_REST {
 		register_rest_route( self::NS, '/members/(?P<id>\d+)/role', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'set_member_role' ), 'permission_callback' => array( __CLASS__, 'can_promote_users' ), 'args' => $id_arg ) );
 
 		register_rest_route( self::NS, '/users', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_user' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
+		register_rest_route( self::NS, '/users/bulk', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_users_bulk' ), 'permission_callback' => array( __CLASS__, 'can_create_users' ) ) );
 
 		register_rest_route( self::NS, '/points', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'create_points' ), 'permission_callback' => $manage ) );
 		register_rest_route( self::NS, '/points/(?P<id>\d+)', array( 'methods' => 'DELETE', 'callback' => array( __CLASS__, 'delete_points' ), 'permission_callback' => $manage, 'args' => $id_arg ) );
@@ -470,48 +471,136 @@ class MKL_REST {
 	/* Mitglieder anlegen (Admin)                                          */
 	/* ------------------------------------------------------------------ */
 
+	/** Höchstzahl der Mitglieder, die in einem Rutsch angelegt werden können. */
+	const MAX_BULK_USERS = 50;
+
 	/**
-	 * Legt ein Mitglied (Rolle Abonnent) mit zufälligem Startpasswort an.
+	 * Legt ein Mitglied (Rolle Mitglied) mit zufälligem Startpasswort an.
 	 * Das Passwort wird nur in dieser Antwort zurückgegeben und nirgends gespeichert
 	 * außer als Hash in WordPress; es wird keine E-Mail verschickt.
 	 */
 	public static function create_user( WP_REST_Request $req ) {
-		$name = trim( sanitize_text_field( (string) $req->get_param( 'name' ) ) );
+		$reserved = array();
+		$data     = self::validate_new_user(
+			array(
+				'name'     => $req->get_param( 'name' ),
+				'username' => $req->get_param( 'username' ),
+				'email'    => $req->get_param( 'email' ),
+			),
+			$reserved
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+		$user = self::insert_member( $data );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+		return new WP_REST_Response( $user, 201 );
+	}
+
+	/**
+	 * Legt mehrere Mitglieder auf einmal an: { users: [ { name, username?, email? }, … ] }.
+	 *
+	 * Zuerst werden alle Einträge geprüft (auch gegeneinander, z. B. doppelte
+	 * E-Mail-Adressen). Ist einer fehlerhaft, wird niemand angelegt und die Meldung
+	 * nennt die Zeile. Antwort: Liste der angelegten Mitglieder mit Startpasswörtern.
+	 */
+	public static function create_users_bulk( WP_REST_Request $req ) {
+		$users = $req->get_param( 'users' );
+		if ( ! is_array( $users ) || ! $users ) {
+			return self::error( 'Bitte mindestens ein Mitglied angeben.' );
+		}
+		if ( count( $users ) > self::MAX_BULK_USERS ) {
+			return self::error( sprintf( 'Bitte höchstens %d Mitglieder auf einmal anlegen.', self::MAX_BULK_USERS ) );
+		}
+
+		$reserved = array();
+		$valid    = array();
+		foreach ( array_values( $users ) as $i => $entry ) {
+			$data = self::validate_new_user( is_array( $entry ) ? $entry : array(), $reserved );
+			if ( is_wp_error( $data ) ) {
+				$name = is_array( $entry ) && isset( $entry['name'] ) ? trim( sanitize_text_field( (string) $entry['name'] ) ) : '';
+				return self::error( sprintf( 'Zeile %d%s: %s Es wurde niemand angelegt.', $i + 1, '' !== $name ? ' (' . $name . ')' : '', $data->get_error_message() ) );
+			}
+			$valid[] = $data;
+		}
+
+		$created = array();
+		foreach ( $valid as $data ) {
+			$user = self::insert_member( $data );
+			if ( is_wp_error( $user ) ) {
+				// Sollte nach der Prüfung nicht vorkommen; bereits Angelegte bleiben bestehen und werden gemeldet.
+				return new WP_REST_Response(
+					array(
+						'code'    => 'mkl_partial',
+						'message' => sprintf( '%s konnte nicht angelegt werden: %s', $data['name'], $user->get_error_message() ),
+						'created' => $created,
+					),
+					500
+				);
+			}
+			$created[] = $user;
+		}
+		return new WP_REST_Response( $created, 201 );
+	}
+
+	/**
+	 * Prüft die Angaben für ein neues Mitglied und ergänzt fehlende Benutzernamen.
+	 *
+	 * @param array $entry    name, optional username und email.
+	 * @param array $reserved Benutzernamen/E-Mails, die schon für andere Einträge
+	 *                        derselben Anfrage vorgesehen sind (wird ergänzt).
+	 * @return array|WP_Error name, username, email
+	 */
+	private static function validate_new_user( array $entry, array &$reserved ) {
+		$name = trim( sanitize_text_field( (string) ( isset( $entry['name'] ) ? $entry['name'] : '' ) ) );
 		if ( '' === $name ) {
 			return self::error( 'Bitte einen Namen angeben.' );
 		}
 
-		$login = trim( (string) $req->get_param( 'username' ) );
+		$login = trim( (string) ( isset( $entry['username'] ) ? $entry['username'] : '' ) );
 		if ( '' === $login ) {
-			$login = self::unique_login( $name );
+			$login = self::unique_login( $name, $reserved );
 		} else {
 			if ( sanitize_user( $login, true ) !== $login || strlen( $login ) > 60 ) {
 				return self::error( 'Der Benutzername darf nur Buchstaben (a–z), Ziffern sowie . _ - @ enthalten.' );
 			}
-			if ( username_exists( $login ) ) {
+			if ( username_exists( $login ) || isset( $reserved[ 'login:' . strtolower( $login ) ] ) ) {
 				return self::error( 'Dieser Benutzername ist schon vergeben.' );
 			}
 		}
 
-		$email = trim( (string) $req->get_param( 'email' ) );
+		$email = trim( (string) ( isset( $entry['email'] ) ? $entry['email'] : '' ) );
 		if ( '' !== $email ) {
 			if ( ! is_email( $email ) ) {
 				return self::error( 'Die E-Mail-Adresse ist ungültig.' );
 			}
-			if ( email_exists( $email ) ) {
+			if ( email_exists( $email ) || isset( $reserved[ 'email:' . strtolower( $email ) ] ) ) {
 				return self::error( 'Diese E-Mail-Adresse wird schon verwendet.' );
 			}
+			$reserved[ 'email:' . strtolower( $email ) ] = true;
 		}
+		$reserved[ 'login:' . strtolower( $login ) ] = true;
 
-		$parts    = preg_split( '/\s+/', $name, 2 );
+		return array(
+			'name'     => $name,
+			'username' => $login,
+			'email'    => $email,
+		);
+	}
+
+	/** @return array|WP_Error Angelegtes Mitglied inkl. Startpasswort. */
+	private static function insert_member( array $data ) {
+		$parts    = preg_split( '/\s+/', $data['name'], 2 );
 		$password = self::readable_password( 12 );
 		$user_id  = wp_insert_user(
 			array(
-				'user_login'   => $login,
+				'user_login'   => $data['username'],
 				'user_pass'    => $password,
-				'user_email'   => $email,
-				'display_name' => $name,
-				'nickname'     => $name,
+				'user_email'   => $data['email'],
+				'display_name' => $data['name'],
+				'nickname'     => $data['name'],
 				'first_name'   => $parts[0],
 				'last_name'    => isset( $parts[1] ) ? $parts[1] : '',
 				'role'         => MKL_ROLE_MITGLIED,
@@ -520,16 +609,12 @@ class MKL_REST {
 		if ( is_wp_error( $user_id ) ) {
 			return self::error( $user_id->get_error_message() );
 		}
-
-		return new WP_REST_Response(
-			array(
-				'id'       => $user_id,
-				'name'     => $name,
-				'username' => $login,
-				'email'    => $email,
-				'password' => $password,
-			),
-			201
+		return array(
+			'id'       => $user_id,
+			'name'     => $data['name'],
+			'username' => $data['username'],
+			'email'    => $data['email'],
+			'password' => $password,
 		);
 	}
 
@@ -547,8 +632,11 @@ class MKL_REST {
 		return $out;
 	}
 
-	/** „Max Müller“ → „max.mueller“, bei Kollision „max.mueller2“ usw. */
-	private static function unique_login( $name ) {
+	/**
+	 * „Max Müller“ → „max.mueller“, bei Kollision „max.mueller2“ usw.
+	 * $reserved enthält Benutzernamen, die in derselben Anfrage schon vorgesehen sind.
+	 */
+	private static function unique_login( $name, array $reserved = array() ) {
 		$base = strtr( mb_strtolower( $name, 'UTF-8' ), array( 'ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss' ) );
 		$base = remove_accents( $base );
 		$base = preg_replace( '/[^a-z0-9]+/', '.', $base );
@@ -557,7 +645,7 @@ class MKL_REST {
 			$base = 'mitglied';
 		}
 		$login = $base;
-		for ( $i = 2; username_exists( $login ); $i++ ) {
+		for ( $i = 2; username_exists( $login ) || isset( $reserved[ 'login:' . $login ] ); $i++ ) {
 			$login = $base . $i;
 		}
 		return $login;

@@ -164,6 +164,15 @@ export interface MemberDetail extends MemberSummary {
   penalties: Penalty[];
 }
 
+export interface NewUserInput {
+  name: string;
+  username?: string;
+  email?: string;
+}
+
+/** Höchstzahl für „Mehrere anlegen“ (wie MKL_REST::MAX_BULK_USERS). */
+export const MAX_BULK_USERS = 50;
+
 export interface CreatedUser {
   id: number;
   name: string;
@@ -290,8 +299,10 @@ export const api = {
     await request<{ changed: boolean }>('POST', '/me/password', { current_password, new_password });
     await refreshNonce();
   },
-  createUser: (data: { name: string; username?: string; email?: string }) =>
+  createUser: (data: NewUserInput) =>
     request<CreatedUser>('POST', '/users', data),
+  /** Legt mehrere Mitglieder an; bei einem Fehler wird niemand angelegt. */
+  createUsers: (users: NewUserInput[]) => request<CreatedUser[]>('POST', '/users/bulk', { users }),
 
   givePoints: (data: { user_ids: number[]; points?: number; catalog_id?: number; reason?: string; date?: string }) =>
     request<PointEntry[]>('POST', '/points', data),

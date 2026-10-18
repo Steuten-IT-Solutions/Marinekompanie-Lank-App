@@ -1,5 +1,15 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { api, config, LEVEL_LABELS, type CatalogItem, type CreatedUser, type Level, type MemberSummary } from '../api';
+import {
+  api,
+  config,
+  LEVEL_LABELS,
+  MAX_BULK_USERS,
+  type CatalogItem,
+  type CreatedUser,
+  type Level,
+  type MemberSummary,
+  type NewUserInput,
+} from '../api';
 import { caps, formatDate, formatEuro, formatPoints, parseEuroToCents, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, MemberPicker, StatCard, useAsync } from '../ui';
@@ -297,6 +307,43 @@ function RoleControl({
 /* ------------------------------------------------------------------ */
 
 function NewMember() {
+  const [mode, setMode] = useState<'einzeln' | 'mehrere'>('einzeln');
+  return (
+    <div>
+      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/mitglieder')}>
+        ‹ Alle Mitglieder
+      </button>
+      <div className="segmented small new-member-mode" role="group" aria-label="Anlegen">
+        {(
+          [
+            ['einzeln', 'Einzeln'],
+            ['mehrere', 'Mehrere'],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} type="button" className={mode === id ? 'active' : ''} aria-pressed={mode === id} onClick={() => setMode(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'einzeln' ? <NewSingleMember /> : <NewMembersBulk />}
+    </div>
+  );
+}
+
+function credentialsText(u: CreatedUser) {
+  return `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${u.username}\nPasswort: ${u.password}`;
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function NewSingleMember() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -326,15 +373,6 @@ function NewMember() {
   }
 
   if (created) {
-    const text = `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${created.username}\nPasswort: ${created.password}`;
-    const copy = async () => {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-      } catch {
-        setCopied(false);
-      }
-    };
     return (
       <div className="card created">
         <h2>{created.name} ist angelegt</h2>
@@ -351,7 +389,7 @@ function NewMember() {
           <dd data-testid="new-password">{created.password}</dd>
         </dl>
         <div className="button-row">
-          <button className="btn" onClick={copy}>
+          <button className="btn" onClick={async () => setCopied(await copyText(credentialsText(created)))}>
             {copied ? 'Kopiert ✓' : 'Zugangsdaten kopieren'}
           </button>
           <button
@@ -376,9 +414,6 @@ function NewMember() {
 
   return (
     <form className="form" onSubmit={submit}>
-      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/mitglieder')}>
-        ‹ Alle Mitglieder
-      </button>
       <label className="field">
         <span>Name</span>
         <input type="text" autoComplete="off" placeholder="Vorname Nachname" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -398,10 +433,151 @@ function NewMember() {
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
-      <p className="muted small">Das Mitglied bekommt die Rolle „Abonnent“ und ein zufälliges Startpasswort.</p>
+      <p className="muted small">Das Mitglied bekommt die Rolle „Mitglied“ und ein zufälliges Startpasswort.</p>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Legt an …' : 'Mitglied anlegen'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * Eine Zeile pro Mitglied: „Vorname Nachname“, optional mit E-Mail-Adresse dahinter
+ * (getrennt durch Komma, Semikolon oder Tabulator, z. B. aus einer Tabelle kopiert).
+ */
+function parseMemberLines(text: string): { users: NewUserInput[]; errors: string[] } {
+  const users: NewUserInput[] = [];
+  const errors: string[] = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) return;
+    const parts = line.split(/[\t;,]/).map((p) => p.trim()).filter(Boolean);
+    const emails = parts.filter((p) => p.includes('@'));
+    const names = parts.filter((p) => !p.includes('@'));
+    const name = names.join(' ').replace(/\s+/g, ' ');
+    if (emails.length > 1) errors.push(`Zeile ${i + 1}: bitte nur eine E-Mail-Adresse angeben.`);
+    else if (!name) errors.push(`Zeile ${i + 1}: Name fehlt.`);
+    else if (names.length > 1) errors.push(`Zeile ${i + 1}: bitte als „Vorname Nachname“ ohne Komma schreiben.`);
+    else users.push({ name, ...(emails[0] ? { email: emails[0] } : {}) });
+  });
+  return { users, errors };
+}
+
+function NewMembersBulk() {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreatedUser[] | null>(null);
+  const [copied, setCopied] = useState<number | 'alle' | null>(null);
+  const { users, errors } = useMemo(() => parseMemberLines(text), [text]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    if (errors.length) return setFormError(errors[0]);
+    if (users.length === 0) return setFormError('Bitte mindestens einen Namen eintragen.');
+    if (users.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} Mitglieder auf einmal anlegen.`);
+    setBusy(true);
+    try {
+      setCreated(await api.createUsers(users));
+    } catch (err) {
+      setFormError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (created) {
+    const all = created.map((u) => `${u.name}\n${credentialsText(u)}`).join('\n\n');
+    return (
+      <div className="card created">
+        <h2>
+          {created.length} {created.length === 1 ? 'Mitglied ist' : 'Mitglieder sind'} angelegt
+        </h2>
+        <p className="muted">
+          Die Startpasswörter werden <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und jedem
+          Mitglied persönlich weitergeben.
+        </p>
+        <button className="btn btn-block" onClick={async () => setCopied((await copyText(all)) ? 'alle' : null)}>
+          {copied === 'alle' ? 'Alle kopiert ✓' : 'Alle Zugangsdaten kopieren'}
+        </button>
+        <p className="muted small">App: {config?.appUrl}</p>
+        <ul className="created-list">
+          {created.map((u) => (
+            <li key={u.id} data-testid="created-user">
+              <div className="created-name">{u.name}</div>
+              <dl className="credentials">
+                <dt>Benutzername</dt>
+                <dd data-testid="new-username">{u.username}</dd>
+                <dt>Passwort</dt>
+                <dd data-testid="new-password">{u.password}</dd>
+              </dl>
+              <button
+                className="btn btn-small btn-secondary"
+                aria-label={`Zugangsdaten von ${u.name} kopieren`}
+                onClick={async () => setCopied((await copyText(credentialsText(u))) ? u.id : null)}
+              >
+                {copied === u.id ? 'Kopiert ✓' : 'Kopieren'}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button className="btn btn-link" onClick={() => navigate('spiess/mitglieder')}>
+          ‹ Zur Mitgliederliste
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <label className="field">
+        <span>Ein Mitglied pro Zeile</span>
+        <textarea
+          rows={8}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={'Max Müller\nErika Mustermann, erika@example.de'}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </label>
+      <p className="muted small">
+        Pro Zeile „Vorname Nachname“, optional mit Komma und E-Mail-Adresse dahinter. Eine Liste aus Excel mit den
+        Spalten Name und E-Mail kann direkt hineinkopiert werden. Benutzernamen werden aus den Namen gebildet. Alle
+        bekommen die Rolle „Mitglied“ und ein eigenes zufälliges Startpasswort. Enthält eine Zeile einen Fehler, wird
+        niemand angelegt.
+      </p>
+      {users.length > 0 && (
+        <div className="bulk-preview" aria-live="polite">
+          <span className="field-label">
+            Erkannt: {users.length} {users.length === 1 ? 'Mitglied' : 'Mitglieder'}
+          </span>
+          <ul>
+            {users.map((u, i) => (
+              <li key={i}>
+                {u.name}
+                {u.email && <span className="muted"> · {u.email}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {errors.length > 0 && (
+        <ul className="form-error bulk-errors" role="alert">
+          {errors.map((e) => (
+            <li key={e}>{e}</li>
+          ))}
+        </ul>
+      )}
+      {formError && !errors.includes(formError) && <p className="form-error" role="alert">{formError}</p>}
+      <button className="btn btn-block" type="submit" disabled={busy || errors.length > 0 || users.length === 0}>
+        {busy
+          ? 'Legt an …'
+          : users.length > 1
+            ? `${users.length} Mitglieder anlegen`
+            : 'Mitglieder anlegen'}
       </button>
     </form>
   );
