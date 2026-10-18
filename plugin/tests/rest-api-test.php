@@ -312,6 +312,75 @@ foreach ( array( array( 'jungmariner' => true ), array( 'initial_points' => 10 )
 
 list( $s, $members ) = mkl_req( 'GET', '/members' );
 mkl_assert( in_array( $u1['id'], wp_list_pluck( $members, 'id' ), true ), 'Neues Mitglied erscheint in der Mitgliederliste' );
+
+echo "Mehrere Mitglieder auf einmal anlegen\n";
+foreach ( array( 'mkltest.bulk.eins', 'mkltest.bulk.zwei', 'mkltest.bulk.zwei2', 'mkltest.bulk.drei', 'mkltest.bulk.vier' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+$count_before = count_users()['total_users'];
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'users' => array(
+			array( 'name' => 'Mkltest Bulk Eins' ),
+			array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.bulk@example.com' ),
+			array( 'name' => 'Mkltest Bulk Drei', 'email' => 'MKLTEST.bulk@example.com' ),
+		),
+	)
+);
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 3' ), 'Doppelte E-Mail in derselben Liste → 400 mit Nummer der Person' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => '' ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 2' ), 'Leerer Name bei Person 2 → 400' );
+wp_update_user( array( 'ID' => $m1, 'user_email' => 'mkltest.mariner1@example.com' ) );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ), array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.mariner1@example.com' ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'schon verwendet' ), 'Bereits vorhandene E-Mail → 400' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'admin', 'users' => array( array( 'name' => 'Mkltest Bulk Eins' ) ) ) );
+mkl_assert( 400 === $s, 'Rolle Admin → 400' );
+mkl_assert( count_users()['total_users'] === $count_before, 'Bei einem Fehler wird niemand angelegt' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array() ) );
+mkl_assert( 400 === $s, 'Leere Liste → 400' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array_fill( 0, 51, array( 'name' => 'X' ) ) ) );
+mkl_assert( 400 === $s && count_users()['total_users'] === $count_before, 'Mehr als 50 auf einmal → 400' );
+
+list( $s, $bulk ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level' => 'mitglied',
+		'users' => array(
+			array( 'name' => 'Mkltest Bulk Eins' ),
+			array( 'name' => 'Mkltest Bulk Zwei', 'email' => 'mkltest.bulk@example.com' ),
+			array( 'name' => 'Mkltest Bulk Zwei' ),
+			array( 'name' => 'Jemand', 'username' => 'mkltest.bulk.drei' ),
+		),
+	)
+);
+foreach ( (array) $bulk as $u ) {
+	$created[] = isset( $u['id'] ) ? $u['id'] : 0;
+}
+mkl_assert( 201 === $s && 4 === count( $bulk ), 'Admin legt 4 Mitglieder auf einmal an' );
+mkl_assert( array( 'mkltest.bulk.eins', 'mkltest.bulk.zwei', 'mkltest.bulk.zwei2', 'mkltest.bulk.drei' ) === wp_list_pluck( $bulk, 'username' ), 'Benutzernamen eindeutig, auch bei gleichem Namen in der Liste' );
+mkl_assert( 'mkltest.bulk@example.com' === get_userdata( $bulk[1]['id'] )->user_email, 'E-Mail gesetzt' );
+$ok = true;
+foreach ( $bulk as $u ) {
+	$auth = wp_authenticate( $u['username'], $u['password'] );
+	$ok   = $ok && $auth instanceof WP_User && 'mitglied' === $u['level'] && 'mitglied' === MKL_Roles::get_level( $u['id'] ) && 12 === strlen( $u['password'] );
+}
+mkl_assert( $ok, 'Alle haben die gewählte Rolle Mitglied und können sich mit ihrem Startpasswort anmelden' );
+mkl_assert( 4 === count( array_unique( wp_list_pluck( $bulk, 'password' ) ) ), 'Jedes Konto hat ein eigenes Startpasswort' );
+
+list( $s, $bulk ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Mkltest Bulk Vier' ) ) ) );
+$created[]        = isset( $bulk[0]['id'] ) ? $bulk[0]['id'] : 0;
+mkl_assert( 201 === $s && 'anwaerter' === $bulk[0]['level'] && array( MKL_ROLE_ANWAERTER ) === array_values( get_userdata( $bulk[0]['id'] )->roles ), 'Ohne Angabe → Rolle Anwärter' );
+
+wp_set_current_user( $spiess );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'users' => array( array( 'name' => 'Hans Hacker' ) ) ) );
+mkl_assert( 403 === $s, 'Spieß darf nicht mehrere Konten anlegen → 403' );
+wp_set_current_user( $admin );
 foreach ( $created as $uid ) {
 	if ( $uid ) {
 		wp_delete_user( $uid );
@@ -355,6 +424,7 @@ $matrix = array(
 	array( 'POST', '/events', array( 'title' => '' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'PATCH', '/members/' . $m2 . '/role', array( 'level' => 'egal' ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'POST', '/users', array( 'name' => '' ), array( 401, 403, 403, 403, 400 ) ),
+	array( 'POST', '/users/bulk', array( 'users' => array() ), array( 401, 403, 403, 403, 400 ) ),
 	array( 'GET', '/ranks', array(), array( 401, 403, 200, 200, 200 ) ),
 	array( 'POST', '/ranks', array( 'title' => '', 'min_points' => 1 ), array( 401, 403, 403, 400, 400 ) ),
 	array( 'GET', '/promotions', array(), array( 401, 403, 403, 200, 200 ) ),
@@ -727,6 +797,86 @@ foreach ( array( $u['id'], $u2['id'] ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );
 	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $uid ) );
 	wp_delete_user( $uid );
+}
+
+echo "Mehrere anlegen mit Anfangsbestand, Dienstgrad und Jungmariner\n";
+foreach ( array( 'mkltest.uebern.a', 'mkltest.uebern.b', 'mkltest.uebern.c' ) as $old_login ) {
+	$old = get_user_by( 'login', $old_login );
+	if ( $old ) {
+		wp_delete_user( $old->ID );
+	}
+}
+$count_before = count_users()['total_users'];
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level' => 'mitglied',
+		'users' => array(
+			array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'B', 'username' => 'mkltest.uebern.b', 'initial_points' => 39, 'rank_id' => $bootsmann['id'] ),
+		),
+	)
+);
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 2' ) && false !== strpos( $d['message'], 'mindestens' ), 'Dienstgrad mit zu wenig Punkten bei Person 2 → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => -1 ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'Person 1' ), 'Negativer Anfangsbestand → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 50, 'rank_id' => $inaktiv['id'] ) ) ) );
+mkl_assert( 400 === $s, 'Deaktivierter Dienstgrad → 400' );
+list( $s, $d ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'anwaerter', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'jungmariner' => true ) ) ) );
+mkl_assert( 400 === $s && false !== strpos( $d['message'], 'nur für Mitglieder' ), 'Jungmariner bei Anwärtern → 400' );
+list( $s ) = mkl_req( 'POST', '/users/bulk', array( 'level' => 'mitglied', 'initial_points_date' => '31.12.2025', 'users' => array( array( 'name' => 'A', 'username' => 'mkltest.uebern.a' ) ) ) );
+mkl_assert( 400 === $s, 'Ungültiges Datum → 400' );
+mkl_assert( count_users()['total_users'] === $count_before, 'Bei Fehlern wurde niemand angelegt' );
+
+// Scheitert ein Konto erst beim Speichern, werden auch die vorher angelegten wieder entfernt.
+$fail_login = function ( $login ) {
+	return 'mkltest.uebern.c' === $login ? '' : $login;
+};
+add_filter( 'pre_user_login', $fail_login );
+list( $s, $d ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level' => 'mitglied',
+		'users' => array(
+			array( 'name' => 'A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'B', 'username' => 'mkltest.uebern.b', 'initial_points' => 12 ),
+			array( 'name' => 'C', 'username' => 'mkltest.uebern.c' ),
+		),
+	)
+);
+remove_filter( 'pre_user_login', $fail_login );
+mkl_assert( 500 === $s && false !== strpos( $d['message'], 'niemand angelegt' ), 'Fehler beim Speichern → 500' );
+mkl_assert( count_users()['total_users'] === $count_before && ! username_exists( 'mkltest.uebern.a' ) && ! username_exists( 'mkltest.uebern.b' ), 'Alles oder nichts: bereits angelegte Konten wieder entfernt' );
+$orphans = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . MKL_DB::table( 'points' ) . ' WHERE reason = %s AND user_id NOT IN (SELECT ID FROM ' . $wpdb->users . ')', 'Anfangsbestand bei Übernahme' ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+mkl_assert( 0 === $orphans, 'Keine verwaisten Anfangsbestände' );
+
+list( $s, $bulk ) = mkl_req(
+	'POST',
+	'/users/bulk',
+	array(
+		'level'               => 'mitglied',
+		'initial_points_date' => '2025-12-31',
+		'users'               => array(
+			array( 'name' => 'Mkltest Übern A', 'username' => 'mkltest.uebern.a', 'initial_points' => 45, 'rank_id' => $bootsmann['id'] ),
+			array( 'name' => 'Mkltest Übern B', 'username' => 'mkltest.uebern.b', 'initial_points' => 12, 'jungmariner' => true ),
+			array( 'name' => 'Mkltest Übern C', 'username' => 'mkltest.uebern.c' ),
+		),
+	)
+);
+mkl_assert( 201 === $s && 3 === count( $bulk ), 'Drei Mitglieder mit unterschiedlichen Angaben angelegt' );
+mkl_assert( 45 === $bulk[0]['points'] && $bootsmann['id'] === $bulk[0]['rank']['id'] && false === $bulk[0]['is_jungmariner'], 'A: 45 Punkte, Bootsmann' );
+mkl_assert( 12 === $bulk[1]['points'] && null === $bulk[1]['rank'] && true === $bulk[1]['is_jungmariner'] && MKL_Roles::is_jungmariner( $bulk[1]['id'] ), 'B: 12 Punkte, Jungmariner' );
+mkl_assert( 0 === $bulk[2]['points'] && null === $bulk[2]['rank'] && ! MKL_DB::get_points_for_user( $bulk[2]['id'] ), 'C: ohne Angaben keine Buchung' );
+$entries = MKL_DB::get_points_for_user( $bulk[1]['id'] );
+mkl_assert( 1 === count( $entries ) && 12 === $entries[0]['points'] && '2025-12-31' === $entries[0]['date'], 'Anfangsbestand des Jungmariners nicht halbiert, Datum übernommen' );
+$hist = MKL_Ranks::history( $bulk[0]['id'] );
+mkl_assert( $bootsmann['id'] === MKL_Ranks::user_rank_id( $bulk[0]['id'] ) && 1 === count( $hist ) && 'Ersteinstufung bei Anlage' === $hist[0]['reason'], 'Ersteinstufung im Verlauf' );
+foreach ( $bulk as $u ) {
+	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $u['id'] ) );
+	$wpdb->delete( MKL_Ranks::history_table(), array( 'user_id' => $u['id'] ) );
+	wp_delete_user( $u['id'] );
 }
 
 echo "Jungmariner und Dienstgrade\n";

@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, config, isMemberLevel, LEVEL_LABELS, type Account, type CreatedUser, type Level } from '../api';
+import {
+  api,
+  config,
+  isMemberLevel,
+  LEVEL_LABELS,
+  MAX_BULK_USERS,
+  type Account,
+  type BulkUserInput,
+  type CreatedUser,
+  type Level,
+  type Rank,
+} from '../api';
 import { caps, formatPoints, todayYmd } from '../format';
 import { navigate } from '../router';
 import { BackToSetup, Empty, ErrorBox, Loading, useAsync } from '../ui';
@@ -431,6 +442,67 @@ function RoleControl({
 /* ------------------------------------------------------------------ */
 
 function NewMember() {
+  const [mode, setMode] = useState<'einzeln' | 'mehrere'>('einzeln');
+  return (
+    <div>
+      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/einrichtung/mitglieder')}>
+        ‹ Mitglieder verwalten
+      </button>
+      <div className="segmented small new-member-mode" role="group" aria-label="Anlegen">
+        {(
+          [
+            ['einzeln', 'Einzeln'],
+            ['mehrere', 'Mehrere'],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} type="button" className={mode === id ? 'active' : ''} aria-pressed={mode === id} onClick={() => setMode(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'einzeln' ? <NewSingleMember /> : <NewMembersBulk />}
+    </div>
+  );
+}
+
+const NEW_LEVELS = ['ohne', 'anwaerter', 'mitglied', 'spiess'] as const;
+
+function LevelPicker({ level, onChange }: { level: Exclude<Level, 'admin'>; onChange: (l: Exclude<Level, 'admin'>) => void }) {
+  return (
+    <div className="field">
+      <span>Rolle in der App</span>
+      <div className="segmented small" role="group" aria-label="Rolle in der App">
+        {NEW_LEVELS.map((l) => (
+          <button
+            key={l}
+            type="button"
+            className={level === l ? 'active' : ''}
+            aria-pressed={level === l}
+            aria-label={LEVEL_LABELS[l]}
+            onClick={() => onChange(l)}
+          >
+            {caps(LEVEL_LABELS[l])}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function credentialsText(u: Pick<CreatedUser, 'username' | 'password'>) {
+  return `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${u.username}\nPasswort: ${u.password}`;
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function NewSingleMember() {
   const ranks = useAsync(api.ranks);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -479,15 +551,7 @@ function NewMember() {
   }
 
   if (created) {
-    const text = `Kompanie-App: ${config?.appUrl ?? ''}\nBenutzername: ${created.username}\nPasswort: ${created.password}`;
-    const copy = async () => {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-      } catch {
-        setCopied(false);
-      }
-    };
+    const copy = async () => setCopied(await copyText(credentialsText(created)));
     return (
       <div className="card created">
         <h2>{created.name} ist angelegt</h2>
@@ -541,9 +605,6 @@ function NewMember() {
 
   return (
     <form className="form" onSubmit={submit}>
-      <button type="button" className="btn btn-link back" onClick={() => navigate('spiess/einrichtung/mitglieder')}>
-        ‹ Mitglieder verwalten
-      </button>
       <label className="field">
         <span>Name</span>
         <input type="text" autoComplete="off" placeholder="Vorname Nachname" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -563,23 +624,7 @@ function NewMember() {
         <span>E-Mail (optional)</span>
         <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
-      <div className="field">
-        <span>Rolle in der App</span>
-        <div className="segmented small" role="group" aria-label="Rolle in der App">
-          {(['ohne', 'anwaerter', 'mitglied', 'spiess'] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              className={level === l ? 'active' : ''}
-              aria-pressed={level === l}
-              aria-label={LEVEL_LABELS[l]}
-              onClick={() => setLevel(l)}
-            >
-              {caps(LEVEL_LABELS[l])}
-            </button>
-          ))}
-        </div>
-      </div>
+      <LevelPicker level={level} onChange={setLevel} />
       {memberRole && (
         <>
           <label className="toggle">
@@ -620,6 +665,307 @@ function NewMember() {
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Legt an …' : 'Mitglied anlegen'}
+      </button>
+    </form>
+  );
+}
+
+/** Eine Person bei „Mehrere anlegen“, so wie sie in den Feldern steht. */
+interface BulkRow {
+  key: number;
+  name: string;
+  email: string;
+  points: string;
+  rankId: string;
+  jungmariner: boolean;
+}
+
+let nextRowKey = 1;
+function emptyRow(): BulkRow {
+  return { key: nextRowKey++, name: '', email: '', points: '', rankId: '', jungmariner: false };
+}
+
+function isEmptyRow(r: BulkRow) {
+  return !r.name.trim() && !r.email.trim() && !r.points.trim() && !r.rankId && !r.jungmariner;
+}
+
+/** Prüft eine Person wie der Server; null = in Ordnung. */
+function rowError(r: BulkRow, ranks: Rank[], memberRole: boolean): string | null {
+  if (!r.name.trim()) return 'Bitte einen Namen angeben.';
+  if (r.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email.trim())) return 'Die E-Mail-Adresse ist ungültig.';
+  if (!memberRole) return null;
+  const points = r.points.trim() === '' ? 0 : Number(r.points);
+  if (!Number.isInteger(points) || points < 0) return 'Bitte als Anfangsbestand eine ganze Punktzahl ab 0 angeben.';
+  const rank = ranks.find((x) => String(x.id) === r.rankId);
+  if (rank && points < rank.min_points) return `Für „${rank.title}“ sind mindestens ${rank.min_points.toLocaleString('de-DE')} Punkte nötig.`;
+  return null;
+}
+
+function toInput(r: BulkRow, memberRole: boolean): BulkUserInput {
+  const points = r.points.trim() === '' ? 0 : Number(r.points);
+  return {
+    name: r.name.trim(),
+    ...(r.email.trim() ? { email: r.email.trim() } : {}),
+    ...(memberRole && points > 0 ? { initial_points: points } : {}),
+    ...(memberRole && r.rankId ? { rank_id: Number(r.rankId) } : {}),
+    ...(memberRole && r.jungmariner ? { jungmariner: true } : {}),
+  };
+}
+
+function BulkRowCard({
+  index,
+  row,
+  ranks,
+  memberRole,
+  error,
+  autoFocus,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  row: BulkRow;
+  ranks: Rank[];
+  memberRole: boolean;
+  error: string | null;
+  autoFocus: boolean;
+  onChange: (patch: Partial<BulkRow>) => void;
+  onRemove?: () => void;
+}) {
+  const points = row.points.trim() === '' ? 0 : Number(row.points);
+  // Nur Dienstgrade, deren Schwelle der Anfangsbestand erreicht (prüft auch der Server).
+  const reachable = ranks.filter((r) => r.active && Number.isInteger(points) && r.min_points <= points);
+  const label = `Person ${index + 1}`;
+  return (
+    <fieldset className={`fieldset bulk-card${error ? ' has-error' : ''}`} data-testid="bulk-row" aria-label={label}>
+      <legend>{label}</legend>
+      {onRemove && (
+        <button type="button" className="bulk-remove" aria-label={`${label} entfernen`} onClick={onRemove}>
+          ×
+        </button>
+      )}
+      <label className="field">
+        <span>Name</span>
+        <input
+          type="text"
+          autoComplete="off"
+          placeholder="Vorname Nachname"
+          autoFocus={autoFocus}
+          value={row.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+      </label>
+      <label className="field">
+        <span>E-Mail (optional)</span>
+        <input type="email" autoComplete="off" value={row.email} onChange={(e) => onChange({ email: e.target.value })} />
+      </label>
+      {memberRole && (
+        <>
+          <div className="field-row">
+            <label className="field narrow">
+              <span>Punkte</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={row.points}
+                onChange={(e) => onChange({ points: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Dienstgrad</span>
+              <select value={row.rankId} onChange={(e) => onChange({ rankId: e.target.value })}>
+                <option value="">Kein Dienstgrad</option>
+                {reachable.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title} (ab {r.min_points.toLocaleString('de-DE')})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={row.jungmariner} onChange={(e) => onChange({ jungmariner: e.target.checked })} />
+            Jungmariner
+          </label>
+        </>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+function NewMembersBulk() {
+  const ranks = useAsync(api.ranks);
+  const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow()]);
+  const [focusKey, setFocusKey] = useState<number | null>(null);
+  const [level, setLevel] = useState<Exclude<Level, 'admin'>>('anwaerter');
+  const [pointsDate, setPointsDate] = useState(todayYmd());
+  const [busy, setBusy] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  /** Vom Server gemeldete Person (Index) mit Meldung. */
+  const [serverError, setServerError] = useState<{ index: number; message: string } | null>(null);
+  const [created, setCreated] = useState<CreatedUser[] | null>(null);
+  const [copied, setCopied] = useState<number | 'alle' | null>(null);
+  const memberRole = isMemberLevel(level);
+  const rankList = ranks.data ?? [];
+
+  // Ein Dienstgrad, den die Punkte nicht (mehr) erreichen, gilt als nicht gewählt – wie im Einzelformular.
+  const effective = rows.map((r) => {
+    const points = r.points.trim() === '' ? 0 : Number(r.points);
+    const rank = rankList.find((x) => String(x.id) === r.rankId);
+    return rank && (!Number.isInteger(points) || points < rank.min_points) ? { ...r, rankId: '' } : r;
+  });
+  const filled = effective.filter((r) => !isEmptyRow(r));
+  const hasPoints = memberRole && filled.some((r) => r.points.trim() !== '' && Number(r.points) > 0);
+
+  function update(key: number, patch: Partial<BulkRow>) {
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setServerError(null);
+  }
+
+  function add() {
+    const row = emptyRow();
+    setRows((rs) => [...rs, row]);
+    setFocusKey(row.key);
+  }
+
+  function remove(key: number) {
+    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
+    setServerError(null);
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    setServerError(null);
+    // Ganz leere Karten fallen weg, damit die Nummern zu den Meldungen des Servers passen.
+    const list = filled.length ? filled : effective;
+    setRows(list);
+    setShowErrors(true);
+    if (filled.length === 0) return setFormError('Bitte mindestens eine Person eintragen.');
+    if (filled.some((r) => rowError(r, rankList, memberRole))) return setFormError('Bitte die markierten Angaben korrigieren.');
+    if (filled.length > MAX_BULK_USERS) return setFormError(`Bitte höchstens ${MAX_BULK_USERS} auf einmal anlegen.`);
+    setBusy(true);
+    try {
+      setCreated(
+        await api.createUsers({
+          users: filled.map((r) => toInput(r, memberRole)),
+          level,
+          ...(hasPoints ? { initial_points_date: pointsDate } : {}),
+        }),
+      );
+    } catch (err) {
+      const message = (err as Error).message;
+      const m = /^Person (\d+)[^:]*: (.*)$/.exec(message);
+      if (m && Number(m[1]) <= filled.length) setServerError({ index: Number(m[1]) - 1, message: m[2] });
+      else setFormError(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (created) {
+    const all = created.map((u) => `${u.name}\n${credentialsText(u)}`).join('\n\n');
+    return (
+      <div className="card created">
+        <h2>{created.length === 1 ? '1 Konto ist angelegt' : `${created.length} Konten sind angelegt`}</h2>
+        <p className="muted">
+          Die Startpasswörter werden <strong>nur jetzt</strong> angezeigt. Bitte notieren oder kopieren und jeder Person
+          persönlich weitergeben.
+        </p>
+        <button className="btn btn-block" onClick={async () => setCopied((await copyText(all)) ? 'alle' : null)}>
+          {copied === 'alle' ? 'Alle kopiert ✓' : 'Alle Zugangsdaten kopieren'}
+        </button>
+        <p className="muted small">
+          App: {config?.appUrl} · Rolle: <span data-testid="bulk-level">{created[0] ? LEVEL_LABELS[created[0].level] : ''}</span>
+        </p>
+        <ul className="created-list">
+          {created.map((u) => (
+            <li key={u.id} data-testid="created-user">
+              <div className="created-name">{u.name}</div>
+              {(u.points > 0 || u.rank || u.is_jungmariner) && (
+                <div className="muted small" data-testid="created-extras">
+                  {[
+                    `${u.points.toLocaleString('de-DE')} Punkte`,
+                    u.rank ? `Dienstgrad: ${u.rank.title}` : 'ohne Dienstgrad',
+                    ...(u.is_jungmariner ? ['Jungmariner'] : []),
+                  ].join(' · ')}
+                </div>
+              )}
+              <dl className="credentials">
+                <dt>Benutzername</dt>
+                <dd data-testid="new-username">{u.username}</dd>
+                <dt>Passwort</dt>
+                <dd data-testid="new-password">{u.password}</dd>
+              </dl>
+              <button
+                className="btn btn-small btn-secondary"
+                aria-label={`Zugangsdaten von ${u.name} kopieren`}
+                onClick={async () => setCopied((await copyText(credentialsText(u))) ? u.id : null)}
+              >
+                {copied === u.id ? 'Kopiert ✓' : 'Kopieren'}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button className="btn btn-link" onClick={() => navigate('spiess/einrichtung/mitglieder')}>
+          ‹ Zur Kontenliste
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={submit} noValidate>
+      <LevelPicker level={level} onChange={setLevel} />
+      <p className="muted small">
+        Alle bekommen diese Rolle und je ein eigenes zufälliges Startpasswort. Benutzernamen werden aus den Namen gebildet.
+        {memberRole && ' Punkte, Dienstgrad und Jungmariner sind optional und gelten je Person.'}
+      </p>
+      {effective.map((r, i) => (
+        <BulkRowCard
+          key={r.key}
+          index={i}
+          row={r}
+          ranks={rankList}
+          memberRole={memberRole}
+          error={
+            serverError?.index === i
+              ? serverError.message
+              : showErrors && !isEmptyRow(r)
+                ? rowError(r, rankList, memberRole)
+                : null
+          }
+          autoFocus={r.key === focusKey}
+          onChange={(patch) => update(r.key, patch)}
+          onRemove={rows.length > 1 ? () => remove(r.key) : undefined}
+        />
+      ))}
+      <button type="button" className="btn btn-secondary btn-block" onClick={add} disabled={rows.length >= MAX_BULK_USERS}>
+        + Weitere Person
+      </button>
+      {memberRole && hasPoints && (
+        <label className="field">
+          <span>Punktestand vom (für alle)</span>
+          <input type="date" value={pointsDate} onChange={(e) => setPointsDate(e.target.value)} />
+        </label>
+      )}
+      {ranks.error && memberRole && <p className="form-error">Dienstgrade konnten nicht geladen werden: {ranks.error}</p>}
+      {formError && (
+        <p className="form-error" role="alert">
+          {formError}
+        </p>
+      )}
+      <p className="muted small">Enthält eine Angabe einen Fehler, wird niemand angelegt.</p>
+      <button className="btn btn-block" type="submit" disabled={busy || ranks.loading}>
+        {busy ? 'Legt an …' : filled.length > 1 ? `${filled.length} Konten anlegen` : 'Konten anlegen'}
       </button>
     </form>
   );

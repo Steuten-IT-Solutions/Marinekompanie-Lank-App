@@ -519,6 +519,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .doc-admin-group + .doc-admin-group { margin-top: 10px; }
 .doc-edit { padding: 14px 16px; }
 
+/* Mehrere Mitglieder anlegen */
+.segmented.new-member-mode { margin: 4px 0 16px; }
+.created-list { list-style: none; margin: 16px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.created-list li { padding-top: 12px; border-top: 1px solid var(--line); }
+.created-name { font-weight: 700; }
+.created-list .credentials { margin: 8px 0; }
+.bulk-card { position: relative; background: var(--card); }
+.bulk-card.has-error { border-color: var(--danger); }
+.bulk-remove {
+  position: absolute; top: 4px; right: 6px; width: 40px; height: 40px; border: 0; border-radius: 8px;
+  background: none; color: var(--muted); font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.bulk-remove:hover { color: var(--danger); }
+
 /* Anwesenheit */
 .badge-list { background: var(--line); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
 .badge-att-anwesend { background: #d8ead9; color: #1d5a31; }
