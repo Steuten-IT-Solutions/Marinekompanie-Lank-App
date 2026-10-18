@@ -30,6 +30,7 @@ export default function Punkte() {
                 <div className="row-sub">
                   {formatDate(p.date)}
                   {halvedNote(p)}
+                  {p.created_by_name && ` · von ${p.created_by_name}`}
                 </div>
               </div>
               <div className={`row-value ${p.points < 0 ? 'neg' : 'pos'}`}>{formatPoints(p.points)}</div>

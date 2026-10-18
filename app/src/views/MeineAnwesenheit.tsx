@@ -23,7 +23,10 @@ export default function MeineAnwesenheit() {
             <li key={a.list_id} className="card row">
               <div className="row-main">
                 <div className="row-title">{a.title}</div>
-                <div className="row-sub">{formatDate(a.date)}</div>
+                <div className="row-sub">
+                  {formatDate(a.date)}
+                  {a.updated_by_name && ` · von ${a.updated_by_name}`}
+                </div>
               </div>
               <span className={`badge badge-att-${a.status}`}>{ATTENDANCE_LABELS[a.status]}</span>
             </li>
