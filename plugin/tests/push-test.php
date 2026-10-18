@@ -429,8 +429,10 @@ mkl_assert( 0 === $q_count(), 'Keine Nachricht bei Änderung, Entwurf oder passw
 
 // ------------------------------------------------------------------
 echo "\nKalender-Abgleich (interne Termine)\n";
-$cal_event = function ( $id, $days, $location = '' ) {
-	$ts = time() + $days * DAY_IN_SECONDS;
+// Feste Basiszeit: sonst ändert ein Sekundenwechsel zwischen zwei Ständen die Startzeit.
+$cal_base  = time();
+$cal_event = function ( $id, $days, $location = '' ) use ( $cal_base ) {
+	$ts = $cal_base + $days * DAY_IN_SECONDS;
 	return array(
 		'id'       => $id,
 		'title'    => 'Termin ' . $id,
