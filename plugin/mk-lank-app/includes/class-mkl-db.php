@@ -237,6 +237,9 @@ class MKL_DB {
 		if ( ! $installed || version_compare( $installed, '7', '<' ) ) {
 			MKL_Titles::seed_defaults();
 		}
+		if ( $installed && version_compare( $installed, '11', '<' ) ) {
+			MKL_Attendance::backfill_entry_authors();
+		}
 	}
 
 	private static function now() {

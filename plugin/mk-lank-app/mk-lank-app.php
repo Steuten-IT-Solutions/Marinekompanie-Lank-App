@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'MKL_VERSION', '0.9.0' );
-define( 'MKL_DB_VERSION', '10' );
+define( 'MKL_DB_VERSION', '11' );
 define( 'MKL_FILE', __FILE__ );
 define( 'MKL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MKL_URL', plugin_dir_url( __FILE__ ) );

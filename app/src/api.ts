@@ -212,6 +212,7 @@ export interface MyAttendance {
   title: string;
   date: string;
   status: AttendanceStatus;
+  updated_by_name: string | null;
 }
 
 export type AttendanceInput = (

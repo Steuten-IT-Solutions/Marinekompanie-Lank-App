@@ -1019,6 +1019,7 @@ test('Anwesenheit: Spieß erfasst einen Termin und bucht Punkte, Mitglieder sehe
   await page.locator('.segmented').getByRole('button', { name: 'Anwesenheit' }).click();
   await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('anwesend');
   await expect(page.locator('.row', { hasText: 'Sonderdienst Bootshaus' })).toContainText('entschuldigt');
+  await expect(page.locator('.row', { hasText: 'Arbeitsdienst Schützenplatz' })).toContainText('von Spiess');
   await expect(page.locator('.stat-value')).toHaveText('1');
   await shot(page, '14-meine-anwesenheit');
 

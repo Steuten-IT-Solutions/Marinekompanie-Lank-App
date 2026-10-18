@@ -1168,6 +1168,7 @@ wp_delete_user( $doc_ohne );
 echo "Anwesenheit\n";
 $att_anw = mkl_test_user( 'mkltest_att_anwaerter', 'anwaerter' );
 $att_ohne = mkl_test_user( 'mkltest_att_ohne', 'ohne' );
+$att_spiess2 = mkl_test_user( 'mkltest_att_spiess2', 'spiess' );
 
 wp_set_current_user( $m1 );
 list( $s ) = mkl_req( 'GET', '/attendance/events' );
@@ -1246,7 +1247,10 @@ $att_booked = wp_list_pluck( $d['members'], 'booked', 'id' );
 list( $s2, $d2 ) = mkl_req( 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 3, 'reason' => 'Arbeitsdienst', 'attendance_id' => $att['id'] ) );
 mkl_assert( false === $att_booked[ $m1 ] && 201 === $s2 && 1 === count( $d2 ), 'Nach Stornierung kann man neu buchen' );
 
-list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'id' => $att['id'], 'title' => 'Arbeitsdienst', 'date' => '2026-09-13', 'entries' => array( array( 'user_id' => $m1, 'status' => 'fehlt' ) ) ) );
+// Ein anderer Bearbeiter ändert nur m1; m2 behält seinen ursprünglichen Bearbeiter.
+wp_set_current_user( $att_spiess2 );
+list( $s, $d ) = mkl_req( 'PUT', '/attendance', array( 'id' => $att['id'], 'title' => 'Arbeitsdienst', 'date' => '2026-09-13', 'entries' => array( array( 'user_id' => $m1, 'status' => 'fehlt' ), array( 'user_id' => $m2, 'status' => 'entschuldigt' ) ) ) );
+wp_set_current_user( $spiess );
 $att_status = wp_list_pluck( $d['members'], 'status', 'id' );
 mkl_assert( 200 === $s && 'Arbeitsdienst' === $d['title'] && '2026-09-13' === $d['date'] && 'fehlt' === $att_status[ $m1 ] && 'entschuldigt' === $att_status[ $m2 ], 'Liste ändern: Titel, Datum und Status' );
 
@@ -1258,10 +1262,24 @@ wp_set_current_user( $m1 );
 list( $s, $d ) = mkl_req( 'GET', '/me/attendance' );
 $mine = wp_list_pluck( $d, 'status', 'list_id' );
 mkl_assert( 200 === $s && 'fehlt' === $mine[ $att['id'] ] && 'fehlt' === $mine[ $cal['id'] ], 'Mitglied sieht die eigene Anwesenheit' );
+$mine_by = wp_list_pluck( $d, 'updated_by_name', 'list_id' );
+mkl_assert( get_userdata( $att_spiess2 )->display_name === $mine_by[ $att['id'] ] && get_userdata( $spiess )->display_name === $mine_by[ $cal['id'] ], 'Mitglied sieht, wer den eigenen Status zuletzt gesetzt hat' );
 wp_set_current_user( $m2 );
 list( $s, $d ) = mkl_req( 'GET', '/me/attendance' );
 $mine = wp_list_pluck( $d, 'status', 'list_id' );
-mkl_assert( 'entschuldigt' === $mine[ $att['id'] ] && 'anwesend' === $mine[ $cal['id'] ] && array( 'list_id', 'title', 'date', 'status' ) === array_keys( $d[0] ), 'Anwesenheit nur eigene, ohne Angaben zu anderen' );
+mkl_assert( 'entschuldigt' === $mine[ $att['id'] ] && 'anwesend' === $mine[ $cal['id'] ] && array( 'list_id', 'title', 'date', 'status', 'updated_by_name' ) === array_keys( $d[0] ), 'Anwesenheit nur eigene, ohne Angaben zu anderen' );
+$mine_by = wp_list_pluck( $d, 'updated_by_name', 'list_id' );
+mkl_assert( get_userdata( $spiess )->display_name === $mine_by[ $att['id'] ], 'Unveränderter Status behält seinen Bearbeiter' );
+
+// Altdaten ohne Bearbeiter: nur bei nie nachgespeicherten Listen eindeutig nachtragbar.
+global $wpdb;
+$att_e = MKL_Attendance::entries_table();
+$wpdb->query( "UPDATE $att_e SET updated_by = NULL WHERE list_id IN (" . (int) $att['id'] . ',' . (int) $cal['id'] . ')' );
+$wpdb->update( MKL_Attendance::lists_table(), array( 'updated_at' => '2026-09-01 10:00:00', 'created_at' => '2026-09-01 10:00:00' ), array( 'id' => $cal['id'] ) );
+$wpdb->update( MKL_Attendance::lists_table(), array( 'updated_at' => '2026-09-02 10:00:00', 'created_at' => '2026-09-01 10:00:00' ), array( 'id' => $att['id'] ) );
+MKL_Attendance::backfill_entry_authors();
+$mine_by = wp_list_pluck( mkl_req( 'GET', '/me/attendance' )[1], 'updated_by_name', 'list_id' );
+mkl_assert( null === $mine_by[ $att['id'] ] && get_userdata( $spiess )->display_name === $mine_by[ $cal['id'] ], 'Altdaten: Bearbeiter nur nachgetragen, wo eindeutig' );
 
 // Kalendertermine für die Anwesenheit: vergangene und heutige, keine künftigen; gleiche IDs wie /calendar.
 $att_ics = implode(
@@ -1338,6 +1356,7 @@ MKL_Attendance::delete( $cal['id'] );
 MKL_Attendance::delete( $att_today_id );
 wp_delete_user( $att_anw );
 wp_delete_user( $att_ohne );
+wp_delete_user( $att_spiess2 );
 
 // Konto löschen: alle Daten des Mitglieds verschwinden, die der anderen bleiben.
 global $wpdb;

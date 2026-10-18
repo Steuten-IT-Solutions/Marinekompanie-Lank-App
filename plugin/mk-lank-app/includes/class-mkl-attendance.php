@@ -57,6 +57,7 @@ class MKL_Attendance {
   list_id bigint(20) unsigned NOT NULL,
   user_id bigint(20) unsigned NOT NULL,
   status varchar(15) NOT NULL,
+  updated_by bigint(20) unsigned DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY list_user (list_id,user_id),
   KEY user_id (user_id)
@@ -188,14 +189,15 @@ class MKL_Attendance {
 				$wpdb->insert(
 					$e,
 					array(
-						'list_id' => $id,
-						'user_id' => $user_id,
-						'status'  => $status,
+						'list_id'    => $id,
+						'user_id'    => $user_id,
+						'status'     => $status,
+						'updated_by' => $by,
 					),
-					array( '%d', '%d', '%s' )
+					array( '%d', '%d', '%s', '%d' )
 				);
 			} elseif ( $current[ $user_id ] !== $status ) {
-				$wpdb->update( $e, array( 'status' => $status ), array( 'list_id' => $id, 'user_id' => $user_id ), array( '%s' ), array( '%d', '%d' ) );
+				$wpdb->update( $e, array( 'status' => $status, 'updated_by' => $by ), array( 'list_id' => $id, 'user_id' => $user_id ), array( '%s', '%d' ), array( '%d', '%d' ) );
 			}
 		}
 		return (int) $id;
@@ -216,6 +218,17 @@ class MKL_Attendance {
 	/* ------------------------------------------------------------------ */
 	/* Einträge                                                            */
 	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Ältere Einträge kennen ihren Bearbeiter nicht. Eindeutig ist er nur bei
+	 * Listen, die nie nachträglich gespeichert wurden: dann war es der Ersteller.
+	 */
+	public static function backfill_entry_authors() {
+		global $wpdb;
+		$t = self::lists_table();
+		$e = self::entries_table();
+		$wpdb->query( "UPDATE $e SET updated_by = (SELECT l.created_by FROM $t l WHERE l.id = $e.list_id) WHERE updated_by IS NULL AND list_id IN (SELECT id FROM $t WHERE created_at = updated_at)" ); // phpcs:ignore WordPress.DB.PreparedSQL
+	}
 
 	/** @return array<int, string> user_id → status */
 	public static function statuses( $list_id ) {
@@ -245,18 +258,20 @@ class MKL_Attendance {
 		$e    = self::entries_table();
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT l.id, l.title, l.event_date, a.status FROM $e a JOIN $t l ON l.id = a.list_id WHERE a.user_id = %d ORDER BY l.event_date DESC, l.id DESC", // phpcs:ignore WordPress.DB.PreparedSQL
+				"SELECT l.id, l.title, l.event_date, a.status, a.updated_by FROM $e a JOIN $t l ON l.id = a.list_id WHERE a.user_id = %d ORDER BY l.event_date DESC, l.id DESC", // phpcs:ignore WordPress.DB.PreparedSQL
 				$user_id
 			),
 			ARRAY_A
 		);
 		return array_map(
 			function ( $r ) {
+				$by = $r['updated_by'] ? get_userdata( (int) $r['updated_by'] ) : null;
 				return array(
-					'list_id' => (int) $r['id'],
-					'title'   => $r['title'],
-					'date'    => $r['event_date'],
-					'status'  => $r['status'],
+					'list_id'         => (int) $r['id'],
+					'title'           => $r['title'],
+					'date'            => $r['event_date'],
+					'status'          => $r['status'],
+					'updated_by_name' => $by ? $by->display_name : null,
 				);
 			},
 			$rows
