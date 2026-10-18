@@ -697,6 +697,7 @@ class MKL_REST {
 		}
 		$reason = sanitize_text_field( (string) $req->get_param( 'reason' ) );
 		MKL_Ranks::set_rank( $id, $change['current'], $change['target'], $change['kind'], $points, $reason, get_current_user_id() );
+		MKL_Push::rank_changed( $id, $change['target'], $change['kind'] );
 		return rest_ensure_response(
 			array(
 				'rank_status'  => MKL_Ranks::status_for_user( $id ),
@@ -1490,8 +1491,10 @@ class MKL_REST {
 			}
 		}
 
-		$ids = MKL_DB::add_points( $user_ids, $points, $reason, $catalog_id, $date, get_current_user_id(), $attendance_id );
-		return new WP_REST_Response( array_map( array( 'MKL_DB', 'get_points_row' ), $ids ), 201 );
+		$ids  = MKL_DB::add_points( $user_ids, $points, $reason, $catalog_id, $date, get_current_user_id(), $attendance_id );
+		$rows = array_map( array( 'MKL_DB', 'get_points_row' ), $ids );
+		MKL_Push::points_added( $rows );
+		return new WP_REST_Response( $rows, 201 );
 	}
 
 	public static function delete_points( WP_REST_Request $req ) {
@@ -1677,8 +1680,10 @@ class MKL_REST {
 		if ( '' === $reason ) {
 			return self::error( 'Bitte einen Grund angeben.' );
 		}
-		$ids = MKL_DB::add_penalty( $user_ids, (int) $cents, $reason, $date, get_current_user_id() );
-		return new WP_REST_Response( array_map( array( 'MKL_DB', 'get_penalty' ), $ids ), 201 );
+		$ids  = MKL_DB::add_penalty( $user_ids, (int) $cents, $reason, $date, get_current_user_id() );
+		$rows = array_map( array( 'MKL_DB', 'get_penalty' ), $ids );
+		MKL_Push::penalties_added( $rows );
+		return new WP_REST_Response( $rows, 201 );
 	}
 
 	public static function update_penalty( WP_REST_Request $req ) {

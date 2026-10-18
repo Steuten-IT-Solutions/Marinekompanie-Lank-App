@@ -16,6 +16,7 @@ class MKL_Settings {
 		add_action( 'admin_post_mkl_gallery_sync', array( __CLASS__, 'gallery_sync' ) );
 		add_action( 'admin_post_mkl_drive_connect', array( __CLASS__, 'drive_connect' ) );
 		add_action( 'admin_post_mkl_drive_disconnect', array( __CLASS__, 'drive_disconnect' ) );
+		add_action( 'admin_post_mkl_push_test', array( __CLASS__, 'push_test' ) );
 		// Rückkehr von Google: admin-post.php ohne „action“ (siehe MKL_Drive::redirect_uri()).
 		add_action( 'admin_post', array( __CLASS__, 'drive_callback' ) );
 		add_action( 'admin_post_nopriv', array( __CLASS__, 'drive_callback' ) );
@@ -118,8 +119,78 @@ class MKL_Settings {
 			<?php endif; ?>
 
 			<?php self::render_gallery(); ?>
+			<?php self::render_push(); ?>
 		</div>
 		<?php
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Push-Benachrichtigungen                                             */
+	/* ------------------------------------------------------------------ */
+
+	private static function render_push() {
+		$missing = MKL_Push::missing_requirements();
+		$count   = MKL_Push::count();
+		$mine    = count( MKL_Push::for_user( get_current_user_id() ) );
+		$msg     = isset( $_GET['mkl_push_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['mkl_push_msg'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$error   = ! empty( $_GET['mkl_push_error'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		?>
+		<h2 id="push">Push-Benachrichtigungen</h2>
+		<?php if ( $msg ) : ?>
+			<div class="notice <?php echo $error ? 'notice-error' : 'notice-success'; ?> inline"><p><?php echo esc_html( $msg ); ?></p></div>
+		<?php endif; ?>
+		<?php if ( $missing ) : ?>
+			<div class="notice notice-error inline"><p>
+				Auf diesem Server sind keine Push-Benachrichtigungen möglich. Es fehlt: <?php echo esc_html( implode( ', ', $missing ) ); ?>.
+				Bitte beim Hoster nachfragen.
+			</p></div>
+		<?php else : ?>
+			<p>
+				Server-Voraussetzungen erfüllt (OpenSSL mit P-256 und AES-GCM).<br />
+				Aktive Abos: <strong><?php echo esc_html( $count['devices'] ); ?></strong> Geräte von <strong><?php echo esc_html( $count['accounts'] ); ?></strong> Konten.
+				In der Warteschlange: <?php echo esc_html( $count['queued'] ); ?>.
+			</p>
+			<p class="description">
+				Mitglieder schalten Benachrichtigungen in der App unter Konto → Benachrichtigungen ein. Auf dem iPhone geht das nur in der
+				über „Zum Home-Bildschirm“ installierten App (ab iOS 16.4). Der Versand läuft über WP-Cron, also beim nächsten Seitenaufruf.
+			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="mkl_push_test" />
+				<?php wp_nonce_field( 'mkl_push_test' ); ?>
+				<?php submit_button( sprintf( 'Testbenachrichtigung an meine Geräte (%d)', $mine ), 'secondary', 'submit', false, $mine ? array() : array( 'disabled' => 'disabled' ) ); ?>
+			</form>
+		<?php endif; ?>
+		<?php
+	}
+
+	public static function push_test() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Keine Berechtigung.' );
+		}
+		check_admin_referer( 'mkl_push_test' );
+		$ok     = 0;
+		$errors = array();
+		foreach ( MKL_Push::for_user( get_current_user_id() ) as $sub ) {
+			$result = MKL_Push::send_test( $sub );
+			if ( 'ok' === $result['status'] ) {
+				++$ok;
+			} else {
+				if ( 'gone' === $result['status'] ) {
+					MKL_Push::delete_subscription( (int) $sub['id'] );
+				}
+				$errors[] = $result['message'] ? $result['message'] : 'Gerät nicht mehr erreichbar (entfernt).';
+			}
+		}
+		$msg = sprintf( '%d Testbenachrichtigung(en) verschickt.', $ok ) . ( $errors ? ' Fehler: ' . implode( ' | ', $errors ) : '' );
+		wp_safe_redirect(
+			self::page_url(
+				array(
+					'mkl_push_msg'   => rawurlencode( $msg ),
+					'mkl_push_error' => $errors ? 1 : 0,
+				)
+			) . '#push'
+		);
+		exit;
 	}
 
 	/* ------------------------------------------------------------------ */

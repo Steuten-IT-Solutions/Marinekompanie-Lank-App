@@ -9,6 +9,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt), eigene Anwesenheit.
 - **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
+- **Benachrichtigungen:** Push-Nachricht aufs Handy bei neuer Strafe, neuen Punkten oder neuem Dienstgrad. Jedes Mitglied schaltet sie unter **Konto → Benachrichtigungen** je Gerät ein und wählt die Ereignisse; Betrag und Grund einer Strafe erscheinen nur, wenn man das ausdrücklich einschaltet. Termine, News und Erinnerungen folgen (siehe Issue #5).
 - **Spieß:** Punkte und Strafen vergeben, Anwesenheit je Termin erfassen, Anwärter zu Mitgliedern befördern, Mitglieder befördern und degradieren, Titel (z. B. Kapitän, Ehrenmitglied) vergeben. Unter **Einrichtung**: Punktekatalog, Dienstgrade und Titel pflegen; für Admins zusätzlich „Mitglieder verwalten“ (anlegen, Rollen, Namen, Passwörter).
 
 ### Rollen
@@ -60,7 +61,7 @@ Alles steckt in einem **WordPress-Plugin** (`plugin/mk-lank-app`). Es läuft auf
 ```
 app/                       React + TypeScript (Vite) – Quellcode der PWA
   src/views/               Termine, News, Galerie, Meins (Punkte/Strafen/Anwesenheit), Spieß-Bereich, Konto
-  public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten)
+  public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten, Push-Benachrichtigungen)
   e2e/                     Playwright-Tests
 plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-db.php        Tabellen + Datenzugriff (Beträge in Cent)
@@ -76,6 +77,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-gallery.php   Galerie: Abgleich, Bildgrößen, Ablage, Auslieferung
   includes/class-mkl-calendar.php  Google Kalender / iCal, mit Zwischenspeicher
   includes/class-mkl-app-page.php  liefert die App unter /app/ aus
+  includes/class-mkl-push.php      Push-Benachrichtigungen (Web Push: RFC 8291/8292 mit OpenSSL, Warteschlange)
   includes/class-mkl-settings.php  Einstellungen → Kompanie-App
   app-dist/                Build-Ausgabe des Frontends (nicht im Git)
 plugin/tests/              Integrationstests der REST-API
@@ -168,7 +170,8 @@ scripts/                   Build- und Test-Skripte
     - Der direkte Abruf der Dateien ist per `.htaccess` gesperrt. **Das wirkt nur unter Apache.** Läuft die Webseite auf nginx, muss der Hoster den Zugriff auf `/wp-content/uploads/mkl-private/` sperren (z. B. `location ^~ /wp-content/uploads/mkl-private/ { deny all; }`). Prüfen lässt sich das, indem man die Adresse des Ordners im Browser aufruft: Es muss eine Fehlermeldung (403) kommen.
     - Ist eine Datei größer als das Upload-Limit des Servers (PHP `upload_max_filesize`/`post_max_size`), meldet die App das beim Hochladen.
     - **Offline:** Was ein Mitglied einmal geöffnet oder heruntergeladen hat, speichert die App auf dem Gerät; es ist danach auch ohne Netz lesbar. Vorab wird nichts geladen. Beim Abmelden wird alles wieder gelöscht.
-11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Dienstgrade, Titel und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server.
+11. Die **Datenschutzerklärung** ergänzen: Die App verarbeitet Punkte, Dienstgrade, Titel und Strafen der Mitglieder; die Galerie legt Kopien der Bilder aus Google Drive auf dem eigenen Server ab. Die Daten liegen in der WordPress-Datenbank bzw. im Upload-Verzeichnis auf dem eigenen Server. Für Push-Benachrichtigungen speichert die App je Gerät die Push-Adresse und die Schlüssel des Geräts; die Nachrichten laufen Ende-zu-Ende-verschlüsselt über den Push-Dienst des Browsers (Apple, Google bzw. Mozilla).
+12. **Push-Benachrichtigungen prüfen:** Unter **Einstellungen → Kompanie-App → Push-Benachrichtigungen** steht, ob der Server sie verschicken kann (PHP mit OpenSSL, P-256 und AES-GCM). Nach dem Einschalten in der App schickt der Knopf **„Testbenachrichtigung an meine Geräte“** eine Probe. Verschickt wird über WP-Cron, also beim nächsten Seitenaufruf; die App stößt das nach jeder Strafe/Punktevergabe selbst an. Bietet der Hoster echte Cronjobs an, ist ein Aufruf von `wp-cron.php` alle 5–15 Minuten zuverlässiger.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
@@ -214,6 +217,9 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 # REST-API: Rechte, Validierung, Summen, Dienstgrade, Titel, Dokumente, ICS-Parser
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
+# Push: offizieller Testvektor aus RFC 8291, VAPID-Signatur, REST, simulierter Push-Dienst
+php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/push-test.php
+
 # Galerie mit simuliertem Google Drive (setzt die Beispiel-Galerie der Test-Instanz zurück)
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/gallery-test.php
 
@@ -225,6 +231,6 @@ GitHub Actions führt bei jedem Push und jedem Pull Request alles aus: Syntaxpr�
 
 ## Ideen für später
 
-- Push-Benachrichtigung bei neuer Strafe oder neuem Termin (iOS ab 16.4, nur bei installierter App)
+- Push-Benachrichtigungen für Termine, News und Erinnerungen, auch für Gäste (Issue #5, Teil 2)
 - Zu- und Absagen für Termine
 - Strafenkatalog analog zum Punktekatalog

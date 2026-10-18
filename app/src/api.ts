@@ -476,6 +476,29 @@ async function requestFull<T>(
   return { data: data as T, headers: res.headers };
 }
 
+/** Ereignistyp für Push-Benachrichtigungen. */
+export interface PushType {
+  key: string;
+  label: string;
+}
+
+export interface PushSubscriptionPrefs {
+  types: string[];
+  /** Strafen mit Betrag und Grund anzeigen. */
+  details: boolean;
+}
+
+export interface PushStatus {
+  /** Server kann Push verschicken (OpenSSL vorhanden). */
+  supported: boolean;
+  /** VAPID-Schlüssel (applicationServerKey), null ohne Unterstützung. */
+  public_key: string | null;
+  /** Ereignisse, die dieses Konto abonnieren kann (leer = keine). */
+  types: PushType[];
+  /** Abo dieses Geräts, null = nicht abonniert. */
+  subscription: PushSubscriptionPrefs | null;
+}
+
 export const api = {
   me: () => request<Me>('GET', '/me'),
   myPoints: () => request<PointEntry[]>('GET', '/me/points'),
@@ -597,4 +620,13 @@ export const api = {
   createDocCategory: (title: string) => request<DocCategory>('POST', '/document-categories', { title }),
   updateDocCategory: (id: number, title: string) => request<DocCategory>('PATCH', `/document-categories/${id}`, { title }),
   deleteDocCategory: (id: number) => request<{ deleted: boolean }>('DELETE', `/document-categories/${id}`),
+
+  /** Endpoint im Body statt in der Adresse, damit er nicht in Server-Logs landet. */
+  pushStatus: (endpoint?: string) => request<PushStatus>('POST', '/me/push/status', endpoint ? { endpoint } : {}),
+  pushSubscribe: (sub: PushSubscriptionJSON, prefs?: Partial<PushSubscriptionPrefs>) =>
+    request<PushSubscriptionPrefs>('POST', '/me/push', { endpoint: sub.endpoint, keys: sub.keys, ...prefs }),
+  pushUpdate: (endpoint: string, prefs: Partial<PushSubscriptionPrefs>) =>
+    request<PushSubscriptionPrefs>('PUT', '/me/push', { endpoint, ...prefs }),
+  pushUnsubscribe: (endpoint: string) => request<{ deleted: boolean }>('DELETE', '/me/push', { endpoint }),
+  pushTest: (endpoint: string) => request<{ sent: boolean }>('POST', '/me/push/test', { endpoint }),
 };

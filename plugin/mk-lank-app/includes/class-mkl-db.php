@@ -208,6 +208,9 @@ class MKL_DB {
 		foreach ( MKL_Attendance::schema( $charset ) as $sql ) {
 			dbDelta( $sql );
 		}
+		foreach ( MKL_Push::schema( $charset ) as $sql ) {
+			dbDelta( $sql );
+		}
 
 		update_option( 'mkl_db_version', MKL_DB_VERSION );
 	}

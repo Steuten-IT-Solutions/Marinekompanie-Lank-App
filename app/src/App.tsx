@@ -3,6 +3,7 @@ import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { caps } from './format';
 import { detectPlatform, installDoneText, isStandalone, promptInstall, useCanPrompt, useInstallState } from './install';
+import { disablePush, syncPush } from './push';
 import { navigate, useRoute } from './router';
 import Dokumente from './views/Dokumente';
 import DokumenteVerwalten from './views/DokumenteVerwalten';
@@ -131,6 +132,8 @@ function InstallBanner() {
 
 async function logout() {
   try {
+    // Persönliche Benachrichtigungen sollen nach dem Abmelden nicht mehr auf diesem Gerät ankommen.
+    await Promise.race([disablePush().catch(() => undefined), new Promise((r) => setTimeout(r, 3000))]);
     if ('caches' in window) {
       const keys = await caches.keys();
       await Promise.all(keys.map((k) => caches.delete(k)));
@@ -168,6 +171,10 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    syncPush().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const on = () => setOnline(true);
