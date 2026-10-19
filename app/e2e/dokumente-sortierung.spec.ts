@@ -53,8 +53,8 @@ test('Dokumente: alle vier Sortierungen innerhalb einer Kategorie, Reihenfolge d
   }
   expect(titles(groupDocuments(docs, categories, 'name-asc')[0].docs)).toEqual(['Ehrenordnung', 'Satzung']);
   expect(titles(groupDocuments(docs, categories, 'date-desc')[0].docs)).toEqual(['Ehrenordnung', 'Satzung']);
-  // Ohne Angabe gilt „Name A–Z“.
-  expect(titles(groupDocuments(docs, categories)[1].docs)).toEqual(expected['name-asc']);
+  // Ohne Angabe gilt „Stand neu → alt“.
+  expect(titles(groupDocuments(docs, categories)[1].docs)).toEqual(expected['date-desc']);
 });
 
 test('Dokumente: gleicher Stand wird nach Name sortiert, Umlaute wie Grundbuchstaben', () => {

@@ -10,7 +10,7 @@ export const DOC_SORT_LABELS: Record<DocSort, string> = {
   'date-asc': 'Stand alt → neu',
 };
 
-export const DEFAULT_DOC_SORT: DocSort = 'name-asc';
+export const DEFAULT_DOC_SORT: DocSort = 'date-desc';
 
 /** Gemeinsam für Mitgliederansicht und „Dokumente verwalten“, je Gerät. */
 const SORT_KEY = 'mkl_doc_sort';
