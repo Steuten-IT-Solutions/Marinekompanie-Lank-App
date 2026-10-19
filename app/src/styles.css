@@ -513,11 +513,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 
 /* Dokumente mit Kategorien und verschiedenen Dateitypen */
+/* Kategorien einklappbar: Kopf in der Optik von .section-title, Pfeil dreht sich beim Aufklappen. */
+.doc-sort { margin: 0 0 6px; }
 .doc-group + .doc-group { margin-top: 6px; }
+.doc-group-title { margin: 10px 2px; }
+.doc-group-toggle {
+  flex: 0 1 auto; min-width: 0; min-height: 44px; padding: 6px 4px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; text-align: center;
+}
+.doc-group-arrow { flex: none; display: inline-block; font-size: 1.3rem; line-height: 1; transition: transform 0.15s ease; }
+.doc-group-toggle[aria-expanded='true'] .doc-group-arrow { transform: rotate(90deg); }
+.doc-group-body { margin-bottom: 18px; }
+@media (prefers-reduced-motion: reduce) { .doc-group-arrow { transition: none; } }
 .doc-icon-bild { color: var(--navy); }
 .doc-icon-datei { color: var(--brass-dark); }
 .button-row.single { grid-template-columns: 1fr; }
-.doc-admin-group + .doc-admin-group { margin-top: 10px; }
 .doc-edit { padding: 14px 16px; }
 
 /* Mehrere Mitglieder anlegen */

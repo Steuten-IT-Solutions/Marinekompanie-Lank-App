@@ -685,6 +685,7 @@ test('Dokumente: Kategorien, Sichtbarkeit, Office-Dateien und Offline-Lesen', as
   // Spieß ohne Admin-Rechte sieht das Protokoll, darf aber nichts pflegen.
   await login(page, 'spiess');
   await page.getByRole('button', { name: 'Dokumente' }).click();
+  await page.locator('.doc-group-toggle', { hasText: kategorie }).click();
   const prot = page.locator('.doc-card', { hasText: protokoll });
   await expect(prot).toContainText('Nur Spieße');
   await expect(prot.getByRole('button', { name: 'Öffnen' })).toHaveCount(0);
@@ -696,6 +697,9 @@ test('Dokumente: Kategorien, Sichtbarkeit, Office-Dateien und Offline-Lesen', as
   // Mitglied: Satzung unter ihrer Kategorie, kein Protokoll.
   await login(page, 'mariner1');
   await page.getByRole('button', { name: 'Dokumente' }).click();
+  const satzungGruppe = page.locator('.doc-group-toggle', { hasText: kategorie });
+  await expect(satzungGruppe).toHaveAttribute('aria-expanded', 'false');
+  await satzungGruppe.click();
   await expect(page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card', { hasText: 'Satzung' }).first()).toBeVisible();
   await expect(page.locator('.doc-card', { hasText: protokoll })).toHaveCount(0);
   const card = page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card').last();
@@ -709,12 +713,15 @@ test('Dokumente: Kategorien, Sichtbarkeit, Office-Dateien und Offline-Lesen', as
   await expect(page.locator('.pdf-page')).toHaveAttribute('alt', 'Satzung, Seite 1 von 1');
   await shot(page, '20-satzung');
   await page.getByRole('button', { name: '‹ Alle Dokumente' }).click();
+  // Die Kategorie des geöffneten Dokuments ist beim Zurückkehren noch offen.
+  await expect(satzungGruppe).toHaveAttribute('aria-expanded', 'true');
   await expect(card.locator('.doc-offline')).toHaveText('✓ Auch offline verfügbar');
 
   // Ohne Netz: App neu laden und die Satzung erneut öffnen.
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('.offline')).toBeVisible();
+  await satzungGruppe.click();
   await page.locator('.doc-group', { hasText: kategorie }).locator('.doc-card').last().getByRole('button', { name: 'Öffnen' }).click();
   await expect(page.locator('.pdf-page')).toHaveCount(1);
   await context.setOffline(false);
@@ -729,6 +736,98 @@ test('Dokumente: Kategorien, Sichtbarkeit, Office-Dateien und Offline-Lesen', as
   await page.goto('/app/');
   await expect(page.getByRole('button', { name: 'Dokumente' })).toHaveCount(0);
   expect((await page.request.get(docUrl)).status()).toBe(401);
+});
+
+test('Dokumente: Kategorien eingeklappt, Sortierung nach Name oder Stand, auf dem Gerät gemerkt', async ({ page }) => {
+  const tag = Date.now().toString(36);
+  const protokolle = `Protokolle ${tag}`;
+  const archiv = `Archiv ${tag}`;
+  const gruppe = (name: string) => page.locator('.doc-group-toggle', { hasText: name });
+  const titel = (name: string) => page.locator('.doc-group', { has: gruppe(name) }).locator('.row-title');
+  const [p10, p2, aerzte] = [`Protokoll 10 ${tag}`, `Protokoll 2 ${tag}`, `Ärzteliste ${tag}`];
+
+  await login(page, 'admin', process.env.MKL_ADMIN_PASSWORD ?? 'admin');
+  await page.getByRole('button', { name: 'Dokumente' }).click();
+  await page.getByRole('button', { name: 'Dokumente verwalten' }).click();
+  for (const name of [protokolle, archiv]) {
+    await page.getByPlaceholder('z. B. Protokolle').fill(name);
+    await page.getByRole('button', { name: 'Kategorie hinzufügen' }).click();
+    await expect(page.locator('.toast')).toHaveText('Kategorie angelegt');
+  }
+
+  // Nach dem Hochladen ist die Kategorie des neuen Dokuments offen.
+  for (const [name, stand] of [
+    [p10, '2026-03-01'],
+    [p2, '2026-05-01'],
+    [aerzte, '2025-01-01'],
+  ]) {
+    await page.getByLabel('Datei', { exact: true }).setInputFiles({ name: 'x.pdf', mimeType: 'application/pdf', buffer: makePdf(name) });
+    await page.getByLabel('Titel', { exact: true }).fill(name);
+    await page.getByLabel('Kategorie', { exact: true }).selectOption({ label: protokolle });
+    await page.getByLabel('Stand').fill(stand);
+    await page.getByRole('button', { name: 'Hochladen' }).click();
+    await expect(page.locator('.toast')).toHaveText(`„${name}“ hochgeladen`);
+  }
+  await expect(gruppe(protokolle)).toHaveAttribute('aria-expanded', 'true');
+  await expect(gruppe(protokolle)).toHaveText(new RegExp(`${protokolle} \\(3\\)`));
+  await page.getByLabel('Sortierung').selectOption({ label: 'Name A–Z' });
+  await expect(titel(protokolle)).toHaveText([aerzte, p2, p10]);
+
+  // Während des Bearbeitens bleibt die Kategorie offen; nach dem Verschieben ist die neue offen.
+  await page.locator('.card.row', { hasText: aerzte }).getByRole('button', { name: 'Bearbeiten' }).click();
+  await gruppe(protokolle).click();
+  await expect(gruppe(protokolle)).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('.doc-edit').getByLabel('Kategorie').selectOption({ label: archiv });
+  await page.locator('.doc-edit').getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.locator('.toast')).toHaveText('Gespeichert');
+  await expect(gruppe(archiv)).toHaveAttribute('aria-expanded', 'true');
+  await expect(gruppe(archiv)).toHaveText(new RegExp(`${archiv} \\(1\\)`));
+
+  // Sortierung wirkt auch hier.
+  await page.getByLabel('Sortierung').selectOption({ label: 'Stand alt → neu' });
+  await expect(titel(protokolle)).toHaveText([p10, p2]);
+
+  // Neu geöffnet: alles eingeklappt, die Wahl ist noch da.
+  await page.reload();
+  await expect(page.getByLabel('Sortierung')).toHaveValue('date-asc');
+  await expect(gruppe(protokolle)).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.doc-group-toggle[aria-expanded="true"]')).toHaveCount(0);
+
+  // Mitglied: dieselbe Einstellung auf diesem Gerät, alle Kategorien zu.
+  await login(page, 'mariner1');
+  await page.getByRole('button', { name: 'Dokumente' }).click();
+  await expect(page.locator('.doc-group-toggle').first()).toBeVisible();
+  await expect(page.locator('.doc-group-toggle[aria-expanded="true"]')).toHaveCount(0);
+  await expect(page.locator('.doc-card').first()).toBeHidden();
+  await expect(page.getByLabel('Sortierung')).toHaveValue('date-asc');
+  await gruppe(protokolle).click();
+  await expect(gruppe(protokolle)).toHaveAttribute('aria-expanded', 'true');
+  await expect(titel(protokolle)).toHaveText([p10, p2]);
+  await page.getByLabel('Sortierung').selectOption({ label: 'Stand neu → alt' });
+  await expect(titel(protokolle)).toHaveText([p2, p10]);
+  await page.getByLabel('Sortierung').selectOption({ label: 'Name Z–A' });
+  await expect(titel(protokolle)).toHaveText([p10, p2]);
+  await shot(page, '19b-dokumente-kategorien');
+  await gruppe(protokolle).click();
+  await expect(gruppe(protokolle)).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.doc-card', { hasText: p2 })).toBeHidden();
+
+  await page.reload();
+  await expect(page.getByLabel('Sortierung')).toHaveValue('name-desc');
+
+  // Ohne Kategorien steht die Liste direkt da, ohne Einklappen.
+  await page.context().route(/mk-lank(\/|%2F)v1(\/|%2F)documents/, async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    await route.fulfill({ response, json: { ...json, categories: [] } });
+  });
+  await page.reload();
+  await expect(page.locator('.doc-card', { hasText: p2 })).toBeVisible();
+  await expect(page.locator('.doc-group-toggle')).toHaveCount(0);
+  await page.context().unrouteAll();
+
+  // Zurück auf den Standard, damit andere Tests nicht davon abhängen.
+  await page.evaluate(() => localStorage.removeItem('mkl_doc_sort'));
 });
 
 test('Dienstgrade: Anlage mit Dienstgrad, Beförderungsübersicht, Beförderung durch den Spieß', async ({ page }) => {
