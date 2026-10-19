@@ -1462,6 +1462,65 @@ mkl_assert(
 	'Eigener API-Key: nur die eigenen Kalender-IDs, mit eigenem Key (nicht dem des Plugins)'
 );
 
+// Mehrere Kalender-IDs mit Leerzeichen und leeren Einträgen: je ID eine Anfrage.
+update_option( 'mkl_calendar_ids', ' eins@group.calendar.google.com , ,zwei@group.calendar.google.com,' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( array( 'eins@group.calendar.google.com', 'zwei@group.calendar.google.com' ) === MKL_Calendar::get_calendar_ids(), 'Kalender-IDs: getrimmt, leere Einträge entfallen' );
+mkl_assert(
+	! is_wp_error( $res ) && 2 === count( $res ) && 2 === count( $src_urls )
+	&& false !== strpos( $src_urls[0], rawurlencode( 'eins@group.calendar.google.com' ) ) && false !== strpos( $src_urls[1], rawurlencode( 'zwei@group.calendar.google.com' ) ),
+	'Mehrere eigene Kalender-IDs: je eine Anfrage, Termine zusammengeführt'
+);
+
+// Eigener API-Key ohne Kalender-IDs: die Auswahl des Plugins füllt die IDs nicht mehr auf.
+update_option( 'mkl_calendar_ids', '' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( 'iCal-Adresse (ICS)' === MKL_Calendar::describe_source() && array( 'https://mkltest.invalid/quelle.ics' ) === $src_urls, 'API-Key ohne Kalender-IDs: iCal, keine Anfrage an Google' );
+update_option( 'mkl_ics_url', '' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( ! MKL_Calendar::is_configured() && 'Nicht konfiguriert' === MKL_Calendar::describe_source(), 'Nur API-Key ohne Kalender-IDs → nicht konfiguriert' );
+mkl_assert( is_wp_error( $res ) && 'mkl_calendar_not_configured' === $res->get_error_code() && array() === $src_urls, 'Nur API-Key ohne Kalender-IDs: keine Anfrage an Google' );
+
+// Vergangene Termine (Anwesenheit) nutzen dieselben Quellen.
+$res = MKL_Calendar::get_past_events();
+mkl_assert( is_wp_error( $res ) && 'mkl_calendar_not_configured' === $res->get_error_code() && array() === $src_urls, 'Vergangene Termine ohne eigene Quelle: nicht eingerichtet, keine Anfrage' );
+update_option( 'mkl_calendar_ids', 'eigen@group.calendar.google.com' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_past_events();
+mkl_assert(
+	! is_wp_error( $res ) && 1 === count( $src_urls ) && false !== strpos( $src_urls[0], rawurlencode( 'eigen@group.calendar.google.com' ) ) && false !== strpos( $src_urls[0], 'key=EIGENER-KEY' ),
+	'Vergangene Termine: eigener API-Key mit eigenen Kalender-IDs'
+);
+
+// Einstellungsseite: Hinweis „Kein Kalender eingerichtet“ nur ohne eigene Quelle, das Plugin wird nicht mehr genannt.
+require_once ABSPATH . 'wp-admin/includes/admin.php';
+$src_admin = mkl_test_user( 'mkltest_kalenderadmin', 'admin' );
+wp_set_current_user( $src_admin );
+$src_page = function () {
+	ob_start();
+	MKL_Settings::render();
+	return ob_get_clean();
+};
+$html = $src_page();
+mkl_assert( false === strpos( $html, 'Kein Kalender eingerichtet' ) && false !== strpos( $html, 'Google Calendar API (eigener API-Key)' ), 'Einstellungsseite mit eigener Quelle: kein Hinweis' );
+update_option( 'mkl_calendar_ids', '' );
+update_option( 'mkl_google_api_key', '' );
+$html = $src_page();
+mkl_assert( false !== strpos( $html, 'Kein Kalender eingerichtet' ) && false !== strpos( $html, 'Nicht konfiguriert' ), 'Einstellungsseite ohne eigene Quelle: Hinweis „Kein Kalender eingerichtet“' );
+mkl_assert( false === strpos( $html, 'Private Google Calendars' ), 'Einstellungsseite nennt „Private Google Calendars“ nicht mehr' );
+update_option( 'mkl_ics_url', 'https://mkltest.invalid/quelle.ics' );
+$html = $src_page();
+mkl_assert( false === strpos( $html, 'Kein Kalender eingerichtet' ) && false !== strpos( $html, 'iCal-Adresse (ICS)' ), 'Einstellungsseite mit iCal-Adresse: kein Hinweis' );
+wp_set_current_user( 0 );
+wp_delete_user( $src_admin );
+
 remove_filter( 'pre_http_request', $src_filter, 10 );
 foreach ( $src_saved as $opt => $value ) {
 	null === $value ? delete_option( $opt ) : update_option( $opt, $value );
