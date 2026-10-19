@@ -587,6 +587,18 @@ mkl_assert( in_array( 'Mkltest Schützenfest', $titles, true ) && ! in_array( 'A
 
 $html = do_shortcode( '[mkl_termine anzahl="50"]' );
 mkl_assert( false !== strpos( $html, 'Mkltest Schützenfest' ) && false !== strpos( $html, 'href="https://example.org/fest"' ) && false !== strpos( $html, '19:00–23:00 Uhr' ), 'Shortcode [mkl_termine] zeigt Termine mit Link und Uhrzeit' );
+mkl_assert( false === strpos( $html, '>Alt<' ), 'Shortcode [mkl_termine] zeigt keine vergangenen Termine' );
+$html = do_shortcode( '[mkl_termine anzahl="1"]' );
+mkl_assert( 1 === substr_count( $html, '<li class="mkl-termin">' ), 'Shortcode [mkl_termine anzahl="1"] begrenzt die Anzahl' );
+$when = function ( $from, $to ) {
+	return MKL_Shortcodes::when( array( 'start_date' => $from, 'end_date' => $to, 'start_time' => null, 'end_time' => null ) );
+};
+mkl_assert(
+	$when( '2027-06-25', '2027-06-28' ) === '25.–28. ' . wp_date( 'F Y', strtotime( '2027-06-15 12:00' ) )
+	&& $when( '2026-09-27', '2026-10-02' ) === '27. ' . wp_date( 'F', strtotime( '2026-09-15 12:00' ) ) . '–2. ' . wp_date( 'F Y', strtotime( '2026-10-15 12:00' ) )
+	&& $when( '2026-12-30', '2027-01-02' ) === '30. ' . wp_date( 'F Y', strtotime( '2026-12-15 12:00' ) ) . '–2. ' . wp_date( 'F Y', strtotime( '2027-01-15 12:00' ) ),
+	'Mehrtägige Termine: Datum im selben Monat, über den Monats- und über den Jahreswechsel'
+);
 
 wp_set_current_user( $admin );
 list( $s ) = mkl_req( 'DELETE', '/events/' . $ev2['id'] );
