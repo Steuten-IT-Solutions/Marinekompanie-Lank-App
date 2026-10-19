@@ -160,15 +160,24 @@ document.addEventListener("keydown",key);document.body.appendChild(box);show(i);
 		return $html . '</ol>';
 	}
 
-	/** „Sa., 27. Juni 2027 · 19:00–23:00 Uhr“ bzw. „25.–28. Juni 2027“. */
+	/**
+	 * „Sa., 27. Juni 2027 · 19:00–23:00 Uhr“ bzw. „25.–28. Juni 2027“,
+	 * „27. September–2. Oktober 2026“ oder über den Jahreswechsel „30. Dezember 2026–2. Januar 2027“.
+	 */
 	public static function when( array $ev ) {
 		$tz    = wp_timezone();
 		$start = ( new DateTimeImmutable( $ev['start_date'], $tz ) )->getTimestamp();
 		$text  = wp_date( 'D., j. F Y', $start );
 		if ( $ev['end_date'] ) {
-			$end   = ( new DateTimeImmutable( $ev['end_date'], $tz ) )->getTimestamp();
-			$same  = wp_date( 'Y-m', $start ) === wp_date( 'Y-m', $end );
-			$text  = ( $same ? wp_date( 'j.', $start ) : wp_date( 'j. F', $start ) ) . '–' . wp_date( 'j. F Y', $end );
+			$end = ( new DateTimeImmutable( $ev['end_date'], $tz ) )->getTimestamp();
+			if ( wp_date( 'Y-m', $start ) === wp_date( 'Y-m', $end ) ) {
+				$from = wp_date( 'j.', $start );
+			} elseif ( wp_date( 'Y', $start ) === wp_date( 'Y', $end ) ) {
+				$from = wp_date( 'j. F', $start );
+			} else {
+				$from = wp_date( 'j. F Y', $start );
+			}
+			$text = $from . '–' . wp_date( 'j. F Y', $end );
 		}
 		if ( $ev['start_time'] ) {
 			$text .= ' · ' . $ev['start_time'] . ( $ev['end_time'] ? '–' . $ev['end_time'] : '' ) . ' Uhr';
