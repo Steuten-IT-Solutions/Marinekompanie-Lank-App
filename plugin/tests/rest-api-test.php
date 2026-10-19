@@ -1386,6 +1386,88 @@ mkl_assert( 1 === $m1_points && 1 === $m1_pen && isset( $m1_att[ $m1 ] ) && ! is
 MKL_Attendance::delete( $del_list );
 $wpdb->query( 'DELETE FROM ' . MKL_DB::table( 'penalties' ) . " WHERE reason = 'Löschtest von'" );
 
+echo "Kalenderquellen (ohne Private Google Calendars)\n";
+// Das Plugin „Private Google Calendars“ simulieren, als wäre es aktiv und eingerichtet.
+if ( ! class_exists( 'PGC_GoogleCalendarClient' ) ) {
+	class PGC_GoogleCalendarClient {} // phpcs:ignore
+}
+if ( ! function_exists( 'getGoogleClient' ) ) {
+	function getGoogleClient() { // phpcs:ignore
+		throw new Exception( 'Private Google Calendars darf nicht genutzt werden' );
+	}
+}
+$src_options = array( 'mkl_ics_url', 'mkl_calendar_ids', 'mkl_google_api_key', 'pgc_selected_calendar_ids', 'pgc_public_calendarlist', 'pgc_access_token', 'pgc_api_key' );
+$src_saved   = array();
+foreach ( $src_options as $opt ) {
+	$src_saved[ $opt ] = get_option( $opt, null );
+}
+update_option( 'pgc_selected_calendar_ids', array( 'pgc-intern@group.calendar.google.com' ) );
+update_option( 'pgc_public_calendarlist', array( array( 'id' => 'pgc-oeffentlich@group.calendar.google.com' ) ) );
+update_option( 'pgc_access_token', '{"access_token":"pgc-token"}' );
+update_option( 'pgc_api_key', 'PGC-KEY' );
+update_option( 'mkl_ics_url', '' );
+update_option( 'mkl_calendar_ids', '' );
+update_option( 'mkl_google_api_key', '' );
+
+$src_urls   = array();
+$src_filter = function ( $pre, $args, $url ) use ( &$src_urls ) {
+	$src_urls[] = $url;
+	if ( 'https://mkltest.invalid/quelle.ics' === $url ) {
+		$body = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:mkltest-quelle\r\nDTSTART;VALUE=DATE:" . wp_date( 'Ymd', time() + 3 * DAY_IN_SECONDS ) . "\r\nSUMMARY:Termin aus iCal\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+	} elseif ( 0 === strpos( $url, 'https://www.googleapis.com/calendar/v3/calendars/' ) ) {
+		$day  = wp_date( 'Y-m-d', time() + 3 * DAY_IN_SECONDS );
+		$body = wp_json_encode( array( 'items' => array( array( 'id' => 'g1', 'summary' => 'Termin aus Google', 'start' => array( 'date' => $day ), 'end' => array( 'date' => $day ) ) ) ) );
+	} else {
+		return $pre;
+	}
+	return array( 'headers' => array(), 'body' => $body, 'response' => array( 'code' => 200, 'message' => 'OK' ), 'cookies' => array(), 'filename' => null );
+};
+add_filter( 'pre_http_request', $src_filter, 10, 3 );
+
+// Nur die Optionen des Plugins: kein Kalender, keine Anfrage.
+MKL_Calendar::clear_cache();
+$res = MKL_Calendar::get_events();
+mkl_assert( array() === MKL_Calendar::get_calendar_ids(), 'Kalender-IDs kommen nicht mehr aus pgc_*-Optionen' );
+mkl_assert( 'Nicht konfiguriert' === MKL_Calendar::describe_source() && ! MKL_Calendar::is_configured(), 'Nur Private Google Calendars eingerichtet → nicht konfiguriert' );
+mkl_assert( is_wp_error( $res ) && 'mkl_calendar_not_configured' === $res->get_error_code() && array() === $src_urls, 'Ohne eigene Quelle: Fehler „nicht eingerichtet“, keine Anfrage an Google' );
+
+// iCal-Adresse: wird genutzt, das Plugin nicht.
+update_option( 'mkl_ics_url', 'https://mkltest.invalid/quelle.ics' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( 'iCal-Adresse (ICS)' === MKL_Calendar::describe_source() && MKL_Calendar::is_configured(), 'Quelle iCal-Adresse' );
+mkl_assert( ! is_wp_error( $res ) && array( 'Termin aus iCal' ) === wp_list_pluck( $res, 'title' ) && array( 'https://mkltest.invalid/quelle.ics' ) === $src_urls, 'iCal-Adresse liefert die Termine, keine Anfrage an Google' );
+
+// Kalender-IDs ohne eigenen API-Key: weiter iCal (früher sprang hier das Plugin ein).
+update_option( 'mkl_calendar_ids', 'eigen@group.calendar.google.com' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( 'iCal-Adresse (ICS)' === MKL_Calendar::describe_source() && array( 'https://mkltest.invalid/quelle.ics' ) === $src_urls, 'Kalender-IDs ohne eigenen API-Key: iCal statt Plugin' );
+
+// Eigener API-Key mit Kalender-IDs hat Vorrang vor der iCal-Adresse.
+update_option( 'mkl_google_api_key', 'EIGENER-KEY' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+$src_q    = array();
+if ( 1 === count( $src_urls ) ) {
+	wp_parse_str( (string) wp_parse_url( $src_urls[0], PHP_URL_QUERY ), $src_q );
+}
+mkl_assert( 'Google Calendar API (eigener API-Key)' === MKL_Calendar::describe_source(), 'Quelle eigener API-Key' );
+mkl_assert(
+	! is_wp_error( $res ) && array( 'Termin aus Google' ) === wp_list_pluck( $res, 'title' ) && 1 === count( $src_urls )
+	&& false !== strpos( $src_urls[0], rawurlencode( 'eigen@group.calendar.google.com' ) ) && isset( $src_q['key'] ) && 'EIGENER-KEY' === $src_q['key'],
+	'Eigener API-Key: nur die eigenen Kalender-IDs, mit eigenem Key (nicht dem des Plugins)'
+);
+
+remove_filter( 'pre_http_request', $src_filter, 10 );
+foreach ( $src_saved as $opt => $value ) {
+	null === $value ? delete_option( $opt ) : update_option( $opt, $value );
+}
+MKL_Calendar::clear_cache();
+
 // Aufräumen.
 foreach ( array( $spiess, $m1, $m2, $jung ) as $uid ) {
 	$wpdb->delete( MKL_DB::table( 'points' ), array( 'user_id' => $uid ) );

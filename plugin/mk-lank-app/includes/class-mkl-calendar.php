@@ -2,14 +2,11 @@
 /**
  * Termine aus dem Google Kalender der Webseite.
  *
- * Quellen (in dieser Reihenfolge):
- *  1. Eigener Google-API-Key (Einstellungen → Kompanie-App) für öffentliche Kalender.
- *  2. Zugangsdaten des Plugins „Private Google Calendars“, falls aktiv
- *     (OAuth-Verbindung oder dort hinterlegter API-Key).
- *  3. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
+ * Quellen (in dieser Reihenfolge), beide unter Einstellungen → Kompanie-App:
+ *  1. Eigener Google-API-Key mit Kalender-IDs, für öffentliche Kalender.
+ *  2. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
  *
- * Kalender-IDs kommen aus den eigenen Einstellungen oder – falls leer – aus
- * der Auswahl im Plugin „Private Google Calendars“.
+ * Das Plugin „Private Google Calendars“ wird nicht mehr genutzt, auch wenn es aktiv ist.
  *
  * Das Ergebnis wird als Transient zwischengespeichert; API-Keys verlassen nie den Server.
  */
@@ -85,37 +82,18 @@ class MKL_Calendar {
 
 	public static function get_calendar_ids() {
 		$own = trim( (string) get_option( 'mkl_calendar_ids', '' ) );
-		if ( '' !== $own ) {
-			return array_values( array_filter( array_map( 'trim', explode( ',', $own ) ) ) );
-		}
-		$ids = array();
-		$pgc = get_option( 'pgc_selected_calendar_ids' );
-		if ( is_array( $pgc ) ) {
-			$ids = array_merge( $ids, $pgc );
-		}
-		$public = get_option( 'pgc_public_calendarlist' );
-		if ( is_array( $public ) ) {
-			foreach ( $public as $cal ) {
-				if ( ! empty( $cal['id'] ) ) {
-					$ids[] = $cal['id'];
-				}
-			}
-		}
-		return array_values( array_unique( array_filter( $ids ) ) );
+		return array_values( array_filter( array_map( 'trim', explode( ',', $own ) ) ) );
 	}
 
-	private static function pgc_available() {
-		return class_exists( 'PGC_GoogleCalendarClient' ) && function_exists( 'getGoogleClient' );
+	/** Ist eine Quelle eingetragen? Sonst zeigt die Einstellungsseite einen Hinweis. */
+	public static function is_configured() {
+		return ( get_option( 'mkl_google_api_key' ) && self::get_calendar_ids() ) || get_option( 'mkl_ics_url' );
 	}
 
 	/** Für die Einstellungsseite: welche Quelle wird verwendet? */
 	public static function describe_source() {
-		$ids = self::get_calendar_ids();
-		if ( get_option( 'mkl_google_api_key' ) && $ids ) {
+		if ( get_option( 'mkl_google_api_key' ) && self::get_calendar_ids() ) {
 			return 'Google Calendar API (eigener API-Key)';
-		}
-		if ( self::pgc_available() && $ids && ( get_option( 'pgc_access_token' ) || get_option( 'pgc_api_key' ) ) ) {
-			return 'Google Calendar API über das Plugin „Private Google Calendars“';
 		}
 		if ( get_option( 'mkl_ics_url' ) ) {
 			return 'iCal-Adresse (ICS)';
@@ -129,24 +107,6 @@ class MKL_Calendar {
 
 		if ( $ids && '' !== $api_key ) {
 			return self::fetch_google( $ids, array( 'key' => $api_key ), array(), $range );
-		}
-
-		if ( $ids && self::pgc_available() ) {
-			try {
-				if ( get_option( 'pgc_access_token' ) ) {
-					$client = getGoogleClient( true );
-					if ( $client->isAccessTokenExpired() ) {
-						$client->refreshAccessToken();
-					}
-					return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ), $range );
-				}
-				$pgc_key = (string) get_option( 'pgc_api_key', '' );
-				if ( '' !== $pgc_key ) {
-					return self::fetch_google( $ids, array( 'key' => $pgc_key ), array( 'Referer' => home_url( '/' ) ), $range );
-				}
-			} catch ( Exception $e ) {
-				return new WP_Error( 'mkl_calendar_pgc', 'Google-Kalender konnte nicht abgerufen werden: ' . $e->getMessage() );
-			}
 		}
 
 		$ics_url = (string) get_option( 'mkl_ics_url', '' );

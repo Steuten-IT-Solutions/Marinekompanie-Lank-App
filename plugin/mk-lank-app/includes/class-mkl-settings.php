@@ -55,7 +55,7 @@ class MKL_Settings {
 			MKL_Calendar::clear_cache();
 			$test = MKL_Calendar::get_events();
 		}
-		$pgc_ids = MKL_Calendar::get_calendar_ids();
+		$ids = MKL_Calendar::get_calendar_ids();
 		?>
 		<div class="wrap">
 			<h1>Kompanie-App</h1>
@@ -70,10 +70,17 @@ class MKL_Settings {
 			<h2>Kalender</h2>
 			<p>
 				Aktuelle Quelle: <strong><?php echo esc_html( MKL_Calendar::describe_source() ); ?></strong><br />
-				Verwendete Kalender-IDs: <code><?php echo esc_html( $pgc_ids ? implode( ', ', $pgc_ids ) : '–' ); ?></code>
+				Verwendete Kalender-IDs: <code><?php echo esc_html( $ids ? implode( ', ', $ids ) : '–' ); ?></code>
 			</p>
+			<?php if ( ! MKL_Calendar::is_configured() ) : ?>
+				<div class="notice notice-warning inline"><p>
+					<strong>Kein Kalender eingerichtet.</strong> Anwärter und Mitglieder sehen in der App keine Termine, und es gibt keine Push-Nachrichten zu Kalenderterminen.
+					Bitte die iCal-Adresse eintragen oder einen Google-API-Key zusammen mit den Kalender-IDs.
+				</p></div>
+			<?php endif; ?>
 			<p class="description">
-				Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin „Private Google Calendars“.
+				Für einen privaten Google Kalender die „geheime Adresse im iCal-Format“ eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren).
+				Öffentliche Kalender gehen auch über einen Google-API-Key mit den Kalender-IDs; ist beides eingetragen, gilt der API-Key.
 			</p>
 
 			<form method="post" action="options.php">
@@ -82,17 +89,17 @@ class MKL_Settings {
 					<tr>
 						<th scope="row"><label for="mkl_calendar_ids">Google-Kalender-IDs</label></th>
 						<td><input type="text" class="regular-text" id="mkl_calendar_ids" name="mkl_calendar_ids" value="<?php echo esc_attr( get_option( 'mkl_calendar_ids', '' ) ); ?>" />
-						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Leer = aus „Private Google Calendars“.</p></td>
+						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Nur zusammen mit dem API-Key.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_google_api_key">Google-API-Key</label></th>
 						<td><input type="password" autocomplete="off" class="regular-text" id="mkl_google_api_key" name="mkl_google_api_key" value="<?php echo esc_attr( get_option( 'mkl_google_api_key', '' ) ); ?>" />
-						<p class="description">Nur für öffentliche Kalender nötig. Leer = Zugang aus „Private Google Calendars“.</p></td>
+						<p class="description">Nur für öffentliche Kalender, zusammen mit den Kalender-IDs.</p></td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="mkl_ics_url">iCal-Adresse (Alternative)</label></th>
+						<th scope="row"><label for="mkl_ics_url">iCal-Adresse</label></th>
 						<td><input type="url" class="regular-text" id="mkl_ics_url" name="mkl_ics_url" value="<?php echo esc_attr( get_option( 'mkl_ics_url', '' ) ); ?>" />
-						<p class="description">Wird nur genutzt, wenn keine Google-API verfügbar ist. Serientermine erscheinen hier nur einmal.</p></td>
+						<p class="description">Wird genutzt, wenn kein API-Key mit Kalender-IDs eingetragen ist. Serientermine erscheinen hier nur einmal.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_calendar_cache_minutes">Zwischenspeicher (Minuten)</label></th>

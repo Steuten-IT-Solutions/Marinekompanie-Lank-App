@@ -102,9 +102,9 @@ scripts/                   Build- und Test-Skripte
 1. **Backup** der Webseite anlegen.
 2. Das Plugin-ZIP besorgen: Lade `mk-lank-app.zip` aus dem neuesten GitHub-Release herunter (siehe [Updates](#updates)). Alternativ baust du es selbst mit `scripts/build-plugin.sh`; das Ergebnis liegt dann in `dist/mk-lank-app.zip`.
 3. In WordPress **Plugins → Installieren → Plugin hochladen**, das ZIP auswählen und aktivieren.
-4. **Einstellungen → Kompanie-App** öffnen und **„Kalender jetzt testen“** klicken.
-   - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
-   - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
+4. **Einstellungen → Kompanie-App** öffnen, die Kalenderquelle eintragen, speichern und **„Kalender jetzt testen“** klicken.
+   - Für einen privaten Google Kalender trägst du die **„geheime Adresse im iCal-Format“** ein (Google Kalender → Einstellungen des Kalenders → „Kalender integrieren“). Öffentliche Kalender gehen auch über einen eigenen Google-API-Key mit den Kalender-IDs.
+   - Das Plugin **„Private Google Calendars“** wird nicht mehr genutzt. Ohne eigene Quelle zeigt die Einstellungsseite „Kein Kalender eingerichtet“.
 5. **Rollen festlegen:**
    - In der App unter **Spieß → Einrichtung → Mitglieder verwalten → Konto antippen → „Rolle in der App“** (Ohne Rolle / Anwärter / Mitglied / Spieß). Die Liste enthält alle Konten, auch die ohne Rolle.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
