@@ -590,6 +590,11 @@ mkl_assert( false !== strpos( $html, 'Mkltest Schützenfest' ) && false !== strp
 mkl_assert( false === strpos( $html, '>Alt<' ), 'Shortcode [mkl_termine] zeigt keine vergangenen Termine' );
 $html = do_shortcode( '[mkl_termine anzahl="1"]' );
 mkl_assert( 1 === substr_count( $html, '<li class="mkl-termin">' ), 'Shortcode [mkl_termine anzahl="1"] begrenzt die Anzahl' );
+for ( $i = 1; $i <= 11; $i++ ) {
+	MKL_Events::create( array( 'title' => "Mkltest Serie $i", 'start_date' => $nextweek ), $admin );
+}
+$html = do_shortcode( '[mkl_termine]' );
+mkl_assert( count( MKL_Events::upcoming() ) === substr_count( $html, '<li class="mkl-termin">' ) && false !== strpos( $html, 'Mkltest Serie 11' ), 'Shortcode [mkl_termine] ohne anzahl zeigt alle kommenden Termine' );
 $when = function ( $from, $to ) {
 	return MKL_Shortcodes::when( array( 'start_date' => $from, 'end_date' => $to, 'start_time' => null, 'end_time' => null ) );
 };

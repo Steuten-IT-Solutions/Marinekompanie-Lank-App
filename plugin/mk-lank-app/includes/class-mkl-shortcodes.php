@@ -2,7 +2,7 @@
 /**
  * Shortcodes für die Webseite.
  *
- * [mkl_termine anzahl="10"]  Kommende öffentliche Termine aus der App.
+ * [mkl_termine]             Alle kommenden öffentlichen Termine aus der App; anzahl="5" begrenzt die Liste.
  * [mkl_galerie]              Galerie aus Google Drive (Jahre → Alben → Bilder).
  */
 
@@ -118,9 +118,11 @@ document.addEventListener("keydown",key);document.body.appendChild(box);show(i);
 	}
 
 	public static function termine( $atts ) {
-		$atts   = shortcode_atts( array( 'anzahl' => 10 ), $atts, 'mkl_termine' );
-		$limit  = max( 1, min( 100, (int) $atts['anzahl'] ) );
-		$events = MKL_Events::upcoming( $limit );
+		$atts = shortcode_atts( array( 'anzahl' => '' ), $atts, 'mkl_termine' );
+		// Ohne anzahl alle kommenden Termine, wie in der App.
+		$events = '' === trim( (string) $atts['anzahl'] )
+			? MKL_Events::upcoming()
+			: MKL_Events::upcoming( max( 1, min( 100, (int) $atts['anzahl'] ) ) );
 
 		$html = self::styles();
 		if ( ! $events ) {

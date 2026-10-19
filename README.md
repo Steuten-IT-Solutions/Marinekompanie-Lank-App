@@ -113,7 +113,7 @@ scripts/                   Build- und Test-Skripte
 6. **Öffentliche Termine und Startseite:**
    - Als Admin in der App unter **Termine → „Öffentliche Termine verwalten“** die Termine anlegen, mit optionaler Uhrzeit, Ort, Beschreibung und Link.
    - Dann auf der Startseite im Block-Editor die bisherige Termin-Timeline (Spectra-Block „Content Timeline“) löschen und an ihrer Stelle einen **Shortcode-Block** mit `[mkl_termine]` einfügen.
-   - Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl (Standard: 10).
+   - Ohne Angabe zeigt der Shortcode alle kommenden Termine. Mit `[mkl_termine anzahl="5"]` begrenzt du die Anzahl.
    - Der Shortcode zeigt nur kommende Termine; vergangene muss man nicht anlegen. Mehrtägige Termine bekommen ein Datum unter „Bis“, Termine ohne Uhrzeit gelten als ganztägig.
    - Danach die Startseite **abgemeldet** prüfen, auch auf dem Handy. Ist ein Cache-Plugin aktiv (z. B. Jetpack Boost), den Cache leeren; neue Termine erscheinen sonst erst, wenn der Cache abläuft.
    - Neue Termine pflegt man danach nur noch in der App. Der Google Kalender für Mitglieder bleibt davon getrennt; öffentliche Termine stehen also in beiden.
