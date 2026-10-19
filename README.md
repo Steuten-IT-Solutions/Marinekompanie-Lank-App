@@ -8,7 +8,7 @@ App der Marinekompanie 1973 Lank mit diesen Bereichen:
 - **News:** die Blogbeiträge der Webseite.
 - **Galerie:** Bilder aus Google Drive. Alle sehen die öffentlichen Bilder; Mitglieder sehen zusätzlich die Bilder aus den Ordnern „intern“.
 - **Meins:** eigene Punkte (mit Punktekatalog), eigener Dienstgrad mit Liste aller Dienstgrade und Verlauf, eigene Titel, Strafen (Geldbeträge, offen/bezahlt), eigene Anwesenheit.
-- **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
+- **Dokumente:** Satzung, Protokolle, Formulare usw. als PDF, Office-Datei oder Bild, nach Kategorien geordnet. Die Kategorien sind beim Öffnen eingeklappt und zeigen die Anzahl der Dokumente; innerhalb einer Kategorie sortiert man nach Name oder Stand (auf- oder absteigend, das Gerät merkt sich die Wahl). Je Dokument sichtbar für alle Mitglieder oder nur für Spieße; einmal geöffnet auch offline lesbar.
 - **Benachrichtigungen:** Push-Nachricht aufs Handy. Angemeldete schalten sie unter **Konto → Benachrichtigungen** je Gerät ein, Gäste ohne Anmeldung unten auf der Seite **Termine**. Je Gerät wählbar:
   - nur Mitglieder: neue Strafe, Punkte, neuer Dienstgrad. Betrag und Grund einer Strafe erscheinen nur, wenn man das ausdrücklich einschaltet.
   - alle: neue und geänderte Termine (neu, oder Datum/Uhrzeit/Ort geändert), Erinnerung am Vortag um 18 Uhr, neue Blogbeiträge.

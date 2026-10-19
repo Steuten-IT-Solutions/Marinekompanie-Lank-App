@@ -1,5 +1,15 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { api, config, type DocCategory, type DocumentInfo } from '../api';
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { api, config, type DocumentInfo } from '../api';
+import {
+  DOC_SORT_LABELS,
+  docGroupKey,
+  groupDocuments,
+  groupKey,
+  loadDocSort,
+  saveDocSort,
+  type DocGroup,
+  type DocSort,
+} from '../documents';
 import { formatBytes, formatDate } from '../format';
 import { detectPlatform } from '../install';
 import { whenControlled } from '../offline';
@@ -29,17 +39,80 @@ const TYPE_LABELS: Record<string, string> = {
 
 export const typeLabel = (doc: DocumentInfo) => TYPE_LABELS[doc.ext] ?? doc.ext.toUpperCase();
 
-/** Gruppiert nach Kategorie (in deren Reihenfolge); Dokumente ohne Kategorie zuletzt. */
-export function groupDocuments(docs: DocumentInfo[], categories: DocCategory[]) {
-  const groups: { id: number | null; title: string; docs: DocumentInfo[] }[] = [];
-  for (const c of categories) {
-    const inCat = docs.filter((d) => d.category_id === c.id);
-    if (inCat.length > 0) groups.push({ id: c.id, title: c.title, docs: inCat });
-  }
-  const known = new Set(categories.map((c) => c.id));
-  const rest = docs.filter((d) => d.category_id === null || !known.has(d.category_id));
-  if (rest.length > 0) groups.push({ id: null, title: groups.length > 0 ? 'Weitere Dokumente' : '', docs: rest });
-  return groups;
+/** Gewählte Sortierung, auf dem Gerät gemerkt (für Mitgliederansicht und „Dokumente verwalten“ gemeinsam). */
+export function useDocSort() {
+  const [sort, setSort] = useState<DocSort>(loadDocSort);
+  const change = useCallback((next: DocSort) => {
+    setSort(next);
+    saveDocSort(next);
+  }, []);
+  return [sort, change] as const;
+}
+
+/** Aufgeklappte Kategorien. Beim Öffnen des Bereichs sind alle zu; gespeichert wird das nicht. */
+export function useOpenGroups() {
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = useCallback(
+    (key: string) =>
+      setOpen((o) => {
+        const next = new Set(o);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    [],
+  );
+  const show = useCallback((key: string) => setOpen((o) => (o.has(key) ? o : new Set(o).add(key))), []);
+  return { isOpen: (key: string) => open.has(key), toggle, show };
+}
+
+export function DocSortSelect({ value, onChange }: { value: DocSort; onChange: (sort: DocSort) => void }) {
+  return (
+    // Kein umschließendes <label>: dessen Text enthielte sonst alle Optionen („Stand neu → alt“ …).
+    <div className="field doc-sort">
+      <span id="doc-sort-label">Sortierung</span>
+      <select aria-labelledby="doc-sort-label" value={value} onChange={(e) => onChange(e.target.value as DocSort)}>
+        {(Object.keys(DOC_SORT_LABELS) as DocSort[]).map((s) => (
+          <option key={s} value={s}>
+            {DOC_SORT_LABELS[s]}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * Eine Kategorie als einklappbarer Abschnitt: Kopf mit Name und Anzahl, z. B. „Protokolle (12)“.
+ * Gibt es gar keine Kategorien (Gruppe ohne Titel), steht die Liste direkt da.
+ */
+export function DocGroupSection({
+  group,
+  open,
+  onToggle,
+  children,
+}: {
+  group: DocGroup;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  if (!group.title) return <section className="doc-group">{children}</section>;
+  const bodyId = `doc-group-${groupKey(group)}`;
+  return (
+    <section className="doc-group">
+      <h3 className="section-title doc-group-title">
+        <button type="button" className="doc-group-toggle" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
+          {group.title} ({group.docs.length})
+          <span className="doc-group-arrow" aria-hidden="true">
+            ›
+          </span>
+        </button>
+      </h3>
+      <div id={bodyId} className="doc-group-body" hidden={!open}>
+        {children}
+      </div>
+    </section>
+  );
 }
 
 export function DocIcon({ kind }: { kind: DocumentInfo['kind'] }) {
@@ -128,6 +201,14 @@ export default function Dokumente({ docId, onToast }: { docId?: number; onToast:
   const { data, error, loading, reload } = useAsync(api.documents);
   const [offline, setOffline] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState<number | null>(null);
+  const [sort, setSort] = useDocSort();
+  const { isOpen, toggle, show } = useOpenGroups();
+
+  // Die Kategorie des geöffneten Dokuments ist beim Zurückkehren zur Liste aufgeklappt.
+  useEffect(() => {
+    const doc = docId ? data?.documents.find((d) => d.id === docId) : undefined;
+    if (doc) show(docGroupKey(doc.category_id, data?.categories ?? []));
+  }, [data, docId, show]);
 
   useEffect(() => {
     let alive = true;
@@ -179,7 +260,7 @@ export default function Dokumente({ docId, onToast }: { docId?: number; onToast:
     }
   }
 
-  const groups = groupDocuments(docs, data?.categories ?? []);
+  const groups = groupDocuments(docs, data?.categories ?? [], sort);
 
   return (
     <div>
@@ -188,10 +269,9 @@ export default function Dokumente({ docId, onToast }: { docId?: number; onToast:
           Dokumente verwalten
         </button>
       )}
-      {docs.length === 0 && <Empty>Es sind noch keine Dokumente hinterlegt.</Empty>}
+      {docs.length === 0 ? <Empty>Es sind noch keine Dokumente hinterlegt.</Empty> : <DocSortSelect value={sort} onChange={setSort} />}
       {groups.map((g) => (
-        <section key={g.id ?? 'ohne'} className="doc-group">
-          {g.title && <h3 className="section-title">{g.title}</h3>}
+        <DocGroupSection key={groupKey(g)} group={g} open={isOpen(groupKey(g))} onToggle={() => toggle(groupKey(g))}>
           <ul className="card-list">
             {g.docs.map((doc) => (
               <li key={doc.id} className="card doc-card">
@@ -223,7 +303,7 @@ export default function Dokumente({ docId, onToast }: { docId?: number; onToast:
               </li>
             ))}
           </ul>
-        </section>
+        </DocGroupSection>
       ))}
     </div>
   );

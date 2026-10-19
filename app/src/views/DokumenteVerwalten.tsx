@@ -3,7 +3,8 @@ import { api, type DocCategory, type DocumentInfo, type DocumentMeta, type DocVi
 import { formatBytes, formatDate, todayYmd } from '../format';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
-import { ACCEPT, groupDocuments, typeLabel } from './Dokumente';
+import { docGroupKey, groupDocuments, groupKey } from '../documents';
+import { ACCEPT, DocGroupSection, DocSortSelect, typeLabel, useDocSort, useOpenGroups } from './Dokumente';
 
 /** Höchstgröße wie im Plugin (MKL_Documents::MAX_BYTES). */
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -87,6 +88,8 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
   const [newCategory, setNewCategory] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [sort, setSort] = useDocSort();
+  const { isOpen, toggle, show } = useOpenGroups();
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -120,6 +123,8 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
     try {
       await api.createDocument(file, { ...meta, title: meta.title.trim() });
       onToast(`„${meta.title.trim()}“ hochgeladen`);
+      // Kategorie des neuen Dokuments aufklappen, damit man das Ergebnis sieht.
+      show(docGroupKey(meta.category_id, categories));
       setFile(null);
       setMeta((m) => ({ ...m, title: '' }));
       if (fileInput.current) fileInput.current.value = '';
@@ -151,6 +156,8 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
     if (!editing) return;
     if (!editing.meta.title.trim()) return onToast('Bitte einen Titel angeben.');
     if (await run(() => api.updateDocument(editing.id, { ...editing.meta, title: editing.meta.title.trim() }), 'Gespeichert')) {
+      // Wurde die Kategorie geändert, ist danach die neue aufgeklappt.
+      show(docGroupKey(editing.meta.category_id, categories));
       setEditing(null);
     }
   }
@@ -191,71 +198,78 @@ export default function DokumenteVerwalten({ onToast }: { onToast: (msg: string)
       <input ref={replaceInput} type="file" accept={ACCEPT} hidden onChange={(e) => replace(e.target.files?.[0] ?? null)} />
 
       <h3 className="section-title">Dokumente</h3>
-      {docs.length === 0 && <Empty>Noch keine Dokumente.</Empty>}
-      {groupDocuments(docs, categories).map((g) => (
-        <ul key={g.id ?? 'ohne'} className="card-list doc-admin-group">
-          {g.docs.map((doc) =>
-            editing?.id === doc.id ? (
-              <li key={doc.id} className="card">
-                <form className="form doc-edit" onSubmit={saveEdit}>
-                  <MetaFields meta={editing.meta} categories={categories} onChange={(m) => setEditing({ id: doc.id, meta: m })} />
-                  <div className="button-row">
-                    <button className="btn" type="submit" disabled={busy}>
-                      Speichern
-                    </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)}>
-                      Abbrechen
-                    </button>
-                  </div>
-                </form>
-              </li>
-            ) : (
-              <li key={doc.id} className="card row">
-                <div className="row-main">
-                  <div className="row-title">{doc.title}</div>
-                  <div className="row-sub">
-                    {categoryTitle(doc.category_id)} · Stand {formatDate(doc.date)} · {typeLabel(doc)}, {formatBytes(doc.size)}
-                  </div>
-                  <div className="row-sub">{VISIBILITY_LABELS[doc.visibility]}</div>
-                  <div className="row-actions">
-                    <button
-                      className="btn btn-small btn-secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        setEditing({
-                          id: doc.id,
-                          meta: { title: doc.title, category_id: doc.category_id, date: doc.date, visibility: doc.visibility },
-                        })
-                      }
-                    >
-                      Bearbeiten
-                    </button>
-                    <button
-                      className="btn btn-small btn-secondary"
-                      disabled={busy}
-                      onClick={() => {
-                        setReplacing(doc);
-                        replaceInput.current?.click();
-                      }}
-                    >
-                      Neue Fassung
-                    </button>
-                    <button
-                      className="btn btn-small btn-danger"
-                      disabled={busy}
-                      onClick={() =>
-                        window.confirm(`„${doc.title}“ wirklich löschen?`) && run(() => api.deleteDocument(doc.id), 'Dokument gelöscht')
-                      }
-                    >
-                      Löschen
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ),
-          )}
-        </ul>
-      ))}
+      {docs.length === 0 ? <Empty>Noch keine Dokumente.</Empty> : <DocSortSelect value={sort} onChange={setSort} />}
+      {groupDocuments(docs, categories, sort).map((g) => {
+        const key = groupKey(g);
+        // Während ein Dokument bearbeitet wird, bleibt seine Kategorie offen.
+        const editingHere = g.docs.some((d) => d.id === editing?.id);
+        return (
+          <DocGroupSection key={key} group={g} open={editingHere || isOpen(key)} onToggle={() => !editingHere && toggle(key)}>
+            <ul className="card-list">
+              {g.docs.map((doc) =>
+                editing?.id === doc.id ? (
+                  <li key={doc.id} className="card">
+                    <form className="form doc-edit" onSubmit={saveEdit}>
+                      <MetaFields meta={editing.meta} categories={categories} onChange={(m) => setEditing({ id: doc.id, meta: m })} />
+                      <div className="button-row">
+                        <button className="btn" type="submit" disabled={busy}>
+                          Speichern
+                        </button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setEditing(null)}>
+                          Abbrechen
+                        </button>
+                      </div>
+                    </form>
+                  </li>
+                ) : (
+                  <li key={doc.id} className="card row">
+                    <div className="row-main">
+                      <div className="row-title">{doc.title}</div>
+                      <div className="row-sub">
+                        {categoryTitle(doc.category_id)} · Stand {formatDate(doc.date)} · {typeLabel(doc)}, {formatBytes(doc.size)}
+                      </div>
+                      <div className="row-sub">{VISIBILITY_LABELS[doc.visibility]}</div>
+                      <div className="row-actions">
+                        <button
+                          className="btn btn-small btn-secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            setEditing({
+                              id: doc.id,
+                              meta: { title: doc.title, category_id: doc.category_id, date: doc.date, visibility: doc.visibility },
+                            })
+                          }
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          className="btn btn-small btn-secondary"
+                          disabled={busy}
+                          onClick={() => {
+                            setReplacing(doc);
+                            replaceInput.current?.click();
+                          }}
+                        >
+                          Neue Fassung
+                        </button>
+                        <button
+                          className="btn btn-small btn-danger"
+                          disabled={busy}
+                          onClick={() =>
+                            window.confirm(`„${doc.title}“ wirklich löschen?`) && run(() => api.deleteDocument(doc.id), 'Dokument gelöscht')
+                          }
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ),
+              )}
+            </ul>
+          </DocGroupSection>
+        );
+      })}
 
       <h3 className="section-title">Kategorien</h3>
       <form className="form card" onSubmit={addCategory}>
