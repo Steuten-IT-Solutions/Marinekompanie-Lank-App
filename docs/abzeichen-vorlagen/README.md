@@ -4,7 +4,7 @@ Fotos der Uniform-Abzeichen, extrahiert aus `Marine_Abzeichen.pdf` (Excel-Export
 Sie dienen als **Vorlage**: Für die App werden daraus stilisierte Icons (SVG, transparenter
 Hintergrund) erstellt, siehe Issue #48. Die Fotos selbst werden nicht in der App verwendet.
 
-Punkte, Position und Bestand sind aus der PDF übernommen. In der PDF steht „Portopee“; richtig ist „Portepee“.
+Punkte, Position und Bestand sind aus der PDF übernommen. Das Foto eines einzelnen Winkels in der unbeschrifteten Spalte neben „Hauptmaat“ gehört nicht dazu und wurde nicht übernommen. In der PDF steht „Portopee“; richtig ist „Portepee“.
 
 | Nr. | Dienstgrad | Punkte | Position | Bestand | Foto |
 |---|---|---|---|---|---|
@@ -14,7 +14,6 @@ Punkte, Position und Bestand sind aus der PDF übernommen. In der PDF steht „P
 | 4 | Maat | 70 | Oben | 8 | ![Maat](04-maat.jpg) |
 | 5 | Obermaat | 90 | Oben | 11 | ![Obermaat](05-obermaat.jpg) |
 | 6 | Hauptmaat | 110 | Unten | 1 | ![Hauptmaat](06-hauptmaat.jpg) |
-| 6b | Hauptmaat – zweites Foto in der unbeschrifteten Spalte (einzelner Winkel) | | | | ![Hauptmaat, Zusatz](06b-hauptmaat-zusatz-winkel.jpg) |
 | 7 | Maat mit Portepee | 150 | Unten | 3 | ![Maat mit Portepee](07-maat-mit-portepee.jpg) |
 | 8 | Obermaat mit Portepee | 170 | Unten | 3 | ![Obermaat mit Portepee](08-obermaat-mit-portepee.jpg) |
 | 9 | Hauptmaat mit Portepee | 190 | Unten | 17 | ![Hauptmaat mit Portepee](09-hauptmaat-mit-portepee.jpg) |
