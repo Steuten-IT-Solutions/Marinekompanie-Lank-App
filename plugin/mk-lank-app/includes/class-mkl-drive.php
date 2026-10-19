@@ -1,6 +1,6 @@
 <?php
 /**
- * Lesender Zugriff auf Google Drive.
+ * Lesender Zugriff auf Google Drive und, über denselben Zugang, auf den Google Kalender.
  *
  * Zwei Wege, in dieser Reihenfolge:
  *  1. „Mit Google verbinden“ (OAuth): Ein Admin meldet sich einmal mit dem
@@ -10,6 +10,10 @@
  *  2. Dienstkonto (JSON-Schlüssel): Der Galerie-Ordner muss für die
  *     E-Mail-Adresse des Dienstkontos freigegeben sein (Betrachter genügt).
  *     Das Zugriffstoken wird per signiertem JWT (RS256) geholt.
+ *
+ * Den Kalender liest MKL_Calendar mit access_token(), wenn calendar_access() zutrifft:
+ * bei der Google-Verbindung nur, wenn beim Verbinden auch der Kalender erlaubt wurde;
+ * beim Dienstkonto muss der Kalender für dessen E-Mail-Adresse freigegeben sein.
  *
  * Zugangsdaten verlassen nie den Server. Ohne Bibliothek.
  */
@@ -21,6 +25,7 @@ class MKL_Drive {
 	const OPTION_KEY   = 'mkl_drive_service_account';
 	const OAUTH_OPTION = 'mkl_drive_oauth';
 	const SCOPE        = 'https://www.googleapis.com/auth/drive.readonly';
+	const CAL_SCOPE    = 'https://www.googleapis.com/auth/calendar.readonly';
 	const AUTH_URL     = 'https://accounts.google.com/o/oauth2/v2/auth';
 	const TOKEN_URI    = 'https://oauth2.googleapis.com/token';
 	const REVOKE_URL   = 'https://oauth2.googleapis.com/revoke';
@@ -46,7 +51,12 @@ class MKL_Drive {
 	/* OAuth („Mit Google verbinden“)                                      */
 	/* ------------------------------------------------------------------ */
 
-	/** @return array{client_id?:string, client_secret?:string, refresh_token?:string, email?:string} */
+	/** Angeforderte Berechtigungen: Drive für die Galerie, Kalender für die Termine (beide nur Lesen). */
+	public static function scopes() {
+		return self::SCOPE . ' ' . self::CAL_SCOPE;
+	}
+
+	/** @return array{client_id?:string, client_secret?:string, refresh_token?:string, email?:string, scope?:string} */
 	public static function oauth() {
 		$data = get_option( self::OAUTH_OPTION, array() );
 		return is_array( $data ) ? $data : array();
@@ -66,6 +76,18 @@ class MKL_Drive {
 	public static function oauth_email() {
 		$o = self::oauth();
 		return self::oauth_connected() && ! empty( $o['email'] ) ? $o['email'] : '';
+	}
+
+	/**
+	 * Darf der aktive Zugang den Kalender lesen? Verbindungen von vor dieser
+	 * Erweiterung oder ohne Häkchen für den Kalender müssen neu verbunden werden.
+	 */
+	public static function calendar_access() {
+		if ( self::oauth_connected() ) {
+			$o = self::oauth();
+			return ! empty( $o['scope'] ) && false !== strpos( ' ' . $o['scope'] . ' ', ' ' . self::CAL_SCOPE . ' ' );
+		}
+		return null !== self::service_account();
 	}
 
 	/** Ist irgendein Zugang eingerichtet? */
@@ -107,6 +129,7 @@ class MKL_Drive {
 		if ( empty( $old['client_id'] ) || $old['client_id'] !== $client_id || $old['client_secret'] !== $client_secret ) {
 			$changes['refresh_token'] = '';
 			$changes['email']         = '';
+			$changes['scope']         = '';
 		}
 		self::update_oauth( $changes );
 		return true;
@@ -133,7 +156,7 @@ class MKL_Drive {
 				'client_id'     => isset( $o['client_id'] ) ? $o['client_id'] : '',
 				'redirect_uri'  => self::redirect_uri(),
 				'response_type' => 'code',
-				'scope'         => self::SCOPE,
+				'scope'         => self::scopes(),
 				'access_type'   => 'offline',
 				// Sonst liefert Google bei erneuter Verbindung kein Refresh-Token.
 				'prompt'        => 'consent',
@@ -177,6 +200,8 @@ class MKL_Drive {
 			array(
 				'refresh_token' => $body['refresh_token'],
 				'email'         => '',
+				// Bei Google lassen sich einzelne Berechtigungen abwählen; gemerkt wird, was erlaubt wurde.
+				'scope'         => isset( $body['scope'] ) ? (string) $body['scope'] : self::scopes(),
 			)
 		);
 		self::cache_token( $body );
@@ -212,6 +237,7 @@ class MKL_Drive {
 			array(
 				'refresh_token' => '',
 				'email'         => '',
+				'scope'         => '',
 			)
 		);
 	}
@@ -223,7 +249,8 @@ class MKL_Drive {
 			return 'oauth:' . md5( $o['client_id'] . '|' . $o['refresh_token'] );
 		}
 		$sa = self::service_account();
-		return $sa ? 'sa:' . $sa['client_email'] : '';
+		// Mit den Berechtigungen, damit ein Token von vor der Kalender-Erweiterung nicht weiterverwendet wird.
+		return $sa ? 'sa:' . $sa['client_email'] . '|' . self::scopes() : '';
 	}
 
 	private static function cache_token( array $body ) {
@@ -291,7 +318,7 @@ class MKL_Drive {
 		);
 		$claims = array(
 			'iss'   => $sa['client_email'],
-			'scope' => self::SCOPE,
+			'scope' => self::scopes(),
 			'aud'   => ! empty( $sa['token_uri'] ) ? $sa['token_uri'] : self::TOKEN_URI,
 			'iat'   => $now,
 			'exp'   => $now + 3600,

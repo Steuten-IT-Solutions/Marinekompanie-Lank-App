@@ -2,9 +2,11 @@
 /**
  * Termine aus dem Google Kalender der Webseite.
  *
- * Quellen (in dieser Reihenfolge), beide unter Einstellungen → Kompanie-App:
+ * Quellen (in dieser Reihenfolge), alle unter Einstellungen → Kompanie-App:
  *  1. Eigener Google-API-Key mit Kalender-IDs, für öffentliche Kalender.
- *  2. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
+ *  2. Google-Verbindung der Galerie (MKL_Drive) mit Kalender-IDs, für private
+ *     Kalender. Wie bei 1. löst Google Serientermine selbst auf.
+ *  3. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
  *
  * Das Plugin „Private Google Calendars“ wird nicht mehr genutzt, auch wenn es aktiv ist.
  *
@@ -87,13 +89,18 @@ class MKL_Calendar {
 
 	/** Ist eine Quelle eingetragen? Sonst zeigt die Einstellungsseite einen Hinweis. */
 	public static function is_configured() {
-		return ( get_option( 'mkl_google_api_key' ) && self::get_calendar_ids() ) || get_option( 'mkl_ics_url' );
+		return ( self::get_calendar_ids() && ( get_option( 'mkl_google_api_key' ) || MKL_Drive::calendar_access() ) ) || get_option( 'mkl_ics_url' );
 	}
 
 	/** Für die Einstellungsseite: welche Quelle wird verwendet? */
 	public static function describe_source() {
 		if ( get_option( 'mkl_google_api_key' ) && self::get_calendar_ids() ) {
 			return 'Google Calendar API (eigener API-Key)';
+		}
+		if ( MKL_Drive::calendar_access() && self::get_calendar_ids() ) {
+			return MKL_Drive::oauth_connected()
+				? 'Google Calendar API (Google-Verbindung der Galerie' . ( MKL_Drive::oauth_email() ? ': ' . MKL_Drive::oauth_email() : '' ) . ')'
+				: 'Google Calendar API (Dienstkonto der Galerie: ' . MKL_Drive::client_email() . ')';
 		}
 		if ( get_option( 'mkl_ics_url' ) ) {
 			return 'iCal-Adresse (ICS)';
@@ -109,6 +116,17 @@ class MKL_Calendar {
 			return self::fetch_google( $ids, array( 'key' => $api_key ), array(), $range );
 		}
 
+		if ( $ids && MKL_Drive::calendar_access() ) {
+			$token = MKL_Drive::access_token();
+			if ( is_wp_error( $token ) ) {
+				return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $token->get_error_message() );
+			}
+			$hint = MKL_Drive::oauth_connected()
+				? 'Kann das verbundene Google-Konto den Kalender sehen, und ist die Google Calendar API im Projekt aktiviert?'
+				: 'Ist der Kalender für ' . MKL_Drive::client_email() . ' freigegeben, und ist die Google Calendar API im Projekt aktiviert?';
+			return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $token ), $range, $hint );
+		}
+
 		$ics_url = (string) get_option( 'mkl_ics_url', '' );
 		if ( '' !== $ics_url ) {
 			return self::fetch_ics( $ics_url, $range );
@@ -117,7 +135,8 @@ class MKL_Calendar {
 		return new WP_Error( 'mkl_calendar_not_configured', 'Der Kalender ist noch nicht eingerichtet.' );
 	}
 
-	private static function fetch_google( array $ids, array $auth_params, array $headers, array $range ) {
+	/** @param string $hint Zusatz zur Fehlermeldung, wenn Google den Abruf ablehnt. */
+	private static function fetch_google( array $ids, array $auth_params, array $headers, array $range, $hint = '' ) {
 		$events = array();
 		foreach ( $ids as $cal_id ) {
 			$params = array_merge(
@@ -146,7 +165,7 @@ class MKL_Calendar {
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( 200 !== $code || ! is_array( $body ) ) {
 				$msg = isset( $body['error']['message'] ) ? $body['error']['message'] : 'HTTP ' . $code;
-				return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $msg );
+				return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $msg . ( $hint ? ' – ' . $hint : '' ) );
 			}
 			foreach ( isset( $body['items'] ) ? $body['items'] : array() as $item ) {
 				if ( isset( $item['visibility'] ) && 'private' === $item['visibility'] ) {

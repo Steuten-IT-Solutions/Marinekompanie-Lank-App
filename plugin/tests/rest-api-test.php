@@ -1396,7 +1396,7 @@ if ( ! function_exists( 'getGoogleClient' ) ) {
 		throw new Exception( 'Private Google Calendars darf nicht genutzt werden' );
 	}
 }
-$src_options = array( 'mkl_ics_url', 'mkl_calendar_ids', 'mkl_google_api_key', 'pgc_selected_calendar_ids', 'pgc_public_calendarlist', 'pgc_access_token', 'pgc_api_key' );
+$src_options = array( 'mkl_ics_url', 'mkl_calendar_ids', 'mkl_google_api_key', 'pgc_selected_calendar_ids', 'pgc_public_calendarlist', 'pgc_access_token', 'pgc_api_key', MKL_Drive::OAUTH_OPTION, MKL_Drive::OPTION_KEY );
 $src_saved   = array();
 foreach ( $src_options as $opt ) {
 	$src_saved[ $opt ] = get_option( $opt, null );
@@ -1408,9 +1408,15 @@ update_option( 'pgc_api_key', 'PGC-KEY' );
 update_option( 'mkl_ics_url', '' );
 update_option( 'mkl_calendar_ids', '' );
 update_option( 'mkl_google_api_key', '' );
+delete_option( MKL_Drive::OAUTH_OPTION );
+delete_option( MKL_Drive::OPTION_KEY );
+delete_transient( MKL_Drive::TOKEN_CACHE );
 
 $src_urls   = array();
 $src_filter = function ( $pre, $args, $url ) use ( &$src_urls ) {
+	if ( 0 === strpos( $url, 'https://oauth2.googleapis.com/' ) ) {
+		return $pre; // Token-Abruf, siehe Google-Verbindung unten.
+	}
 	$src_urls[] = $url;
 	if ( 'https://mkltest.invalid/quelle.ics' === $url ) {
 		$body = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:mkltest-quelle\r\nDTSTART;VALUE=DATE:" . wp_date( 'Ymd', time() + 3 * DAY_IN_SECONDS ) . "\r\nSUMMARY:Termin aus iCal\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
@@ -1518,6 +1524,110 @@ mkl_assert( false === strpos( $html, 'Private Google Calendars' ), 'Einstellungs
 update_option( 'mkl_ics_url', 'https://mkltest.invalid/quelle.ics' );
 $html = $src_page();
 mkl_assert( false === strpos( $html, 'Kein Kalender eingerichtet' ) && false !== strpos( $html, 'iCal-Adresse (ICS)' ), 'Einstellungsseite mit iCal-Adresse: kein Hinweis' );
+
+echo "Kalender über die Google-Verbindung der Galerie\n";
+// Token-Endpunkt und Fehler der Kalender-API simulieren. Läuft nach $src_filter und dem
+// Drive-Mock der Testinstanz (beide Priorität 10) und hat deshalb das letzte Wort.
+$conn          = array( 'auth' => array(), 'token' => array(), 'jwt_scope' => null, 'status' => 200 );
+$conn_filter   = function ( $pre, $args, $url ) use ( &$conn ) {
+	$ok = function ( $data, $code = 200 ) {
+		return array( 'headers' => array(), 'body' => wp_json_encode( $data ), 'response' => array( 'code' => $code, 'message' => '' ), 'cookies' => array(), 'filename' => null );
+	};
+	if ( 0 === strpos( $url, 'https://oauth2.googleapis.com/token' ) ) {
+		$conn['token'][] = $args['body']['grant_type'];
+		if ( 'urn:ietf:params:oauth:grant-type:jwt-bearer' === $args['body']['grant_type'] ) {
+			$parts             = explode( '.', $args['body']['assertion'] );
+			$claim             = json_decode( base64_decode( strtr( $parts[1], '-_', '+/' ) ), true );
+			$conn['jwt_scope'] = $claim['scope'];
+		}
+		return $ok( array( 'access_token' => 'CAL-TOKEN', 'expires_in' => 3600 ) );
+	}
+	if ( 0 === strpos( $url, 'https://www.googleapis.com/calendar/v3/calendars/' ) ) {
+		$conn['auth'][] = isset( $args['headers']['Authorization'] ) ? $args['headers']['Authorization'] : '';
+		if ( 200 !== $conn['status'] ) {
+			return $ok( array( 'error' => array( 'message' => 'Not Found' ) ), $conn['status'] );
+		}
+	}
+	return $pre;
+};
+add_filter( 'pre_http_request', $conn_filter, 20, 3 );
+
+// Verbindung von vor der Kalender-Erweiterung: Kalender nicht lesbar, Hinweis auf der Einstellungsseite.
+update_option( MKL_Drive::OAUTH_OPTION, array( 'client_id' => '1-x.apps.googleusercontent.com', 'client_secret' => 'S', 'refresh_token' => 'R-ALT', 'email' => 'kompanie@example.com' ), false );
+update_option( 'mkl_calendar_ids', 'privat@group.calendar.google.com' );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+mkl_assert( ! MKL_Drive::calendar_access() && 'iCal-Adresse (ICS)' === MKL_Calendar::describe_source() && array( 'https://mkltest.invalid/quelle.ics' ) === $src_urls && array() === $conn['token'], 'Alte Verbindung ohne Kalender-Berechtigung: weiter iCal, kein Token' );
+$html = $src_page();
+mkl_assert( false !== strpos( $html, 'darf den Kalender noch nicht lesen' ), 'Einstellungsseite: Hinweis, neu mit Google zu verbinden' );
+
+// Verbindung mit Kalender-Berechtigung: privater Kalender über das Token, vor der iCal-Adresse.
+update_option( MKL_Drive::OAUTH_OPTION, array_merge( MKL_Drive::oauth(), array( 'scope' => MKL_Drive::scopes() ) ), false );
+delete_transient( MKL_Drive::TOKEN_CACHE );
+MKL_Calendar::clear_cache();
+$src_urls = array();
+$res      = MKL_Calendar::get_events();
+$src_q    = array();
+if ( 1 === count( $src_urls ) ) {
+	wp_parse_str( (string) wp_parse_url( $src_urls[0], PHP_URL_QUERY ), $src_q );
+}
+mkl_assert( MKL_Calendar::is_configured() && 'Google Calendar API (Google-Verbindung der Galerie: kompanie@example.com)' === MKL_Calendar::describe_source(), 'Quelle Google-Verbindung der Galerie' );
+mkl_assert(
+	! is_wp_error( $res ) && array( 'Termin aus Google' ) === wp_list_pluck( $res, 'title' ) && 1 === count( $src_urls )
+	&& false !== strpos( $src_urls[0], rawurlencode( 'privat@group.calendar.google.com' ) ) && ! isset( $src_q['key'] ) && isset( $src_q['singleEvents'] ) && 'true' === $src_q['singleEvents'],
+	'Privater Kalender über die Verbindung: Serien von Google aufgelöst, kein API-Key, keine iCal-Anfrage'
+);
+mkl_assert( array( 'Bearer CAL-TOKEN' ) === $conn['auth'] && array( 'refresh_token' ) === $conn['token'], 'Abruf mit Zugriffstoken aus dem Refresh-Token der Verbindung' );
+$html = $src_page();
+mkl_assert( false === strpos( $html, 'darf den Kalender noch nicht lesen' ) && false === strpos( $html, 'Kein Kalender eingerichtet' ), 'Einstellungsseite: kein Hinweis bei erlaubtem Kalender' );
+
+// Ohne Kalender-IDs nutzt auch die Verbindung nichts.
+update_option( 'mkl_calendar_ids', '' );
+update_option( 'mkl_ics_url', '' );
+MKL_Calendar::clear_cache();
+$res = MKL_Calendar::get_events();
+mkl_assert( ! MKL_Calendar::is_configured() && is_wp_error( $res ) && 'mkl_calendar_not_configured' === $res->get_error_code(), 'Verbindung ohne Kalender-IDs → nicht konfiguriert' );
+
+// Google lehnt ab: Meldung mit Hinweis, kein Rückfall auf andere Quellen.
+update_option( 'mkl_calendar_ids', 'privat@group.calendar.google.com' );
+$conn['status'] = 404;
+MKL_Calendar::clear_cache();
+$res            = MKL_Calendar::get_events();
+$conn['status'] = 200;
+mkl_assert( is_wp_error( $res ) && 'mkl_calendar_google' === $res->get_error_code() && false !== strpos( $res->get_error_message(), 'Not Found' ) && false !== strpos( $res->get_error_message(), 'Konto den Kalender sehen' ), 'Kalender nicht erreichbar: Google-Meldung mit Hinweis' );
+
+// Eigener API-Key hat Vorrang vor der Verbindung.
+update_option( 'mkl_google_api_key', 'EIGENER-KEY' );
+MKL_Calendar::clear_cache();
+$conn['auth'] = array();
+$res          = MKL_Calendar::get_events();
+mkl_assert( 'Google Calendar API (eigener API-Key)' === MKL_Calendar::describe_source() && array( '' ) === $conn['auth'], 'API-Key vor der Verbindung, ohne Token' );
+update_option( 'mkl_google_api_key', '' );
+
+// Dienstkonto statt Verbindung: Kalender-Berechtigung im JWT.
+delete_option( MKL_Drive::OAUTH_OPTION );
+$src_key = openssl_pkey_new( array( 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA ) );
+openssl_pkey_export( $src_key, $src_pem );
+MKL_Drive::save_service_account( wp_json_encode( array( 'client_email' => 'galerie@mkl-test.iam.gserviceaccount.com', 'private_key' => $src_pem ) ) );
+MKL_Calendar::clear_cache();
+$conn['auth']  = array();
+$conn['token'] = array();
+$res           = MKL_Calendar::get_events();
+mkl_assert( MKL_Drive::calendar_access() && 'Google Calendar API (Dienstkonto der Galerie: galerie@mkl-test.iam.gserviceaccount.com)' === MKL_Calendar::describe_source(), 'Quelle Dienstkonto der Galerie' );
+mkl_assert(
+	! is_wp_error( $res ) && array( 'Bearer CAL-TOKEN' ) === $conn['auth'] && array( 'urn:ietf:params:oauth:grant-type:jwt-bearer' ) === $conn['token']
+	&& false !== strpos( ' ' . $conn['jwt_scope'] . ' ', ' ' . MKL_Drive::CAL_SCOPE . ' ' ),
+	'Dienstkonto: Token per JWT mit Kalender-Berechtigung'
+);
+$conn['status'] = 404;
+MKL_Calendar::clear_cache();
+$res            = MKL_Calendar::get_events();
+$conn['status'] = 200;
+mkl_assert( is_wp_error( $res ) && false !== strpos( $res->get_error_message(), 'für galerie@mkl-test.iam.gserviceaccount.com freigegeben' ), 'Dienstkonto ohne Freigabe: Hinweis auf die Freigabe' );
+
+remove_filter( 'pre_http_request', $conn_filter, 20 );
+delete_transient( MKL_Drive::TOKEN_CACHE );
 wp_set_current_user( 0 );
 wp_delete_user( $src_admin );
 

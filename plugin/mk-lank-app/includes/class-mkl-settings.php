@@ -75,12 +75,18 @@ class MKL_Settings {
 			<?php if ( ! MKL_Calendar::is_configured() ) : ?>
 				<div class="notice notice-warning inline"><p>
 					<strong>Kein Kalender eingerichtet.</strong> Anwärter und Mitglieder sehen in der App keine Termine, und es gibt keine Push-Nachrichten zu Kalenderterminen.
-					Bitte die iCal-Adresse eintragen oder einen Google-API-Key zusammen mit den Kalender-IDs.
+					Bitte die Kalender-IDs eintragen und die <a href="#galerie">Google-Verbindung</a> einrichten, oder eine iCal-Adresse eintragen.
+				</p></div>
+			<?php endif; ?>
+			<?php if ( MKL_Drive::oauth_connected() && ! MKL_Drive::calendar_access() ) : ?>
+				<div class="notice notice-info inline"><p>
+					Die <a href="#galerie">Google-Verbindung</a> darf den Kalender noch nicht lesen. Für einen privaten Kalender dort „Verbindung trennen“, neu mit Google verbinden und dabei den Kalender erlauben.
 				</p></div>
 			<?php endif; ?>
 			<p class="description">
-				Für einen privaten Google Kalender die „geheime Adresse im iCal-Format“ eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren).
-				Öffentliche Kalender gehen auch über einen Google-API-Key mit den Kalender-IDs; ist beides eingetragen, gilt der API-Key.
+				Für einen privaten Google Kalender die Kalender-ID eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren → Kalender-ID).
+				Gelesen wird er über die <a href="#galerie">Google-Verbindung</a> unten; Serientermine erscheinen dann mit jedem einzelnen Termin.
+				Öffentliche Kalender gehen auch über einen Google-API-Key. Ist ein API-Key eingetragen, gilt er vor der Google-Verbindung; die iCal-Adresse wird nur ohne beides genutzt.
 			</p>
 
 			<form method="post" action="options.php">
@@ -89,17 +95,17 @@ class MKL_Settings {
 					<tr>
 						<th scope="row"><label for="mkl_calendar_ids">Google-Kalender-IDs</label></th>
 						<td><input type="text" class="regular-text" id="mkl_calendar_ids" name="mkl_calendar_ids" value="<?php echo esc_attr( get_option( 'mkl_calendar_ids', '' ) ); ?>" />
-						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Nur zusammen mit dem API-Key.</p></td>
+						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Gelesen über den API-Key oder die Google-Verbindung.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_google_api_key">Google-API-Key</label></th>
 						<td><input type="password" autocomplete="off" class="regular-text" id="mkl_google_api_key" name="mkl_google_api_key" value="<?php echo esc_attr( get_option( 'mkl_google_api_key', '' ) ); ?>" />
-						<p class="description">Nur für öffentliche Kalender, zusammen mit den Kalender-IDs.</p></td>
+						<p class="description">Nur für öffentliche Kalender, zusammen mit den Kalender-IDs. Für einen privaten Kalender leer lassen.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_ics_url">iCal-Adresse</label></th>
 						<td><input type="url" class="regular-text" id="mkl_ics_url" name="mkl_ics_url" value="<?php echo esc_attr( get_option( 'mkl_ics_url', '' ) ); ?>" />
-						<p class="description">Wird genutzt, wenn kein API-Key mit Kalender-IDs eingetragen ist. Serientermine erscheinen hier nur einmal.</p></td>
+						<p class="description">Wird nur genutzt, wenn die Kalender-IDs weder über einen API-Key noch über die Google-Verbindung gelesen werden. Serientermine erscheinen hier nur einmal.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_calendar_cache_minutes">Zwischenspeicher (Minuten)</label></th>
@@ -236,6 +242,7 @@ class MKL_Settings {
 			<p>
 				✅ Verbunden mit Google<?php echo MKL_Drive::oauth_email() ? ': <strong>' . esc_html( MKL_Drive::oauth_email() ) . '</strong>' : ''; ?>.
 				Dieses Konto muss den Galerie-Ordner sehen können (eigener Ordner oder dafür freigegeben).
+				<?php echo MKL_Drive::calendar_access() ? 'Es darf auch den Kalender lesen.' : 'Den Kalender darf es noch nicht lesen; dafür trennen und neu verbinden.'; ?>
 			</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="mkl_drive_disconnect" />
@@ -261,7 +268,7 @@ class MKL_Settings {
 					</tr>
 				</table>
 				<?php submit_button( 'Speichern und mit Google verbinden', 'primary', 'submit', false ); ?>
-				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner sehen kann, und erlaubst den Lesezugriff auf Google Drive.</p>
+				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner sehen kann, und erlaubst den Lesezugriff auf Google Drive und, für die Termine, auf Google Kalender.</p>
 			</form>
 		<?php endif; ?>
 
@@ -287,6 +294,7 @@ class MKL_Settings {
 							<?php if ( $sa_email ) : ?>
 								<p>Hinterlegt: <code><?php echo esc_html( $sa_email ); ?></code><br />
 								Gib den Galerie-Ordner in Google Drive für <strong>diese Adresse</strong> frei (Rolle „Betrachter“).
+								Für die Termine den Kalender ebenfalls für diese Adresse freigeben („Alle Termindetails sehen“).
 								<?php if ( MKL_Drive::oauth_connected() ) : ?><br /><em>Wird nicht genutzt, solange die Verbindung mit Google besteht.</em><?php endif; ?></p>
 							<?php endif; ?>
 							<textarea id="mkl_drive_sa" name="mkl_drive_sa" rows="4" class="large-text code" placeholder="<?php echo esc_attr( $sa_email ? 'Nur ausfüllen, um den Schlüssel zu ersetzen' : 'Inhalt der heruntergeladenen JSON-Datei hier einfügen' ); ?>"></textarea>
