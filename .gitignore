@@ -4,3 +4,4 @@ dist/
 .wp-test/
 app/test-results/
 app/playwright-report/
+.wp-test-uebernahme/
