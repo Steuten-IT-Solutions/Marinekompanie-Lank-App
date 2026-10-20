@@ -294,6 +294,8 @@ class MKL_REST {
 				'points'           => MKL_DB::get_points_total( $user->ID ),
 				'open_cents'       => MKL_DB::get_open_penalties_cents( $user->ID ),
 				'titles'           => MKL_Titles::for_user( $user->ID ),
+				// Die App zeigt damit die Wartungsseite (GET /me bleibt in der Wartung erreichbar).
+				'maintenance'      => MKL_Maintenance::public_state(),
 			) + self::own_rank( $user->ID )
 		);
 	}

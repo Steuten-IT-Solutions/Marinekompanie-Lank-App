@@ -51,6 +51,7 @@ require_once MKL_DIR . 'includes/class-mkl-drive.php';
 require_once MKL_DIR . 'includes/class-mkl-gallery.php';
 require_once MKL_DIR . 'includes/class-mkl-rest.php';
 require_once MKL_DIR . 'includes/class-mkl-push.php';
+require_once MKL_DIR . 'includes/class-mkl-maintenance.php';
 require_once MKL_DIR . 'includes/class-mkl-app-page.php';
 require_once MKL_DIR . 'includes/class-mkl-settings.php';
 
@@ -80,3 +81,4 @@ MKL_Settings::init();
 MKL_Shortcodes::init();
 MKL_Gallery::init();
 MKL_Push::init();
+MKL_Maintenance::init();

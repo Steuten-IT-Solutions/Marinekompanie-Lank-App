@@ -54,13 +54,31 @@ class MKL_App_Page {
 		} elseif ( 'sw.js' === $path ) {
 			self::send_service_worker();
 		} elseif ( preg_match( '#^foto/(\d+)/(thumb|large)$#', $path, $m ) ) {
-			MKL_Gallery::serve( (int) $m[1], $m[2] );
+			self::serve_photo( (int) $m[1], $m[2] );
 		} elseif ( preg_match( '#^dokument/(\d+)$#', $path, $m ) ) {
-			MKL_Documents::serve( (int) $m[1] );
+			self::serve_document( (int) $m[1] );
 		} else {
 			self::send_app();
 		}
 		exit;
+	}
+
+	/** Galeriebild; im Wartungsmodus für Nicht-Admins gesperrt (außer für die Website-Galerie). */
+	public static function serve_photo( $id, $size ) {
+		if ( MKL_Maintenance::blocks_photo() ) {
+			MKL_Maintenance::send_unavailable();
+			return;
+		}
+		MKL_Gallery::serve( $id, $size );
+	}
+
+	/** Dokument; im Wartungsmodus für Nicht-Admins gesperrt. */
+	public static function serve_document( $id ) {
+		if ( MKL_Maintenance::is_locked() ) {
+			MKL_Maintenance::send_unavailable();
+			return;
+		}
+		MKL_Documents::serve( $id );
 	}
 
 	private static function send_manifest() {
@@ -106,7 +124,10 @@ class MKL_App_Page {
 			define( 'DONOTCACHEPAGE', true );
 		}
 		nocache_headers();
-
+		if ( MKL_Maintenance::is_locked() ) {
+			// Der Service Worker speichert diese Fassung nicht, offline bleibt die letzte normale.
+			header( 'X-MKL-Maintenance: 1' );
+		}
 
 		$file = self::dist_dir() . 'index.html';
 		if ( ! is_readable( $file ) ) {
@@ -121,27 +142,30 @@ class MKL_App_Page {
 		// Gäste (nicht angemeldet) sehen die öffentliche Ansicht; ein Nonce gibt es nur mit Anmeldung.
 		$user   = wp_get_current_user();
 		$config = array(
-			'restUrl'   => esc_url_raw( rest_url( MKL_REST::NS . '/' ) ),
-			'nonce'     => $user->exists() ? wp_create_nonce( 'wp_rest' ) : '',
-			'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
-			'loginUrl'  => wp_login_url( self::app_url() ),
-			'logoutUrl' => wp_logout_url( self::app_url() ),
-			'appUrl'    => self::app_url(),
-			'siteUrl'   => home_url( '/' ),
-			'swUrl'     => self::app_url() . 'sw.js',
-			'user'      => ! $user->exists() ? null : array(
-				'id'              => $user->ID,
-				'name'            => $user->display_name,
-				'login'           => $user->user_login,
-				'level'           => MKL_Roles::get_level( $user->ID ),
-				'isMember'        => MKL_Roles::is_member(),
-				'canSeeCalendar'  => MKL_Roles::can_see_calendar(),
-				'isSpiess'        => MKL_Roles::is_spiess(),
-				'canCreateUsers'  => current_user_can( 'create_users' ),
-				'canManageEvents' => current_user_can( MKL_CAP_EVENTS ),
-				'canManageDocs'   => current_user_can( MKL_CAP_DOCS ),
-				'canPromoteUsers' => current_user_can( 'promote_users' ),
-				'canEditUsers'    => current_user_can( 'edit_users' ),
+			'restUrl'     => esc_url_raw( rest_url( MKL_REST::NS . '/' ) ),
+			'nonce'       => $user->exists() ? wp_create_nonce( 'wp_rest' ) : '',
+			'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+			'loginUrl'    => wp_login_url( self::app_url() ),
+			'logoutUrl'   => wp_logout_url( self::app_url() ),
+			'appUrl'      => self::app_url(),
+			'siteUrl'     => home_url( '/' ),
+			'swUrl'       => self::app_url() . 'sw.js',
+			// Wartungsmodus: auch Gäste ohne Anmeldung erfahren ihn so.
+			'maintenance' => MKL_Maintenance::public_state(),
+			'user'        => ! $user->exists() ? null : array(
+				'id'               => $user->ID,
+				'name'             => $user->display_name,
+				'login'            => $user->user_login,
+				'level'            => MKL_Roles::get_level( $user->ID ),
+				'isMember'         => MKL_Roles::is_member(),
+				'canSeeCalendar'   => MKL_Roles::can_see_calendar(),
+				'isSpiess'         => MKL_Roles::is_spiess(),
+				'canCreateUsers'   => current_user_can( 'create_users' ),
+				'canManageEvents'  => current_user_can( MKL_CAP_EVENTS ),
+				'canManageDocs'    => current_user_can( MKL_CAP_DOCS ),
+				'canPromoteUsers'  => current_user_can( 'promote_users' ),
+				'canEditUsers'     => current_user_can( 'edit_users' ),
+				'canManageOptions' => current_user_can( 'manage_options' ),
 			),
 		);
 

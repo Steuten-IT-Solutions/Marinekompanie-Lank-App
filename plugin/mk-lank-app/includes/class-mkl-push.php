@@ -587,6 +587,10 @@ class MKL_Push {
 	}
 
 	public static function cron() {
+		// Im Wartungsmodus bleibt die Warteschlange liegen; beim Beenden wird der Versand neu angestoßen.
+		if ( MKL_Maintenance::is_active() ) {
+			return;
+		}
 		self::process_queue();
 	}
 
@@ -802,6 +806,9 @@ class MKL_Push {
 
 	/** Alle 15 Minuten: Kalender abgleichen, Erinnerungen verschicken. */
 	public static function watch() {
+		if ( MKL_Maintenance::is_active() ) {
+			return;
+		}
 		self::check_calendar();
 		self::send_reminders();
 	}

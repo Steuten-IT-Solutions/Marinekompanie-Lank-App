@@ -186,6 +186,18 @@ Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
 > Hinweis: Wird die Rolle eines Benutzers über die **Sammelaktion** in der WordPress-Benutzerliste geändert, entfernt WordPress dabei auch die Zusatzrollen „Mitglied“ und „Spieß“. Dann die Rolle in der App oder im Profil wieder setzen.
 
+## Wartungsmodus
+
+Für Umstellungen oder Updates lässt sich die App für alle außer Admins (WordPress-Recht `manage_options`) sperren:
+
+- **Schalten:** in der App unter **Spieß → Einrichtung → Wartungsmodus** (mit Rückfrage) oder in WordPress unter **Einstellungen → Kompanie-App → Wartungsmodus** – so lässt er sich auch ohne App beenden. Nur von Hand, ohne Zeitplan.
+- **Begründung (optional):** reiner Text mit bis zu 500 Zeichen, Zeilenumbrüche bleiben. Sie steht auf der Wartungsseite unter dem festen Text und lässt sich ändern, solange die Wartung läuft.
+- **Während der Wartung:** Spieße, Mitglieder, Anwärter und Gäste sehen nur die Wartungsseite mit „Erneut versuchen“ und einer Anmeldung für Admins. Alle REST-Routen unter `mk-lank/v1` antworten ihnen mit `503` (Code `mkl_maintenance`, Begründung in `data.reason`), ebenso Fotos und Dokumente unter `/app/`. Nur `GET /me` bleibt für Angemeldete erreichbar und meldet `maintenance: { on, reason }`; Gäste erfahren den Zustand über die Seiten-Konfiguration. Admins nutzen die App normal und sehen einen roten Hinweis mit „Beenden“.
+- **Offline-Daten** auf den Handys bleiben erhalten: Der Service Worker speichert keine Wartungsantworten und überschreibt nichts.
+- **Webseite:** `[mkl_termine]` und `[mkl_galerie]` arbeiten normal weiter, der Rest der Webseite ist nicht betroffen.
+- **Hintergrund:** Galerie-Abgleich, Push-Versand und Kalender-Abgleich pausieren. Neue Benachrichtigungen landen weiter in der Warteschlange und gehen beim Beenden sofort raus.
+- Zustand in der Option `mkl_maintenance`, die letzten 20 Änderungen (wer, wann, Begründung) in `mkl_maintenance_log`. Per API: `GET`/`POST /wp-json/mk-lank/v1/admin/maintenance` mit `{ "on": true, "reason": "…" }`.
+
 ## Updates
 
 Jeder Merge auf `main` startet zuerst alle Tests. Sind sie grün, entsteht automatisch ein **GitHub-Release** mit der Datei `mk-lank-app.zip`. Du findest es unter **Releases** rechts auf der Repo-Seite.
@@ -223,7 +235,7 @@ Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu
 ### Tests
 
 ```bash
-# REST-API: Rechte, Validierung, Summen, Dienstgrade, Titel, Dokumente, ICS-Parser
+# REST-API: Rechte, Validierung, Summen, Dienstgrade, Titel, Dokumente, ICS-Parser, Wartungsmodus
 php .wp-test/wp-cli.phar --allow-root --path=.wp-test/wp eval-file plugin/tests/rest-api-test.php
 
 # Push: offizieller Testvektor aus RFC 8291, VAPID-Signatur, REST (auch Gäste), simulierter Push-Dienst,

@@ -12,6 +12,7 @@ import {
 } from '../documents';
 import { formatBytes, formatDate } from '../format';
 import { detectPlatform } from '../install';
+import { noteMaintenanceFetch } from '../maintenance';
 import { whenControlled } from '../offline';
 import { navigate } from '../router';
 import { Empty, ErrorBox, Loading, useAsync } from '../ui';
@@ -137,6 +138,7 @@ async function fetchFile(doc: DocumentInfo): Promise<Blob> {
   } catch {
     throw new Error('Keine Verbindung und noch nicht offline gespeichert.');
   }
+  if (await noteMaintenanceFetch(res)) throw new Error('Die App wird gerade gewartet.');
   if (!res.ok) throw new Error(res.status === 404 ? 'Das Dokument wurde nicht gefunden.' : `Fehler ${res.status}`);
   return res.blob();
 }
