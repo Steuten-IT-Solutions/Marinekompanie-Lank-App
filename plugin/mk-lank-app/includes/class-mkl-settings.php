@@ -55,7 +55,7 @@ class MKL_Settings {
 			MKL_Calendar::clear_cache();
 			$test = MKL_Calendar::get_events();
 		}
-		$pgc_ids = MKL_Calendar::get_calendar_ids();
+		$ids = MKL_Calendar::get_calendar_ids();
 		?>
 		<div class="wrap">
 			<h1>Kompanie-App</h1>
@@ -67,35 +67,35 @@ class MKL_Settings {
 				Öffentliche Termine für die Startseite zeigt der Shortcode <code>[mkl_termine]</code>.
 			</p>
 
-			<h2>Kalender</h2>
+			<?php self::render_google(); ?>
+
+			<hr />
+			<h2 id="kalender">Kalender</h2>
 			<p>
 				Aktuelle Quelle: <strong><?php echo esc_html( MKL_Calendar::describe_source() ); ?></strong><br />
-				Verwendete Kalender-IDs: <code><?php echo esc_html( $pgc_ids ? implode( ', ', $pgc_ids ) : '–' ); ?></code>
+				Verwendete Kalender-IDs: <code><?php echo esc_html( $ids ? implode( ', ', $ids ) : '–' ); ?></code>
 			</p>
+			<?php if ( ! MKL_Calendar::is_configured() ) : ?>
+				<div class="notice notice-warning inline"><p>
+					<strong>Kein Kalender eingerichtet.</strong> Anwärter und Mitglieder sehen in der App keine Termine, und es gibt keine Push-Nachrichten zu Kalenderterminen.
+					Bitte die Kalender-IDs eintragen und dazu den <a href="#google">Google-Zugang</a> mit Kalender-Berechtigung einrichten, oder einen Google-API-Key zusammen mit den Kalender-IDs, oder die iCal-Adresse.
+				</p></div>
+			<?php endif; ?>
 			<?php if ( MKL_Drive::oauth_connected() && ! MKL_Drive::calendar_access() ) : ?>
 				<div class="notice notice-info inline"><p>
-					Die <a href="#galerie">Google-Verbindung der Galerie</a> darf den Kalender noch nicht lesen. Für einen privaten Kalender dort „Verbindung trennen“, neu mit Google verbinden und dabei den Kalender erlauben.
+					Der <a href="#google">Google-Zugang</a> darf den Kalender noch nicht lesen. Für einen privaten Kalender dort „Verbindung trennen“, neu mit Google verbinden und dabei den Kalender erlauben.
 					Vorher in der Google Cloud Console im Projekt des OAuth-Clients die Google Calendar API aktivieren.
 				</p></div>
 			<?php endif; ?>
 			<?php if ( '' !== MKL_Calendar::connection_error() ) : ?>
 				<div class="notice notice-error inline"><p>
-					<strong>Kalender über die Google-Verbindung der Galerie nicht lesbar:</strong> <?php echo esc_html( MKL_Calendar::connection_error() ); ?>
-					<?php if ( MKL_Calendar::pgc_configured() ) : ?>
-						<br />Bis das behoben ist, kommen die Termine weiter über „Private Google Calendars“.
-					<?php endif; ?>
-				</p></div>
-			<?php endif; ?>
-			<?php if ( MKL_Calendar::ids_from_pgc() ) : ?>
-				<div class="notice notice-info inline"><p>
-					Die Kalender-IDs stammen aus der Auswahl im Plugin „Private Google Calendars“. Trag sie unten bei „Google-Kalender-IDs“ ein, damit sie auch ohne das Plugin erhalten bleiben.
+					<strong>Kalender über den Google-Zugang nicht lesbar:</strong> <?php echo esc_html( MKL_Calendar::connection_error() ); ?>
 				</p></div>
 			<?php endif; ?>
 			<p class="description">
-				Für einen privaten Google Kalender die Kalender-IDs eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren → Kalender-ID) und die <a href="#galerie">Google-Verbindung der Galerie</a> mit Kalender-Berechtigung einrichten.
+				Für einen privaten Google Kalender die Kalender-IDs eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren → Kalender-ID) und den <a href="#google">Google-Zugang</a> mit Kalender-Berechtigung einrichten.
 				Google liefert dabei jeden Termin einer Serie einzeln. Für ein Dienstkonto muss der Kalender für dessen E-Mail-Adresse freigegeben sein.
-				Reihenfolge der Quellen: eigener API-Key, Google-Verbindung der Galerie, Plugin „Private Google Calendars“, iCal-Adresse.
-				Sind die Kalender-IDs leer, nutzt die App die Auswahl aus „Private Google Calendars“.
+				Reihenfolge der Quellen: eigener API-Key, Google-Zugang, iCal-Adresse.
 			</p>
 
 			<form method="post" action="options.php">
@@ -104,17 +104,17 @@ class MKL_Settings {
 					<tr>
 						<th scope="row"><label for="mkl_calendar_ids">Google-Kalender-IDs</label></th>
 						<td><input type="text" class="regular-text" id="mkl_calendar_ids" name="mkl_calendar_ids" value="<?php echo esc_attr( get_option( 'mkl_calendar_ids', '' ) ); ?>" />
-						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Gelesen über den API-Key, die Google-Verbindung der Galerie oder „Private Google Calendars“. Leer = Auswahl aus „Private Google Calendars“.</p></td>
+						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Gelesen über den API-Key oder den Google-Zugang.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_google_api_key">Google-API-Key</label></th>
 						<td><input type="password" autocomplete="off" class="regular-text" id="mkl_google_api_key" name="mkl_google_api_key" value="<?php echo esc_attr( get_option( 'mkl_google_api_key', '' ) ); ?>" />
-						<p class="description">Nur für öffentliche Kalender nötig. Für einen privaten Kalender leer lassen; ist er eingetragen, gilt er vor der Google-Verbindung.</p></td>
+						<p class="description">Nur für öffentliche Kalender nötig. Für einen privaten Kalender leer lassen; ist er eingetragen, gilt er vor dem Google-Zugang.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_ics_url">iCal-Adresse (Alternative)</label></th>
 						<td><input type="url" class="regular-text" id="mkl_ics_url" name="mkl_ics_url" value="<?php echo esc_attr( get_option( 'mkl_ics_url', '' ) ); ?>" />
-						<p class="description">Wird nur genutzt, wenn keine Google-API verfügbar ist (weder API-Key noch Google-Verbindung noch „Private Google Calendars“). Serientermine erscheinen hier nur einmal.</p></td>
+						<p class="description">Wird nur genutzt, wenn keine Google-API verfügbar ist (weder API-Key noch Google-Zugang mit Kalender-IDs). Serientermine erscheinen hier nur einmal.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_calendar_cache_minutes">Zwischenspeicher (Minuten)</label></th>
@@ -144,6 +144,88 @@ class MKL_Settings {
 			<?php self::render_push(); ?>
 			<?php MKL_Maintenance::render_settings(); ?>
 		</div>
+		<?php
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Google-Zugang (für Kalender und Galerie)                            */
+	/* ------------------------------------------------------------------ */
+
+	private static function render_google() {
+		$sa_email = MKL_Drive::client_email();
+		$oauth    = MKL_Drive::oauth();
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- nur Anzeige von Rückmeldungen
+		$notice   = isset( $_GET['mkl_google_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['mkl_google_msg'] ) ) : '';
+		$is_error = ! empty( $_GET['mkl_google_error'] );
+		// phpcs:enable
+		?>
+		<hr />
+		<h2 id="google">Google-Zugang</h2>
+		<?php if ( $notice ) : ?>
+			<div class="notice <?php echo $is_error ? 'notice-error' : 'notice-success'; ?> inline"><p><?php echo esc_html( $notice ); ?></p></div>
+		<?php endif; ?>
+		<p>
+			Über diesen Zugang liest die App den privaten <a href="#kalender">Kalender</a> und die <a href="#galerie">Galerie</a> aus Google Drive, jeweils nur lesend.
+		</p>
+
+		<h3>Mit Google verbinden</h3>
+		<?php if ( MKL_Drive::oauth_connected() ) : ?>
+			<p>
+				✅ Verbunden mit Google<?php echo MKL_Drive::oauth_email() ? ': <strong>' . esc_html( MKL_Drive::oauth_email() ) . '</strong>' : ''; ?>.
+				Dieses Konto muss den Galerie-Ordner und den Kalender sehen können (eigene oder dafür freigegeben).
+				<?php echo MKL_Drive::calendar_access() ? 'Es darf auch den Kalender lesen.' : 'Den Kalender darf es noch nicht lesen; dafür trennen und neu verbinden.'; ?>
+			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="mkl_drive_disconnect" />
+				<?php wp_nonce_field( 'mkl_drive_disconnect' ); ?>
+				<?php submit_button( 'Verbindung trennen', 'secondary', 'submit', false ); ?>
+			</form>
+		<?php else : ?>
+			<p>Lege in der Google Cloud Console einen <strong>OAuth-Client</strong> vom Typ „Webanwendung“ an und trage dort diese
+				<strong>autorisierte Weiterleitungs-URI</strong> ein:</p>
+			<p><input type="text" readonly class="large-text code" value="<?php echo esc_attr( MKL_Drive::redirect_uri() ); ?>" onclick="this.select()" /></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="mkl_drive_connect" />
+				<?php wp_nonce_field( 'mkl_drive_connect' ); ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="mkl_oauth_client_id">Client-ID</label></th>
+						<td><input type="text" class="large-text code" id="mkl_oauth_client_id" name="mkl_oauth_client_id" value="<?php echo esc_attr( isset( $oauth['client_id'] ) ? $oauth['client_id'] : '' ); ?>" placeholder="….apps.googleusercontent.com" autocomplete="off" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="mkl_oauth_client_secret">Clientschlüssel (Client-Secret)</label></th>
+						<td><input type="password" class="regular-text code" id="mkl_oauth_client_secret" name="mkl_oauth_client_secret" value="" autocomplete="off" placeholder="<?php echo esc_attr( ! empty( $oauth['client_secret'] ) ? 'gespeichert – leer lassen, um ihn zu behalten' : '' ); ?>" />
+						<p class="description">Wird nur auf dem Server gespeichert und hier nicht wieder angezeigt.</p></td>
+					</tr>
+				</table>
+				<?php submit_button( 'Speichern und mit Google verbinden', 'primary', 'submit', false ); ?>
+				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner und den Kalender sehen kann, und erlaubst den Lesezugriff auf Google Drive und, für die Termine, auf Google Kalender.</p>
+			</form>
+		<?php endif; ?>
+
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="mkl_gallery_save" />
+			<?php wp_nonce_field( 'mkl_gallery_save' ); ?>
+			<details<?php echo $sa_email && ! MKL_Drive::oauth_connected() ? ' open' : ''; ?>>
+				<summary>Alternative: Dienstkonto mit JSON-Schlüssel (nur nötig, wenn du nicht „Mit Google verbinden“ nutzt)</summary>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="mkl_drive_sa">Dienstkonto (JSON-Schlüssel)</label></th>
+						<td>
+							<?php if ( $sa_email ) : ?>
+								<p>Hinterlegt: <code><?php echo esc_html( $sa_email ); ?></code><br />
+								Gib den Galerie-Ordner in Google Drive für <strong>diese Adresse</strong> frei (Rolle „Betrachter“).
+								Für die Termine den Kalender ebenfalls für diese Adresse freigeben („Alle Termindetails sehen“).
+								<?php if ( MKL_Drive::oauth_connected() ) : ?><br /><em>Wird nicht genutzt, solange die Verbindung mit Google besteht.</em><?php endif; ?></p>
+							<?php endif; ?>
+							<textarea id="mkl_drive_sa" name="mkl_drive_sa" rows="4" class="large-text code" placeholder="<?php echo esc_attr( $sa_email ? 'Nur ausfüllen, um den Schlüssel zu ersetzen' : 'Inhalt der heruntergeladenen JSON-Datei hier einfügen' ); ?>"></textarea>
+							<p class="description">Der Schlüssel wird nur auf dem Server gespeichert und hier nicht wieder angezeigt.</p>
+						</td>
+					</tr>
+				</table>
+				<?php submit_button( 'Dienstkonto speichern', 'secondary' ); ?>
+			</details>
+		</form>
 		<?php
 	}
 
@@ -226,8 +308,6 @@ class MKL_Settings {
 	}
 
 	private static function render_gallery() {
-		$sa_email = MKL_Drive::client_email();
-		$oauth    = MKL_Drive::oauth();
 		$root     = get_option( MKL_Gallery::ROOT_OPTION, '' );
 		$status   = (array) get_option( MKL_Gallery::STATUS_OPTION, array() );
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- nur Anzeige von Rückmeldungen
@@ -244,45 +324,10 @@ class MKL_Settings {
 		<p>
 			Aufbau in Drive: <strong>Galerie-Ordner → Jahr → Album → Bilder</strong>. Bilder im Unterordner
 			<strong>„intern“</strong> eines Albums sehen nur angemeldete Mitglieder. Auf der Webseite zeigt der Shortcode
-			<code>[mkl_galerie]</code> die Galerie.
+			<code>[mkl_galerie]</code> die Galerie. Gelesen wird über den <a href="#google">Google-Zugang</a>.
 		</p>
 
-		<h3>1. Zugang zu Google Drive</h3>
-		<?php if ( MKL_Drive::oauth_connected() ) : ?>
-			<p>
-				✅ Verbunden mit Google<?php echo MKL_Drive::oauth_email() ? ': <strong>' . esc_html( MKL_Drive::oauth_email() ) . '</strong>' : ''; ?>.
-				Dieses Konto muss den Galerie-Ordner sehen können (eigener Ordner oder dafür freigegeben).
-				<?php echo MKL_Drive::calendar_access() ? 'Es darf auch den Kalender lesen.' : 'Den Kalender darf es noch nicht lesen; dafür trennen und neu verbinden.'; ?>
-			</p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<input type="hidden" name="action" value="mkl_drive_disconnect" />
-				<?php wp_nonce_field( 'mkl_drive_disconnect' ); ?>
-				<?php submit_button( 'Verbindung trennen', 'secondary', 'submit', false ); ?>
-			</form>
-		<?php else : ?>
-			<p>Lege in der Google Cloud Console einen <strong>OAuth-Client</strong> vom Typ „Webanwendung“ an und trage dort diese
-				<strong>autorisierte Weiterleitungs-URI</strong> ein:</p>
-			<p><input type="text" readonly class="large-text code" value="<?php echo esc_attr( MKL_Drive::redirect_uri() ); ?>" onclick="this.select()" /></p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<input type="hidden" name="action" value="mkl_drive_connect" />
-				<?php wp_nonce_field( 'mkl_drive_connect' ); ?>
-				<table class="form-table" role="presentation">
-					<tr>
-						<th scope="row"><label for="mkl_oauth_client_id">Client-ID</label></th>
-						<td><input type="text" class="large-text code" id="mkl_oauth_client_id" name="mkl_oauth_client_id" value="<?php echo esc_attr( isset( $oauth['client_id'] ) ? $oauth['client_id'] : '' ); ?>" placeholder="….apps.googleusercontent.com" autocomplete="off" /></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="mkl_oauth_client_secret">Clientschlüssel (Client-Secret)</label></th>
-						<td><input type="password" class="regular-text code" id="mkl_oauth_client_secret" name="mkl_oauth_client_secret" value="" autocomplete="off" placeholder="<?php echo esc_attr( ! empty( $oauth['client_secret'] ) ? 'gespeichert – leer lassen, um ihn zu behalten' : '' ); ?>" />
-						<p class="description">Wird nur auf dem Server gespeichert und hier nicht wieder angezeigt.</p></td>
-					</tr>
-				</table>
-				<?php submit_button( 'Speichern und mit Google verbinden', 'primary', 'submit', false ); ?>
-				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner sehen kann, und erlaubst den Lesezugriff auf Google Drive und, für die Termine, auf Google Kalender.</p>
-			</form>
-		<?php endif; ?>
-
-		<h3>2. Galerie-Ordner</h3>
+		<h3>Galerie-Ordner</h3>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="mkl_gallery_save" />
 			<?php wp_nonce_field( 'mkl_gallery_save' ); ?>
@@ -295,24 +340,6 @@ class MKL_Settings {
 					</td>
 				</tr>
 			</table>
-			<details<?php echo $sa_email && ! MKL_Drive::oauth_connected() ? ' open' : ''; ?>>
-				<summary>Alternative: Dienstkonto mit JSON-Schlüssel (nur nötig, wenn du nicht „Mit Google verbinden“ nutzt)</summary>
-				<table class="form-table" role="presentation">
-					<tr>
-						<th scope="row"><label for="mkl_drive_sa">Dienstkonto (JSON-Schlüssel)</label></th>
-						<td>
-							<?php if ( $sa_email ) : ?>
-								<p>Hinterlegt: <code><?php echo esc_html( $sa_email ); ?></code><br />
-								Gib den Galerie-Ordner in Google Drive für <strong>diese Adresse</strong> frei (Rolle „Betrachter“).
-								Für die Termine den Kalender ebenfalls für diese Adresse freigeben („Alle Termindetails sehen“).
-								<?php if ( MKL_Drive::oauth_connected() ) : ?><br /><em>Wird nicht genutzt, solange die Verbindung mit Google besteht.</em><?php endif; ?></p>
-							<?php endif; ?>
-							<textarea id="mkl_drive_sa" name="mkl_drive_sa" rows="4" class="large-text code" placeholder="<?php echo esc_attr( $sa_email ? 'Nur ausfüllen, um den Schlüssel zu ersetzen' : 'Inhalt der heruntergeladenen JSON-Datei hier einfügen' ); ?>"></textarea>
-							<p class="description">Der Schlüssel wird nur auf dem Server gespeichert und hier nicht wieder angezeigt.</p>
-						</td>
-					</tr>
-				</table>
-			</details>
 			<?php submit_button( 'Galerie-Einstellungen speichern', 'secondary' ); ?>
 		</form>
 
@@ -361,17 +388,26 @@ class MKL_Settings {
 			}
 		}
 
-		$root_input = isset( $_POST['mkl_gallery_root'] ) ? sanitize_text_field( wp_unslash( $_POST['mkl_gallery_root'] ) ) : '';
-		$root       = MKL_Drive::parse_folder_id( $root_input );
-		if ( '' !== $root_input && '' === $root ) {
-			$messages[] = 'Der Galerie-Ordner wurde nicht erkannt.';
-			$error      = true;
-		} else {
-			update_option( MKL_Gallery::ROOT_OPTION, $root, false );
+		// Das Dienstkonto steht im Abschnitt Google-Zugang in einem eigenen Formular ohne Galerie-Ordner.
+		$has_root = isset( $_POST['mkl_gallery_root'] );
+		if ( $has_root ) {
+			$root_input = sanitize_text_field( wp_unslash( $_POST['mkl_gallery_root'] ) );
+			$root       = MKL_Drive::parse_folder_id( $root_input );
+			if ( '' !== $root_input && '' === $root ) {
+				$messages[] = 'Der Galerie-Ordner wurde nicht erkannt.';
+				$error      = true;
+			} else {
+				update_option( MKL_Gallery::ROOT_OPTION, $root, false );
+				MKL_Gallery::schedule();
+			}
+		} elseif ( ! $error ) {
 			MKL_Gallery::schedule();
 		}
 		if ( ! $messages ) {
 			$messages[] = 'Gespeichert.';
+		}
+		if ( ! $has_root ) {
+			self::back( implode( ' ', $messages ), $error );
 		}
 		wp_safe_redirect(
 			self::page_url(
@@ -415,14 +451,15 @@ class MKL_Settings {
 		exit;
 	}
 
+	/** Zurück zum Abschnitt Google-Zugang, mit Rückmeldung. */
 	private static function back( $msg, $error ) {
 		wp_safe_redirect(
 			self::page_url(
 				array(
-					'mkl_gallery_msg'   => rawurlencode( $msg ),
-					'mkl_gallery_error' => $error ? 1 : 0,
+					'mkl_google_msg'   => rawurlencode( $msg ),
+					'mkl_google_error' => $error ? 1 : 0,
 				)
-			) . '#galerie'
+			) . '#google'
 		);
 		exit;
 	}

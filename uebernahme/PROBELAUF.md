@@ -37,7 +37,7 @@ Auf der Kopie, noch mit `mk-lank-app`:
 - [ ] Anzahl der Konten je Rolle: Spieß, Mitglied, Anwärter, Jungmariner-Haken.
 - [ ] Bei 3–5 Mitgliedern notieren: Punkte, offene Strafen, Dienstgrad, Titel. Darunter mindestens ein Jungmariner und ein Spieß.
 - [ ] Anzahl der Dokumente, Alben und Fotos sowie der Anwesenheitslisten.
-- [ ] **Kalender:** Unter *Einstellungen → Kompanie-App* muss die Quelle die Google-Verbindung der Galerie, ein eigener API-Key oder eine iCal-Adresse sein, nicht „Private Google Calendars“. Das Feld **„Google-Kalender-IDs“ muss ausgefüllt sein**. IDs, die nur aus „Private Google Calendars“ kommen, übernimmt die Kompanie-App nicht; ohne eigene IDs hätte sie nach der Übernahme keine Termine (bei iCal ohne IDs genügt die iCal-Adresse).
+- [ ] **Kalender:** Unter *Einstellungen → Kompanie-App* darf die Quelle nicht „Nicht konfiguriert“ sein (Google-Zugang, eigener API-Key oder iCal-Adresse). Bei Google-Zugang oder API-Key **muss das Feld „Google-Kalender-IDs“ ausgefüllt sein**; ohne eigene IDs hätte die Kompanie-App nach der Übernahme keine Termine (bei iCal genügt die iCal-Adresse).
 - [ ] Ein Dokument, das nur Spieße sehen, und ein internes Album merken.
 
 Den Vergleich aller Mitglieder übernimmt der Bericht (Schritt 4). Diese Stichproben prüfen zusätzlich die Anzeige in der App.

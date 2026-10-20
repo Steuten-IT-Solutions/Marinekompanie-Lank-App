@@ -354,7 +354,7 @@ class MKL_Drive {
 			if ( is_wp_error( $body ) ) {
 				$data = $body->get_error_data();
 				if ( isset( $data['error'] ) && 'invalid_grant' === $data['error'] ) {
-					return new WP_Error( 'mkl_drive', 'Die Verbindung zu Google ist abgelaufen oder wurde widerrufen. Bitte unter Einstellungen → Kompanie-App → Galerie neu mit Google verbinden.' );
+					return new WP_Error( 'mkl_drive', 'Die Verbindung zu Google ist abgelaufen oder wurde widerrufen. Bitte unter Einstellungen → Kompanie-App → Google-Zugang neu mit Google verbinden.' );
 				}
 				return new WP_Error( 'mkl_drive', 'Google-Anmeldung fehlgeschlagen: ' . $body->get_error_message() );
 			}

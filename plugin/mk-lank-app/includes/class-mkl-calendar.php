@@ -4,8 +4,8 @@
  *
  * Quellen (in dieser Reihenfolge), alle unter Einstellungen → Kompanie-App:
  *  1. Eigener Google-API-Key mit Kalender-IDs, für öffentliche Kalender.
- *  2. Google-Verbindung der Galerie (MKL_Drive: „Mit Google verbinden“ mit erlaubtem
- *     Kalender oder Dienstkonto) mit Kalender-IDs, für private Kalender.
+ *  2. Google-Zugang (MKL_Drive: „Mit Google verbinden“ mit erlaubtem Kalender
+ *     oder Dienstkonto) mit Kalender-IDs, für private Kalender.
  *  3. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
  *
  * 1. und 2. lesen über die Google Calendar API; Google löst Serientermine selbst
@@ -27,7 +27,7 @@ class MKL_Calendar {
 
 	const CACHE_KEY = 'mkl_calendar_events';
 	const PAST_CACHE_KEY = 'mkl_calendar_past_events';
-	/** Letzter Fehler beim Lesen über die Google-Verbindung der Galerie (für die Einstellungsseite). */
+	/** Letzter Fehler beim Lesen über den Google-Zugang (für die Einstellungsseite). */
 	const CONNECTION_ERROR_KEY = 'mkl_calendar_connection_error';
 	/** So weit zurück lassen sich Anwesenheitslisten zu Kalenderterminen anlegen. */
 	const PAST_DAYS = 90;
@@ -111,8 +111,8 @@ class MKL_Calendar {
 		}
 		if ( MKL_Drive::calendar_access() && $ids ) {
 			return MKL_Drive::oauth_connected()
-				? 'Google Calendar API (Google-Verbindung der Galerie' . ( MKL_Drive::oauth_email() ? ': ' . MKL_Drive::oauth_email() : '' ) . ')'
-				: 'Google Calendar API (Dienstkonto der Galerie: ' . MKL_Drive::client_email() . ')';
+				? 'Google Calendar API (Google-Zugang' . ( MKL_Drive::oauth_email() ? ': ' . MKL_Drive::oauth_email() : '' ) . ')'
+				: 'Google Calendar API (Google-Zugang über Dienstkonto: ' . MKL_Drive::client_email() . ')';
 		}
 		if ( get_option( 'mkl_ics_url' ) ) {
 			return 'iCal-Adresse (ICS)';
@@ -148,7 +148,7 @@ class MKL_Calendar {
 		return new WP_Error( 'mkl_calendar_not_configured', 'Der Kalender ist noch nicht eingerichtet.' );
 	}
 
-	/** Kalender über den Google-Zugang der Galerie (MKL_Drive) lesen. */
+	/** Kalender über den Google-Zugang (MKL_Drive) lesen. */
 	private static function fetch_connection( array $ids, array $range ) {
 		$token = MKL_Drive::access_token();
 		if ( is_wp_error( $token ) ) {
@@ -160,161 +160,7 @@ class MKL_Calendar {
 		return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $token ), $range, $hint );
 	}
 
-	/** Letzter Fehler beim Lesen über die Google-Verbindung der Galerie (für die Einstellungsseite). */
-	const CONNECTION_ERROR_KEY = 'mkl_calendar_connection_error';
-	/** So weit zurück lassen sich Anwesenheitslisten zu Kalenderterminen anlegen. */
-	const PAST_DAYS = 90;
-	const GOOGLE_EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/%s/events';
-
-	/**
-	 * @return array|WP_Error Liste normalisierter Termine, nach Beginn sortiert.
-	 */
-	public static function get_events() {
-		return self::cached( self::CACHE_KEY, self::range() );
-	}
-
-	/**
-	 * Termine der letzten PAST_DAYS Tage bis einschließlich morgen, für die
-	 * Anwesenheit. Die IDs sind dieselben wie bei get_events().
-	 *
-	 * @return array|WP_Error
-	 */
-	public static function get_past_events() {
-		return self::cached(
-			self::PAST_CACHE_KEY,
-			array(
-				'timeMin' => gmdate( 'Y-m-d\TH:i:s\Z', time() - self::PAST_DAYS * DAY_IN_SECONDS ),
-				'timeMax' => gmdate( 'Y-m-d\TH:i:s\Z', time() + DAY_IN_SECONDS ),
-			)
-		);
-	}
-
-	private static function cached( $key, array $range ) {
-		$cached = get_transient( $key );
-		if ( is_array( $cached ) ) {
-			return $cached;
-		}
-
-		$events = self::fetch_events( $range );
-		if ( is_wp_error( $events ) ) {
-			return $events;
-		}
-
-		usort(
-			$events,
-			function ( $a, $b ) {
-				return strcmp( $a['start'], $b['start'] );
-			}
-		);
-
-		$minutes = max( 1, (int) get_option( 'mkl_calendar_cache_minutes', 15 ) );
-		set_transient( $key, $events, $minutes * MINUTE_IN_SECONDS );
-		return $events;
-	}
-
-	public static function clear_cache() {
-		delete_transient( self::CACHE_KEY );
-		delete_transient( self::PAST_CACHE_KEY );
-	}
-
-	/** Zeitraum: ab gestern bis ein Jahr in die Zukunft. */
-	private static function range() {
-		return array(
-			'timeMin' => gmdate( 'Y-m-d\TH:i:s\Z', time() - DAY_IN_SECONDS ),
-			'timeMax' => gmdate( 'Y-m-d\TH:i:s\Z', time() + YEAR_IN_SECONDS ),
-		);
-	}
-
-	public static function get_calendar_ids() {
-		$own = trim( (string) get_option( 'mkl_calendar_ids', '' ) );
-		return array_values( array_filter( array_map( 'trim', explode( ',', $own ) ) ) );
-	}
-
-	/** Ist eine Quelle eingetragen? Sonst zeigt die Einstellungsseite einen Hinweis. */
-	public static function is_configured() {
-		$ids = self::get_calendar_ids();
-		return ( $ids && ( get_option( 'mkl_google_api_key' ) || MKL_Drive::calendar_access() ) ) || (bool) get_option( 'mkl_ics_url' );
-	}
-
-	/** Für die Einstellungsseite: welche Quelle wird verwendet? */
-	public static function describe_source() {
-		$ids = self::get_calendar_ids();
-		if ( get_option( 'mkl_google_api_key' ) && $ids ) {
-			return 'Google Calendar API (eigener API-Key)';
-		}
-		if ( MKL_Drive::calendar_access() && $ids ) {
-			return MKL_Drive::oauth_connected()
-				? 'Google Calendar API (Google-Verbindung der Galerie' . ( MKL_Drive::oauth_email() ? ': ' . MKL_Drive::oauth_email() : '' ) . ')'
-				: 'Google Calendar API (Dienstkonto der Galerie: ' . MKL_Drive::client_email() . ')';
-		}
-		if ( get_option( 'mkl_ics_url' ) ) {
-			return 'iCal-Adresse (ICS)';
-		}
-		return 'Nicht konfiguriert';
-	}
-
-	private static function fetch_events( array $range ) {
-		$ids     = self::get_calendar_ids();
-		$api_key = (string) get_option( 'mkl_google_api_key', '' );
-
-		if ( $ids && '' !== $api_key ) {
-			return self::fetch_google( $ids, array( 'key' => $api_key ), array(), $range );
-		}
-
-		if ( $ids && MKL_Drive::calendar_access() ) {
-			$events = self::fetch_connection( $ids, $range );
-			if ( ! is_wp_error( $events ) ) {
-				delete_transient( self::CONNECTION_ERROR_KEY );
-				return $events;
-			}
-			// Für die Einstellungsseite merken. Kein Rückfall auf die iCal-Adresse: Sie hätte
-			// andere Termin-IDs (lauter „neue“ Termine für die Push-Nachrichten).
-			set_transient( self::CONNECTION_ERROR_KEY, $events->get_error_message(), DAY_IN_SECONDS );
-			return $events;
-		}
-
-		$ics_url = (string) get_option( 'mkl_ics_url', '' );
-		if ( '' !== $ics_url ) {
-			return self::fetch_ics( $ics_url, $range );
-		}
-
-		return new WP_Error( 'mkl_calendar_not_configured', 'Der Kalender ist noch nicht eingerichtet.' );
-	}
-
-	/** Kalender über den Google-Zugang der Galerie (MKL_Drive) lesen. */
-	private static function fetch_connection( array $ids, array $range ) {
-		$token = MKL_Drive::access_token();
-		if ( is_wp_error( $token ) ) {
-			return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $token->get_error_message() );
-		}
-		$hint = MKL_Drive::oauth_connected()
-			? 'Kann das verbundene Google-Konto den Kalender sehen, und ist die Google Calendar API im Projekt aktiviert?'
-			: 'Ist der Kalender für ' . MKL_Drive::client_email() . ' freigegeben, und ist die Google Calendar API im Projekt aktiviert?';
-		return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $token ), $range, $hint );
-	}
-
-	/** Hat „Private Google Calendars“ Zugangsdaten, über die sich lesen lässt? */
-	public static function pgc_configured() {
-		return self::pgc_available() && ( get_option( 'pgc_access_token' ) || get_option( 'pgc_api_key' ) );
-	}
-
-	/** Kalender über die Zugangsdaten von „Private Google Calendars“ lesen (Verhalten wie bisher). */
-	private static function fetch_pgc( array $ids, array $range ) {
-		try {
-			if ( get_option( 'pgc_access_token' ) ) {
-				$client = getGoogleClient( true );
-				if ( $client->isAccessTokenExpired() ) {
-					$client->refreshAccessToken();
-				}
-				return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ), $range );
-			}
-			return self::fetch_google( $ids, array( 'key' => (string) get_option( 'pgc_api_key', '' ) ), array( 'Referer' => home_url( '/' ) ), $range );
-		} catch ( Exception $e ) {
-			return new WP_Error( 'mkl_calendar_pgc', 'Google-Kalender konnte nicht abgerufen werden: ' . $e->getMessage() );
-		}
-	}
-
-	/** Letzter Fehler beim Lesen über die Google-Verbindung der Galerie, sonst ''. */
+	/** Letzter Fehler beim Lesen über den Google-Zugang, sonst ''. */
 	public static function connection_error() {
 		return MKL_Drive::calendar_access() ? (string) get_transient( self::CONNECTION_ERROR_KEY ) : '';
 	}
