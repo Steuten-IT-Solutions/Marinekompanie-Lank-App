@@ -115,7 +115,8 @@ $sub(99999, 'termine', 0);
 update_option('mkl_ics_url', 'https://calendar.example.org/basic.ics');
 update_option('mkl_calendar_cache_minutes', 30);
 update_option('mkl_gallery_root', 'ROOTFOLDER');
-update_option('mkl_drive_oauth', ['client_id' => 'CID', 'client_secret' => 'SECRET', 'refresh_token' => 'REFRESH', 'email' => 'galerie@example.org'], false);
+// Mit den bei Google erlaubten Berechtigungen (leerzeichengetrennt, wie Google sie liefert).
+update_option('mkl_drive_oauth', ['client_id' => 'CID', 'client_secret' => 'SECRET', 'refresh_token' => 'REFRESH', 'email' => 'galerie@example.org', 'scope' => 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly'], false);
 
 // Prüfsummen für den Rückfalltest.
 $sums = [];

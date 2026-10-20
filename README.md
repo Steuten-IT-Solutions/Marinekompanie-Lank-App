@@ -76,7 +76,7 @@ plugin/mk-lank-app/        WordPress-Plugin
   includes/class-mkl-events.php    Öffentliche Terminliste
   includes/class-mkl-attendance.php Anwesenheitslisten je Termin
   includes/class-mkl-shortcodes.php Shortcodes [mkl_termine] und [mkl_galerie] für die Webseite
-  includes/class-mkl-drive.php     Google Drive über „Mit Google verbinden“ (OAuth) oder Dienstkonto, ohne Bibliothek
+  includes/class-mkl-drive.php     Google-Zugang (Drive, Kalender) über „Mit Google verbinden“ (OAuth) oder Dienstkonto, ohne Bibliothek
   includes/class-mkl-gallery.php   Galerie: Abgleich, Bildgrößen, Ablage, Auslieferung
   includes/class-mkl-calendar.php  Google Kalender / iCal, mit Zwischenspeicher
   includes/class-mkl-app-page.php  liefert die App unter /app/ aus
@@ -103,8 +103,13 @@ scripts/                   Build- und Test-Skripte
 2. Das Plugin-ZIP besorgen: Lade `mk-lank-app.zip` aus dem neuesten GitHub-Release herunter (siehe [Updates](#updates)). Alternativ baust du es selbst mit `scripts/build-plugin.sh`; das Ergebnis liegt dann in `dist/mk-lank-app.zip`.
 3. In WordPress **Plugins → Installieren → Plugin hochladen**, das ZIP auswählen und aktivieren.
 4. **Einstellungen → Kompanie-App** öffnen und **„Kalender jetzt testen“** klicken.
-   - Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin **„Private Google Calendars“**, das die Webseite schon verwendet.
-   - Alternativ trägst du eine Kalender-ID mit API-Key ein, oder eine iCal-Adresse.
+   - Die App liest den Kalender aus der ersten Quelle, die eingerichtet ist:
+     1. eigener **Google-API-Key** mit Kalender-IDs (nur für öffentliche Kalender),
+     2. die **Google-Verbindung der Galerie** (Schritt 8) mit Kalender-Berechtigung, bzw. deren Dienstkonto, für private Kalender,
+     3. das Plugin **„Private Google Calendars“**, das die Webseite bisher verwendet,
+     4. eine **iCal-Adresse** (Serientermine erscheinen darüber nur einmal).
+   - Die Kalender-IDs kommen aus dem Feld „Google-Kalender-IDs“ (Google Kalender → Einstellungen des Kalenders → „Kalender integrieren“ → „Kalender-ID“). Ist es leer, nimmt die App die in „Private Google Calendars“ ausgewählten Kalender, auch für die Google-Verbindung der Galerie.
+   - **Umstieg von „Private Google Calendars“ auf die Google-Verbindung der Galerie:** siehe [unten](#kalender-über-die-google-verbindung-der-galerie). Die Termin-IDs bleiben dabei gleich: Es gibt keine Push-Nachricht „Neue Termine“, und Anwesenheitslisten bleiben ihren Terminen zugeordnet.
 5. **Rollen festlegen:**
    - In der App unter **Spieß → Einrichtung → Mitglieder verwalten → Konto antippen → „Rolle in der App“** (Ohne Rolle / Anwärter / Mitglied / Spieß). Die Liste enthält alle Konten, auch die ohne Rolle.
    - Alternativ im WordPress-Profil unter „Rolle in der App“.
@@ -123,18 +128,29 @@ scripts/                   Build- und Test-Skripte
 
    Unter **Mitglieder verwalten** können Admins außerdem Name, Benutzername und E-Mail eines Kontos ändern und ein **neues Startpasswort** erzeugen, wenn jemand sein Passwort vergessen hat. Bei einem neuen Passwort oder Benutzernamen wird das Mitglied auf allen Geräten abgemeldet. Den eigenen Benutzernamen und das eigene Passwort ändert man dort nicht (das eigene Passwort unter „Konto“).
 8. **Galerie einrichten** (ersetzt das Plugin „Integrate Google Drive“). Der Zugang läuft über **„Mit Google verbinden“**. Einen Dienstkontoschlüssel braucht es nicht; Google verbietet das Erstellen solcher Schlüssel in neueren Organisationen ohnehin standardmäßig.
-   1. In der [Google Cloud Console](https://console.cloud.google.com/) im vorhandenen Projekt die **Google Drive API** aktivieren: [Direktlink](https://console.cloud.google.com/apis/library/drive.googleapis.com).
+   1. In der [Google Cloud Console](https://console.cloud.google.com/) im vorhandenen Projekt die **Google Drive API** aktivieren: [Direktlink](https://console.cloud.google.com/apis/library/drive.googleapis.com). Für den Kalender zusätzlich die **Google Calendar API**: [Direktlink](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com).
    2. Unter [Google Auth Platform](https://console.cloud.google.com/auth/overview) die App einrichten, falls noch nicht geschehen: App-Name (z. B. „Kompanie-App“) und Support-E-Mail eintragen.
       - Bei **Zielgruppe** möglichst **„Intern“** wählen. Das geht, wenn das Projekt zu einer Google-Organisation gehört. Dann ist keine Überprüfung durch Google nötig und die Verbindung läuft nicht ab.
       - Geht nur **„Extern“**: die App unter **Zielgruppe → App veröffentlichen** auf „In Produktion“ stellen. Im Status „Test“ läuft die Verbindung nach **7 Tagen** ab. Bei der Anmeldung zeigt Google dann einen Hinweis „Google hat diese App nicht überprüft“; über **Erweitert → Weiter zu …** geht es trotzdem.
    3. Unter [Clients](https://console.developers.google.com/auth/clients) → **Client erstellen** → Typ **Webanwendung**. Bei **Autorisierte Weiterleitungs-URIs** die Adresse eintragen, die WordPress unter **Einstellungen → Kompanie-App → Galerie** anzeigt, also `https://marinekompanie-lank.de/wp-admin/admin-post.php`. **Client-ID** und **Clientschlüssel** sofort kopieren: Google zeigt den Clientschlüssel nur dieses eine Mal vollständig an. Bis eine neue Weiterleitungs-URI greift, kann es laut Google 5 Minuten bis einige Stunden dauern; meldet Google `redirect_uri_mismatch`, also kurz warten.
-   4. In WordPress unter **Einstellungen → Kompanie-App → Galerie** beides eintragen und **„Speichern und mit Google verbinden“** klicken. Bei Google mit dem Konto anmelden, dem der Galerie-Ordner gehört oder für das er freigegeben ist, und den Lesezugriff auf Google Drive erlauben.
+   4. In WordPress unter **Einstellungen → Kompanie-App → Galerie** beides eintragen und **„Speichern und mit Google verbinden“** klicken. Bei Google mit dem Konto anmelden, dem der Galerie-Ordner gehört oder für das er freigegeben ist, und den Lesezugriff auf Google Drive erlauben. Für die Termine auch den Lesezugriff auf Google Kalender erlauben; das Konto muss den Kalender sehen können.
    5. Danach den Link zum Galerie-Ordner eintragen, speichern und **„Jetzt synchronisieren“** klicken. Beim ersten Mal lädt die Seite selbstständig weiter, bis alle Bilder aufbereitet sind.
    6. Auf der Galerie-Seite der Webseite den bisherigen Block durch einen Shortcode-Block mit `[mkl_galerie]` ersetzen. Danach kann „Integrate Google Drive“ deaktiviert werden.
 
-   Gespeichert wird nur ein Refresh-Token, und zwar ausschließlich auf dem eigenen Server. Die App fordert nur Lesezugriff an (`drive.readonly`), kann damit aber alle Dateien sehen, die das verbundene Google-Konto sehen kann. Wer das enger fassen will, nimmt ein eigenes Google-Konto nur für die Galerie. Mit **„Verbindung trennen“** widerruft das Plugin den Zugriff bei Google. Läuft die Verbindung ab oder wird sie widerrufen, zeigt der Status eine Meldung; dann einfach neu verbinden.
+   Gespeichert wird nur ein Refresh-Token, und zwar ausschließlich auf dem eigenen Server. Die App fordert nur Lesezugriff an (`drive.readonly` und `calendar.readonly`), kann damit aber alle Dateien und Kalender sehen, die das verbundene Google-Konto sehen kann. Termine, die in Google als „privat“ markiert sind, zeigt die App nicht an. Welche Berechtigungen bei Google tatsächlich erlaubt wurden, merkt sich das Plugin (Google lässt einzelne abwählen). Wer das enger fassen will, nimmt ein eigenes Google-Konto nur für die Galerie. Mit **„Verbindung trennen“** widerruft das Plugin den Zugriff bei Google. Läuft die Verbindung ab oder wird sie widerrufen, zeigt der Status eine Meldung; dann einfach neu verbinden.
 
-   *Alternative:* Wer Dienstkontoschlüssel erstellen darf, kann unter „Alternative: Dienstkonto mit JSON-Schlüssel“ auch den Schlüssel eines Dienstkontos einfügen und den Galerie-Ordner für dessen E-Mail-Adresse freigeben (Rolle „Betrachter“). Ist zusätzlich eine Google-Verbindung eingerichtet, hat diese Vorrang.
+   *Alternative:* Wer Dienstkontoschlüssel erstellen darf, kann unter „Alternative: Dienstkonto mit JSON-Schlüssel“ auch den Schlüssel eines Dienstkontos einfügen und den Galerie-Ordner für dessen E-Mail-Adresse freigeben (Rolle „Betrachter“). Für die Termine den Kalender ebenfalls für diese Adresse freigeben („Alle Termindetails sehen“); auch hier muss die Google Calendar API im Projekt des Dienstkontos aktiviert sein. Ist zusätzlich eine Google-Verbindung eingerichtet, hat diese Vorrang.
+
+   #### Kalender über die Google-Verbindung der Galerie
+
+   Dieselbe Verbindung liest auch den privaten Google Kalender, ohne „Private Google Calendars“ und ohne iCal-Adresse. Google liefert dabei jeden Termin einer Serie einzeln. Umstieg auf der Live-Seite:
+
+   1. In der Google Cloud Console im Projekt des OAuth-Clients die **Google Calendar API** aktivieren ([Direktlink](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)). Bei Zielgruppe „Extern“ unter **Google Auth Platform → Datenzugriff** ggf. den Bereich `…/auth/calendar.readonly` ergänzen.
+   2. In WordPress unter **Einstellungen → Kompanie-App → Galerie** **„Verbindung trennen“** und neu **„Mit Google verbinden“**. Bei Google beide Häkchen setzen (Drive und Kalender). Verbindungen von vor dieser Erweiterung oder ohne Kalender-Häkchen lesen den Kalender nicht; die Einstellungsseite weist darauf hin.
+   3. Unter **Kalender** prüfen: „Aktuelle Quelle“ zeigt **„Google Calendar API (Google-Verbindung der Galerie: …)“**. Dann **„Kalender jetzt testen“**.
+   4. Empfohlen: die angezeigten Kalender-IDs in das Feld **„Google-Kalender-IDs“** eintragen. Solange es leer ist, kommen sie aus „Private Google Calendars“; ohne das Plugin wären sie weg.
+
+   Solange „Private Google Calendars“ eingerichtet ist, springt es ein, wenn der Abruf über die Verbindung scheitert (z. B. Calendar API nicht aktiviert oder der Kalender für das Konto nicht sichtbar). Die Einstellungsseite zeigt den Fehler dann rot an. Die iCal-Adresse springt dafür nicht ein, weil ihre Termin-IDs anders sind und sonst alle Termine als „neu“ gemeldet würden. Erst wenn die Quelle die Verbindung ist und der Test klappt, kann „Private Google Calendars“ deaktiviert werden.
 
    **Ordnerstruktur:** Galerie-Ordner → Jahr (z. B. `2026`) → Album (z. B. `Schützenfest`) → Bilder.
    - Bilder im Unterordner **`intern`** eines Albums sehen nur angemeldete Mitglieder. Für sie werden diese Bilder ins Album eingemischt.
