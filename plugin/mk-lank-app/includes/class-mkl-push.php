@@ -29,6 +29,8 @@ class MKL_Push {
 	const WATCH_SCHEDULE  = 'mkl_push_15min';
 	const SNAPSHOT_OPTION = 'mkl_push_calendar_snapshot';
 	const REMINDER_OPTION = 'mkl_push_reminder_date';
+	/** Einstellungen der Kalenderquelle (Einstellungen → Kompanie-App). */
+	const CALENDAR_SOURCE_OPTIONS = array( 'mkl_ics_url', 'mkl_calendar_ids', 'mkl_google_api_key' );
 
 	const TYPE_STRAFEN    = 'strafen';
 	const TYPE_PUNKTE     = 'punkte';
@@ -78,6 +80,21 @@ class MKL_Push {
 		add_action( 'transition_post_status', array( __CLASS__, 'post_status_changed' ), 10, 3 );
 		add_filter( 'cron_schedules', array( __CLASS__, 'cron_schedules' ) );
 		add_action( 'init', array( __CLASS__, 'schedule_watch' ) );
+		foreach ( self::CALENDAR_SOURCE_OPTIONS as $option ) {
+			add_action( "add_option_{$option}", array( __CLASS__, 'calendar_source_changed' ) );
+			add_action( "update_option_{$option}", array( __CLASS__, 'calendar_source_changed' ) );
+		}
+	}
+
+	/**
+	 * Neue Kalenderquelle: Google-API und iCal bilden die Termin-IDs unterschiedlich, sonst
+	 * hielte der nächste Abgleich alle Termine für neu. Ohne gemerkten Stand merkt er sich
+	 * nur den neuen Stand und verschickt nichts. Der Zwischenspeicher hält noch Termine der
+	 * alten Quelle und wird deshalb mit geleert.
+	 */
+	public static function calendar_source_changed() {
+		delete_option( self::SNAPSHOT_OPTION );
+		MKL_Calendar::clear_cache();
 	}
 
 	public static function cron_schedules( $schedules ) {

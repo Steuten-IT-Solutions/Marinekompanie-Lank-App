@@ -177,7 +177,7 @@ scripts/                   Build- und Test-Skripte
 12. **Push-Benachrichtigungen prüfen:** Unter **Einstellungen → Kompanie-App → Push-Benachrichtigungen** steht, ob der Server sie verschicken kann (PHP mit OpenSSL, P-256 und AES-GCM). Nach dem Einschalten in der App schickt der Knopf **„Testbenachrichtigung an meine Geräte“** eine Probe.
     - Verschickt wird über WP-Cron. Nach Strafen, Punkten, Terminen und Beiträgen stößt das Plugin den Versand selbst an.
     - Der Abgleich mit dem Google Kalender (neue/geänderte Termine) und die Erinnerung um 18 Uhr laufen alle 15 Minuten über WP-Cron. WP-Cron läuft aber nur, wenn jemand die Webseite aufruft. Bei wenig Besuch kann sich das verzögern (die Erinnerung geht bis 22 Uhr raus, danach entfällt sie für diesen Tag). Bietet der Hoster echte Cronjobs an, ist ein Aufruf von `wp-cron.php` alle 5–15 Minuten zuverlässiger.
-    - Beim allerersten Kalender-Abgleich merkt sich das Plugin nur den Stand und verschickt nichts.
+    - Beim allerersten Kalender-Abgleich merkt sich das Plugin nur den Stand und verschickt nichts. Dasselbe gilt nach einer Änderung der Kalenderquelle (iCal-Adresse, Kalender-IDs oder API-Key), weil eine andere Quelle andere Termin-IDs liefert.
 
 Danach ist die App unter `https://marinekompanie-lank.de/app/` erreichbar.
 
