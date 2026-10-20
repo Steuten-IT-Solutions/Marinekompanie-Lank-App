@@ -62,3 +62,35 @@ jobs:
         with:
           name: mk-lank-app-plugin
           path: dist/mk-lank-app.zip
+
+  # Übernahme in die Kompanie-App (Issue #49, Template #25): gegen das Plugin aus dem Kompanie-App-Template (main).
+  uebernahme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Steuten-IT-Solutions/Kompanie-App-Template
+          path: .kompanie-template
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: sqlite3, pdo_sqlite, mbstring, gd, openssl
+          tools: none
+
+      - name: PHP-Syntax prüfen
+        run: find uebernahme -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Übernahme-Tests (Probelauf, Übernahme, Wiederholung, Aliase, Rückfall)
+        run: KOMPANIE_TEMPLATE=.kompanie-template uebernahme/tests/run.sh .wp-test-uebernahme
+
+      - name: Übernahme-Plugin packen
+        run: mkdir -p dist && (cd uebernahme && zip -qr ../dist/mkl-uebernahme.zip mkl-uebernahme)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mkl-uebernahme-plugin
+          path: dist/mkl-uebernahme.zip
