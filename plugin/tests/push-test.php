@@ -463,6 +463,31 @@ MKL_Push::check_calendar();
 $p = $q_payloads();
 mkl_assert( 1 === count( $p ) && 'Neue Termine' === $p[0]['title'] && 0 === strpos( $p[0]['body'], '5 neue Termine' ), 'Viele neue Termine: eine Sammelnachricht' );
 
+// Neue Kalenderquelle (z. B. iCal statt Google-API): andere Termin-IDs, aber keine Nachrichten.
+$wpdb->query( "DELETE FROM $q" ); // phpcs:ignore WordPress.DB.PreparedSQL
+$saved_ics = get_option( 'mkl_ics_url', null );
+update_option( 'mkl_ics_url', (string) $saved_ics );
+mkl_assert( is_array( get_option( MKL_Push::SNAPSHOT_OPTION ) ) && false !== get_transient( MKL_Calendar::CACHE_KEY ), 'Quelle unverändert gespeichert: Stand bleibt' );
+update_option( 'mkl_ics_url', 'https://mkltest.invalid/neue-quelle.ics' );
+mkl_assert( false === get_option( MKL_Push::SNAPSHOT_OPTION ) && false === get_transient( MKL_Calendar::CACHE_KEY ), 'Neue Kalenderquelle: Stand und Zwischenspeicher zurückgesetzt' );
+$moved = array();
+foreach ( $many as $ev_many ) {
+	$moved[] = array_merge( $ev_many, array( 'id' => 'ical-' . $ev_many['id'] ) );
+}
+set_transient( MKL_Calendar::CACHE_KEY, $moved, HOUR_IN_SECONDS );
+mkl_assert( 0 === MKL_Push::check_calendar() && 0 === $q_count(), 'Nach dem Quellenwechsel: andere IDs, aber keine Nachricht' );
+mkl_assert( 0 === MKL_Push::check_calendar(), 'Danach wieder normaler Abgleich' );
+null === $saved_ics ? delete_option( 'mkl_ics_url' ) : update_option( 'mkl_ics_url', $saved_ics );
+// Ebenso bei neuen Kalender-IDs oder neuem API-Key.
+foreach ( array( 'mkl_calendar_ids' => 'neu@group.calendar.google.com', 'mkl_google_api_key' => 'NEUER-KEY' ) as $src_opt => $src_val ) {
+	$src_old = get_option( $src_opt, null );
+	update_option( MKL_Push::SNAPSHOT_OPTION, array( 'x' => 'y' ), false );
+	set_transient( MKL_Calendar::CACHE_KEY, $moved, HOUR_IN_SECONDS );
+	update_option( $src_opt, $src_val );
+	mkl_assert( false === get_option( MKL_Push::SNAPSHOT_OPTION ) && false === get_transient( MKL_Calendar::CACHE_KEY ), "Neuer Wert für $src_opt: Stand und Zwischenspeicher zurückgesetzt" );
+	null === $src_old ? delete_option( $src_opt ) : update_option( $src_opt, $src_old );
+}
+
 // ------------------------------------------------------------------
 echo "\nErinnerung am Vortag\n";
 $wpdb->query( "DELETE FROM $q" ); // phpcs:ignore WordPress.DB.PreparedSQL
