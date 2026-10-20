@@ -78,11 +78,13 @@ $ok($subs === [['user_id' => (string) $m1, 'types' => 'penalties,points,ranks,ev
 $ok($app->push()->publicKey() === get_option('mkl_push_vapid')['public'], 'Push-Schlüssel übernommen');
 $ok($app->settings->get('calendar_ics_url') === 'https://calendar.example.org/basic.ics' && (int) $app->settings->get('calendar_cache_minutes') === 30, 'Kalender-Einstellungen');
 $ok($app->gallery()->root() === 'ROOTFOLDER' && $app->drive()->oauthEmail() === 'galerie@example.org', 'Galerie-Ordner und Google-Verbindung');
-$ok(!in_array(false, $app->features()->all(), true), 'Alle Bereiche eingeschaltet');
+$lankAreas = ['events', 'calendar', 'news', 'gallery', 'points', 'penalties', 'ranks', 'titles', 'attendance', 'documents'];
+$ok(array_intersect_key($app->features()->all(), array_flip($lankAreas)) == array_fill_keys($lankAreas, true), 'Alle Bereiche von Lank eingeschaltet (neue Bereiche des Kerns bleiben aus)');
 
 $role = static fn (int $id): ?string => $app->users->find($id)?->role;
 $roles = array_column($app->roles()->all(), null, 'key');
 $ok($roles[$role($spiess)]['label'] === 'Spieß' && in_array('manage_points', $roles[$role($spiess)]['capabilities'], true), 'Spieß: eigene Rolle mit Punkten, Strafen, Anwesenheit …');
+$ok(in_array('manage_documents', $roles[$role($spiess)]['capabilities'], true) && $app->documents()->forDelivery($app->users->find($spiess), (int) $docs[1]['id'])['status'] === 200 && $app->documents()->forDelivery($app->users->find($m1), (int) $docs[1]['id'])['status'] === 404, 'Spieß sieht Spieß-Dokumente wie in Lank (Recht „Dokumente verwalten“), Mitglied nicht');
 $ok($roles[$role($jung)]['label'] === 'Jungmariner' && (float) $roles[$role($jung)]['points_factor'] === 0.5, 'Jungmariner: Rolle mit Faktor 0,5');
 $ok($role($m1) === 'member' && $role($anw) === 'candidate' && $role($red) === 'guest' && $role(1) === 'admin', 'Mitglied, Anwärter, Webseiten-Konto ohne Rolle, Admin');
 

@@ -27,8 +27,12 @@ final class Importer
 
     public const ROLE_MANAGER = 'Spieß';
     public const ROLE_YOUNG = 'Jungmariner';
-    /** Rechte des Spießes in Lank (mkl_manage): Punkte, Strafen, Anwesenheit, Dienstgrade, Titel, Katalog. */
-    public const MANAGER_CAPS = ['member', 'calendar', 'manage_points', 'manage_penalties', 'manage_ranks', 'manage_titles', 'manage_attendance'];
+    /**
+     * Rechte des Spießes in Lank (mkl_manage): Punkte, Strafen, Anwesenheit, Dienstgrade, Titel, Katalog. Dazu
+     * „Dokumente verwalten“: In Lank sah der Spieß die Dokumente mit Sichtbarkeit „spiess“; im Kern sieht eingeschränkte
+     * Dokumente nur, wer sie verwalten darf (Entscheidung: lieber mehr Rechte als Dokumente verlieren).
+     */
+    public const MANAGER_CAPS = ['member', 'calendar', 'manage_points', 'manage_penalties', 'manage_ranks', 'manage_titles', 'manage_attendance', 'manage_documents'];
 
     private const PUSH_TYPES = ['strafen' => 'penalties', 'punkte' => 'points', 'dienstgrad' => 'ranks', 'termine' => 'events', 'erinnerung' => 'reminder', 'news' => 'news'];
     private const ATTENDANCE_STATUS = ['anwesend' => 'present', 'entschuldigt' => 'excused', 'fehlt' => 'absent'];
