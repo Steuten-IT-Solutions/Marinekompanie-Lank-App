@@ -78,6 +78,11 @@ $ok($subs === [['user_id' => (string) $m1, 'types' => 'penalties,points,ranks,ev
 $ok($app->push()->publicKey() === get_option('mkl_push_vapid')['public'], 'Push-Schlüssel übernommen');
 $ok($app->settings->get('calendar_ics_url') === 'https://calendar.example.org/basic.ics' && (int) $app->settings->get('calendar_cache_minutes') === 30, 'Kalender-Einstellungen');
 $ok($app->gallery()->root() === 'ROOTFOLDER' && $app->drive()->oauthEmail() === 'galerie@example.org', 'Galerie-Ordner und Google-Verbindung');
+// Die Übernahme reicht mkl_drive_oauth unverändert an saveOAuth() weiter, also auch 'scope'
+// (Kalender-Berechtigung). Ältere Kerne verwerfen 'scope' noch; dann gibt es nichts zu prüfen.
+$coreOAuth = $app->settings->get('drive_oauth');
+$ok(!is_array($coreOAuth) || !array_key_exists('scope', $coreOAuth) || $coreOAuth['scope'] === get_option('mkl_drive_oauth')['scope'], 'Google-Verbindung: erlaubte Berechtigungen (scope) übernommen'
+    . (is_array($coreOAuth) && array_key_exists('scope', $coreOAuth) ? '' : ' (Kern speichert scope noch nicht)'));
 $lankAreas = ['events', 'calendar', 'news', 'gallery', 'points', 'penalties', 'ranks', 'titles', 'attendance', 'documents'];
 $ok(array_intersect_key($app->features()->all(), array_flip($lankAreas)) == array_fill_keys($lankAreas, true), 'Alle Bereiche von Lank eingeschaltet (neue Bereiche des Kerns bleiben aus)');
 

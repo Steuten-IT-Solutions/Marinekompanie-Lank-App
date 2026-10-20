@@ -4,12 +4,23 @@
  *
  * Quellen (in dieser Reihenfolge):
  *  1. Eigener Google-API-Key (Einstellungen → Kompanie-App) für öffentliche Kalender.
- *  2. Zugangsdaten des Plugins „Private Google Calendars“, falls aktiv
+ *  2. Google-Verbindung der Galerie (MKL_Drive: „Mit Google verbinden“ mit erlaubtem
+ *     Kalender oder Dienstkonto), für private Kalender.
+ *  3. Zugangsdaten des Plugins „Private Google Calendars“, falls aktiv
  *     (OAuth-Verbindung oder dort hinterlegter API-Key).
- *  3. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
+ *  4. iCal-Adresse (ICS), z. B. die „geheime Adresse im iCal-Format“ aus Google.
+ *
+ * 1. bis 3. lesen über die Google Calendar API; Google löst Serientermine selbst
+ * auf, und die Termin-IDs (Kalender-ID + Google-Termin-ID) sind bei allen drei
+ * gleich. Ein Wechsel zwischen ihnen löst deshalb keine Push-Nachrichten
+ * „Neue Termine“ aus, und Anwesenheitslisten bleiben ihren Terminen zugeordnet.
+ * Scheitert 2. (z. B. Calendar API nicht aktiviert, Kalender nicht freigegeben),
+ * springt 3. ein, solange es eingerichtet ist; die Einstellungsseite zeigt den Fehler.
  *
  * Kalender-IDs kommen aus den eigenen Einstellungen oder – falls leer – aus
- * der Auswahl im Plugin „Private Google Calendars“.
+ * der Auswahl im Plugin „Private Google Calendars“. Das gilt auch für die
+ * Google-Verbindung (2.): So genügt beim Umstieg von „Private Google Calendars“,
+ * die Galerie mit Kalender-Berechtigung neu zu verbinden.
  *
  * Das Ergebnis wird als Transient zwischengespeichert; API-Keys verlassen nie den Server.
  */
@@ -20,6 +31,8 @@ class MKL_Calendar {
 
 	const CACHE_KEY = 'mkl_calendar_events';
 	const PAST_CACHE_KEY = 'mkl_calendar_past_events';
+	/** Letzter Fehler beim Lesen über die Google-Verbindung der Galerie (für die Einstellungsseite). */
+	const CONNECTION_ERROR_KEY = 'mkl_calendar_connection_error';
 	/** So weit zurück lassen sich Anwesenheitslisten zu Kalenderterminen anlegen. */
 	const PAST_DAYS = 90;
 	const GOOGLE_EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/%s/events';
@@ -104,6 +117,14 @@ class MKL_Calendar {
 		return array_values( array_unique( array_filter( $ids ) ) );
 	}
 
+	/**
+	 * Stammen die Kalender-IDs aus der Auswahl in „Private Google Calendars“
+	 * (eigenes Feld leer)? Die Einstellungsseite empfiehlt dann, sie einzutragen.
+	 */
+	public static function ids_from_pgc() {
+		return '' === trim( (string) get_option( 'mkl_calendar_ids', '' ) ) && array() !== self::get_calendar_ids();
+	}
+
 	private static function pgc_available() {
 		return class_exists( 'PGC_GoogleCalendarClient' ) && function_exists( 'getGoogleClient' );
 	}
@@ -114,7 +135,12 @@ class MKL_Calendar {
 		if ( get_option( 'mkl_google_api_key' ) && $ids ) {
 			return 'Google Calendar API (eigener API-Key)';
 		}
-		if ( self::pgc_available() && $ids && ( get_option( 'pgc_access_token' ) || get_option( 'pgc_api_key' ) ) ) {
+		if ( MKL_Drive::calendar_access() && $ids ) {
+			return MKL_Drive::oauth_connected()
+				? 'Google Calendar API (Google-Verbindung der Galerie' . ( MKL_Drive::oauth_email() ? ': ' . MKL_Drive::oauth_email() : '' ) . ')'
+				: 'Google Calendar API (Dienstkonto der Galerie: ' . MKL_Drive::client_email() . ')';
+		}
+		if ( self::pgc_configured() && $ids ) {
 			return 'Google Calendar API über das Plugin „Private Google Calendars“';
 		}
 		if ( get_option( 'mkl_ics_url' ) ) {
@@ -131,22 +157,23 @@ class MKL_Calendar {
 			return self::fetch_google( $ids, array( 'key' => $api_key ), array(), $range );
 		}
 
-		if ( $ids && self::pgc_available() ) {
-			try {
-				if ( get_option( 'pgc_access_token' ) ) {
-					$client = getGoogleClient( true );
-					if ( $client->isAccessTokenExpired() ) {
-						$client->refreshAccessToken();
-					}
-					return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ), $range );
-				}
-				$pgc_key = (string) get_option( 'pgc_api_key', '' );
-				if ( '' !== $pgc_key ) {
-					return self::fetch_google( $ids, array( 'key' => $pgc_key ), array( 'Referer' => home_url( '/' ) ), $range );
-				}
-			} catch ( Exception $e ) {
-				return new WP_Error( 'mkl_calendar_pgc', 'Google-Kalender konnte nicht abgerufen werden: ' . $e->getMessage() );
+		if ( $ids && MKL_Drive::calendar_access() ) {
+			$events = self::fetch_connection( $ids, $range );
+			if ( ! is_wp_error( $events ) ) {
+				delete_transient( self::CONNECTION_ERROR_KEY );
+				return $events;
 			}
+			// Für die Einstellungsseite merken, auch wenn unten „Private Google Calendars“ einspringt.
+			set_transient( self::CONNECTION_ERROR_KEY, $events->get_error_message(), DAY_IN_SECONDS );
+			// Rückfall nur auf „Private Google Calendars“: Es liest dieselben Termine über
+			// dieselbe API mit denselben IDs. Die iCal-Adresse hätte andere IDs (lauter
+			// „neue“ Termine für die Push-Nachrichten) und springt deshalb nicht ein.
+			$pgc = self::pgc_configured() ? self::fetch_pgc( $ids, $range ) : null;
+			return ( null === $pgc || is_wp_error( $pgc ) ) ? $events : $pgc;
+		}
+
+		if ( $ids && self::pgc_configured() ) {
+			return self::fetch_pgc( $ids, $range );
 		}
 
 		$ics_url = (string) get_option( 'mkl_ics_url', '' );
@@ -157,7 +184,46 @@ class MKL_Calendar {
 		return new WP_Error( 'mkl_calendar_not_configured', 'Der Kalender ist noch nicht eingerichtet.' );
 	}
 
-	private static function fetch_google( array $ids, array $auth_params, array $headers, array $range ) {
+	/** Kalender über den Google-Zugang der Galerie (MKL_Drive) lesen. */
+	private static function fetch_connection( array $ids, array $range ) {
+		$token = MKL_Drive::access_token();
+		if ( is_wp_error( $token ) ) {
+			return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $token->get_error_message() );
+		}
+		$hint = MKL_Drive::oauth_connected()
+			? 'Kann das verbundene Google-Konto den Kalender sehen, und ist die Google Calendar API im Projekt aktiviert?'
+			: 'Ist der Kalender für ' . MKL_Drive::client_email() . ' freigegeben, und ist die Google Calendar API im Projekt aktiviert?';
+		return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $token ), $range, $hint );
+	}
+
+	/** Hat „Private Google Calendars“ Zugangsdaten, über die sich lesen lässt? */
+	public static function pgc_configured() {
+		return self::pgc_available() && ( get_option( 'pgc_access_token' ) || get_option( 'pgc_api_key' ) );
+	}
+
+	/** Kalender über die Zugangsdaten von „Private Google Calendars“ lesen (Verhalten wie bisher). */
+	private static function fetch_pgc( array $ids, array $range ) {
+		try {
+			if ( get_option( 'pgc_access_token' ) ) {
+				$client = getGoogleClient( true );
+				if ( $client->isAccessTokenExpired() ) {
+					$client->refreshAccessToken();
+				}
+				return self::fetch_google( $ids, array(), array( 'Authorization' => 'Bearer ' . $client->getAccessToken() ), $range );
+			}
+			return self::fetch_google( $ids, array( 'key' => (string) get_option( 'pgc_api_key', '' ) ), array( 'Referer' => home_url( '/' ) ), $range );
+		} catch ( Exception $e ) {
+			return new WP_Error( 'mkl_calendar_pgc', 'Google-Kalender konnte nicht abgerufen werden: ' . $e->getMessage() );
+		}
+	}
+
+	/** Letzter Fehler beim Lesen über die Google-Verbindung der Galerie, sonst ''. */
+	public static function connection_error() {
+		return MKL_Drive::calendar_access() ? (string) get_transient( self::CONNECTION_ERROR_KEY ) : '';
+	}
+
+	/** @param string $hint Zusatz zur Fehlermeldung, wenn Google den Abruf ablehnt. */
+	private static function fetch_google( array $ids, array $auth_params, array $headers, array $range, $hint = '' ) {
 		$events = array();
 		foreach ( $ids as $cal_id ) {
 			$params = array_merge(
@@ -186,7 +252,7 @@ class MKL_Calendar {
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( 200 !== $code || ! is_array( $body ) ) {
 				$msg = isset( $body['error']['message'] ) ? $body['error']['message'] : 'HTTP ' . $code;
-				return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $msg );
+				return new WP_Error( 'mkl_calendar_google', 'Google-Kalender: ' . $msg . ( $hint ? ' – ' . $hint : '' ) );
 			}
 			foreach ( isset( $body['items'] ) ? $body['items'] : array() as $item ) {
 				if ( isset( $item['visibility'] ) && 'private' === $item['visibility'] ) {

@@ -137,7 +137,7 @@ add_filter(
 				$res['response'] = array( 'code' => 400, 'message' => 'Bad Request' );
 				return $res;
 			}
-			$tok = array( 'access_token' => 'TOKEN123', 'expires_in' => 3599, 'scope' => MKL_Drive::SCOPE );
+			$tok = array( 'access_token' => 'TOKEN123', 'expires_in' => 3599, 'scope' => isset( $GLOBALS['mkl_http']['granted'] ) ? $GLOBALS['mkl_http']['granted'] : MKL_Drive::scopes() );
 			if ( 'authorization_code' === $args['body']['grant_type'] ) {
 				$tok['refresh_token'] = 'R1';
 			}
@@ -150,7 +150,7 @@ add_filter(
 			$claim = json_decode( base64_decode( strtr( $parts[1], '-_', '+/' ) ), true );
 			$GLOBALS['mkl_http']['jwt_ok'] = 1 === openssl_verify( $parts[0] . '.' . $parts[1], $sig, $GLOBALS['mkl_public_pem'], OPENSSL_ALGO_SHA256 )
 				&& 'galerie@mkl-test.iam.gserviceaccount.com' === $claim['iss']
-				&& MKL_Drive::SCOPE === $claim['scope'];
+				&& MKL_Drive::scopes() === $claim['scope'];
 			return $ok( array( 'access_token' => 'TOKEN123', 'expires_in' => 3600 ) );
 		}
 		if ( 0 !== strpos( $url, 'https://www.googleapis.com/drive/v3/files' ) ) {
@@ -286,9 +286,9 @@ mkl_g_assert( true === MKL_Drive::save_client( '123-abc.apps.googleusercontent.c
 
 parse_str( (string) wp_parse_url( MKL_Drive::auth_url( 'mkl_drive_x' ), PHP_URL_QUERY ), $q );
 mkl_g_assert(
-	'123-abc.apps.googleusercontent.com' === $q['client_id'] && admin_url( 'admin-post.php' ) === $q['redirect_uri'] && MKL_Drive::SCOPE === $q['scope']
+	'123-abc.apps.googleusercontent.com' === $q['client_id'] && admin_url( 'admin-post.php' ) === $q['redirect_uri'] && MKL_Drive::SCOPE . ' ' . MKL_Drive::CAL_SCOPE === $q['scope']
 		&& 'offline' === $q['access_type'] && 'consent' === $q['prompt'] && 'code' === $q['response_type'] && 'mkl_drive_x' === $q['state'],
-	'Anmelde-Link zu Google mit Offline-Zugriff, nur Lesen'
+	'Anmelde-Link zu Google mit Offline-Zugriff, nur Lesen (Drive und Kalender)'
 );
 $state = MKL_Drive::new_state();
 mkl_g_assert( MKL_Drive::check_state( $state ) && ! MKL_Drive::check_state( $state ), 'state gilt genau einmal' );
@@ -304,6 +304,7 @@ $req = end( $GLOBALS['mkl_http']['oauth'] );
 mkl_g_assert( true === $res && MKL_Drive::oauth_connected(), 'Code gegen Refresh-Token getauscht' );
 mkl_g_assert( 'authorization_code' === $req['grant_type'] && 'CODE1' === $req['code'] && 'GEHEIM' === $req['client_secret'] && admin_url( 'admin-post.php' ) === $req['redirect_uri'], 'Token-Tausch mit Code, Secret und Weiterleitungs-URI' );
 mkl_g_assert( 'kompanie@example.com' === MKL_Drive::oauth_email(), 'Verbundenes Google-Konto wird angezeigt' );
+mkl_g_assert( MKL_Drive::calendar_access(), 'Kalender erlaubt: Verbindung darf den Kalender lesen' );
 
 delete_transient( MKL_Drive::TOKEN_CACHE );
 $jwt_before = $GLOBALS['mkl_http']['token'];
@@ -325,9 +326,20 @@ MKL_Drive::disconnect();
 mkl_g_assert( 'R1' === $GLOBALS['mkl_http']['revoked'] && ! MKL_Drive::oauth_connected(), 'Trennen widerruft das Token bei Google' );
 mkl_g_assert( MKL_Drive::is_configured() && ! is_wp_error( MKL_Drive::access_token() ) && $jwt_before + 1 === $GLOBALS['mkl_http']['token'], 'Danach greift wieder das Dienstkonto' );
 
+mkl_g_assert( MKL_Drive::calendar_access(), 'Dienstkonto darf den Kalender anfragen (Freigabe regelt Google)' );
+
+// Bei Google nur Drive erlaubt, Kalender abgewählt.
+$GLOBALS['mkl_http']['granted'] = MKL_Drive::SCOPE;
+MKL_Drive::exchange_code( 'CODE3' );
+unset( $GLOBALS['mkl_http']['granted'] );
+mkl_g_assert( MKL_Drive::oauth_connected() && ! MKL_Drive::calendar_access(), 'Kalender abgewählt: Verbindung steht, Kalender nicht lesbar' );
+// Verbindung von vor der Kalender-Erweiterung (ohne gemerkte Berechtigungen).
+update_option( MKL_Drive::OAUTH_OPTION, array_diff_key( MKL_Drive::oauth(), array( 'scope' => 1 ) ), false );
+mkl_g_assert( MKL_Drive::oauth_connected() && ! MKL_Drive::calendar_access(), 'Alte Verbindung ohne Kalender muss neu verbunden werden' );
+
 MKL_Drive::exchange_code( 'CODE2' );
 MKL_Drive::save_client( '999-neu.apps.googleusercontent.com', 'ANDERS' );
-mkl_g_assert( ! MKL_Drive::oauth_connected(), 'Anderer OAuth-Client erfordert neue Verbindung' );
+mkl_g_assert( ! MKL_Drive::oauth_connected() && empty( MKL_Drive::oauth()['scope'] ), 'Anderer OAuth-Client erfordert neue Verbindung' );
 wp_set_current_user( 0 );
 wp_delete_user( $admin );
 

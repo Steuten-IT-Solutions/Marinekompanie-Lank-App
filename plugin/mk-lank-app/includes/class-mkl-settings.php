@@ -72,8 +72,30 @@ class MKL_Settings {
 				Aktuelle Quelle: <strong><?php echo esc_html( MKL_Calendar::describe_source() ); ?></strong><br />
 				Verwendete Kalender-IDs: <code><?php echo esc_html( $pgc_ids ? implode( ', ', $pgc_ids ) : '–' ); ?></code>
 			</p>
+			<?php if ( MKL_Drive::oauth_connected() && ! MKL_Drive::calendar_access() ) : ?>
+				<div class="notice notice-info inline"><p>
+					Die <a href="#galerie">Google-Verbindung der Galerie</a> darf den Kalender noch nicht lesen. Für einen privaten Kalender dort „Verbindung trennen“, neu mit Google verbinden und dabei den Kalender erlauben.
+					Vorher in der Google Cloud Console im Projekt des OAuth-Clients die Google Calendar API aktivieren.
+				</p></div>
+			<?php endif; ?>
+			<?php if ( '' !== MKL_Calendar::connection_error() ) : ?>
+				<div class="notice notice-error inline"><p>
+					<strong>Kalender über die Google-Verbindung der Galerie nicht lesbar:</strong> <?php echo esc_html( MKL_Calendar::connection_error() ); ?>
+					<?php if ( MKL_Calendar::pgc_configured() ) : ?>
+						<br />Bis das behoben ist, kommen die Termine weiter über „Private Google Calendars“.
+					<?php endif; ?>
+				</p></div>
+			<?php endif; ?>
+			<?php if ( MKL_Calendar::ids_from_pgc() ) : ?>
+				<div class="notice notice-info inline"><p>
+					Die Kalender-IDs stammen aus der Auswahl im Plugin „Private Google Calendars“. Trag sie unten bei „Google-Kalender-IDs“ ein, damit sie auch ohne das Plugin erhalten bleiben.
+				</p></div>
+			<?php endif; ?>
 			<p class="description">
-				Sind die Felder leer, nutzt die App automatisch die Kalender und Zugangsdaten aus dem Plugin „Private Google Calendars“.
+				Für einen privaten Google Kalender die Kalender-IDs eintragen (Google Kalender → Einstellungen des Kalenders → Kalender integrieren → Kalender-ID) und die <a href="#galerie">Google-Verbindung der Galerie</a> mit Kalender-Berechtigung einrichten.
+				Google liefert dabei jeden Termin einer Serie einzeln. Für ein Dienstkonto muss der Kalender für dessen E-Mail-Adresse freigegeben sein.
+				Reihenfolge der Quellen: eigener API-Key, Google-Verbindung der Galerie, Plugin „Private Google Calendars“, iCal-Adresse.
+				Sind die Kalender-IDs leer, nutzt die App die Auswahl aus „Private Google Calendars“.
 			</p>
 
 			<form method="post" action="options.php">
@@ -82,17 +104,17 @@ class MKL_Settings {
 					<tr>
 						<th scope="row"><label for="mkl_calendar_ids">Google-Kalender-IDs</label></th>
 						<td><input type="text" class="regular-text" id="mkl_calendar_ids" name="mkl_calendar_ids" value="<?php echo esc_attr( get_option( 'mkl_calendar_ids', '' ) ); ?>" />
-						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Leer = aus „Private Google Calendars“.</p></td>
+						<p class="description">Kommagetrennt, z. B. <code>abc123@group.calendar.google.com</code>. Gelesen über den API-Key, die Google-Verbindung der Galerie oder „Private Google Calendars“. Leer = Auswahl aus „Private Google Calendars“.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_google_api_key">Google-API-Key</label></th>
 						<td><input type="password" autocomplete="off" class="regular-text" id="mkl_google_api_key" name="mkl_google_api_key" value="<?php echo esc_attr( get_option( 'mkl_google_api_key', '' ) ); ?>" />
-						<p class="description">Nur für öffentliche Kalender nötig. Leer = Zugang aus „Private Google Calendars“.</p></td>
+						<p class="description">Nur für öffentliche Kalender nötig. Für einen privaten Kalender leer lassen; ist er eingetragen, gilt er vor der Google-Verbindung.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_ics_url">iCal-Adresse (Alternative)</label></th>
 						<td><input type="url" class="regular-text" id="mkl_ics_url" name="mkl_ics_url" value="<?php echo esc_attr( get_option( 'mkl_ics_url', '' ) ); ?>" />
-						<p class="description">Wird nur genutzt, wenn keine Google-API verfügbar ist. Serientermine erscheinen hier nur einmal.</p></td>
+						<p class="description">Wird nur genutzt, wenn keine Google-API verfügbar ist (weder API-Key noch Google-Verbindung noch „Private Google Calendars“). Serientermine erscheinen hier nur einmal.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="mkl_calendar_cache_minutes">Zwischenspeicher (Minuten)</label></th>
@@ -230,6 +252,7 @@ class MKL_Settings {
 			<p>
 				✅ Verbunden mit Google<?php echo MKL_Drive::oauth_email() ? ': <strong>' . esc_html( MKL_Drive::oauth_email() ) . '</strong>' : ''; ?>.
 				Dieses Konto muss den Galerie-Ordner sehen können (eigener Ordner oder dafür freigegeben).
+				<?php echo MKL_Drive::calendar_access() ? 'Es darf auch den Kalender lesen.' : 'Den Kalender darf es noch nicht lesen; dafür trennen und neu verbinden.'; ?>
 			</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="mkl_drive_disconnect" />
@@ -255,7 +278,7 @@ class MKL_Settings {
 					</tr>
 				</table>
 				<?php submit_button( 'Speichern und mit Google verbinden', 'primary', 'submit', false ); ?>
-				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner sehen kann, und erlaubst den Lesezugriff auf Google Drive.</p>
+				<p class="description">Danach meldest du dich bei Google mit dem Konto an, das den Galerie-Ordner sehen kann, und erlaubst den Lesezugriff auf Google Drive und, für die Termine, auf Google Kalender.</p>
 			</form>
 		<?php endif; ?>
 
@@ -281,6 +304,7 @@ class MKL_Settings {
 							<?php if ( $sa_email ) : ?>
 								<p>Hinterlegt: <code><?php echo esc_html( $sa_email ); ?></code><br />
 								Gib den Galerie-Ordner in Google Drive für <strong>diese Adresse</strong> frei (Rolle „Betrachter“).
+								Für die Termine den Kalender ebenfalls für diese Adresse freigeben („Alle Termindetails sehen“).
 								<?php if ( MKL_Drive::oauth_connected() ) : ?><br /><em>Wird nicht genutzt, solange die Verbindung mit Google besteht.</em><?php endif; ?></p>
 							<?php endif; ?>
 							<textarea id="mkl_drive_sa" name="mkl_drive_sa" rows="4" class="large-text code" placeholder="<?php echo esc_attr( $sa_email ? 'Nur ausfüllen, um den Schlüssel zu ersetzen' : 'Inhalt der heruntergeladenen JSON-Datei hier einfügen' ); ?>"></textarea>
