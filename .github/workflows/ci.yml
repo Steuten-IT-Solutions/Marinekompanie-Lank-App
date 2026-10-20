@@ -11,9 +11,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -58,7 +58,7 @@ jobs:
       - name: Plugin-ZIP packen
         run: MKL_SKIP_FRONTEND=1 scripts/build-plugin.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: mk-lank-app-plugin
           path: dist/mk-lank-app.zip
@@ -67,9 +67,9 @@ jobs:
   uebernahme:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: Steuten-IT-Solutions/Kompanie-App-Template
           path: .kompanie-template
@@ -90,7 +90,7 @@ jobs:
       - name: Übernahme-Plugin packen
         run: mkdir -p dist && (cd uebernahme && zip -qr ../dist/mkl-uebernahme.zip mkl-uebernahme)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: mkl-uebernahme-plugin
           path: dist/mkl-uebernahme.zip
