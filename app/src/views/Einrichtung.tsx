@@ -17,6 +17,7 @@ import { BackToSetup, Empty, ErrorBox, Loading, useAsync } from '../ui';
 import { installUrl } from './Installieren';
 import { RankList } from './SpiessRaenge';
 import { TitleList } from './SpiessTitel';
+import { MaintenanceSettings } from './Wartung';
 
 /**
  * „Spieß → Einrichtung“: Punktekatalog, Dienstgrade und Titel (Spieße und Admins)
@@ -25,9 +26,11 @@ import { TitleList } from './SpiessTitel';
 export default function Einrichtung({ path, onToast }: { path: string[]; onToast: (msg: string) => void }) {
   const [page, arg] = path;
   const canAccounts = canManageAccounts();
+  const canMaintenance = !!config?.user?.canManageOptions;
   if (page === 'katalog') return <Catalog onToast={onToast} />;
   if (page === 'raenge') return <RankList onToast={onToast} />;
   if (page === 'titel') return <TitleList onToast={onToast} />;
+  if (page === 'wartung' && canMaintenance) return <MaintenanceSettings onToast={onToast} />;
   if (page === 'mitglieder' && canAccounts) {
     if (arg === 'neu' && config?.user?.canCreateUsers) return <NewMember />;
     if (arg && /^\d+$/.test(arg)) return <AccountDetail id={Number(arg)} onToast={onToast} />;
@@ -40,6 +43,9 @@ export default function Einrichtung({ path, onToast }: { path: string[]; onToast
     { id: 'titel', title: 'Titel', text: 'Kapitän, Ehrenkapitän, Ehrenspieß, Ehrenmitglied …' },
     ...(canAccounts
       ? [{ id: 'mitglieder', title: 'Mitglieder verwalten', text: 'Anlegen, Rollen, Namen, Passwörter – nur für Admins' }]
+      : []),
+    ...(canMaintenance
+      ? [{ id: 'wartung', title: 'Wartungsmodus', text: 'App für alle außer Admins sperren – nur für Admins' }]
       : []),
   ];
   return (

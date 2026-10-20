@@ -3,6 +3,7 @@ import { config } from './api';
 import logoUrl from './assets/logo.png';
 import { caps } from './format';
 import { detectPlatform, installDoneText, isStandalone, promptInstall, useCanPrompt, useInstallState } from './install';
+import { useMaintenance } from './maintenance';
 import { disablePush, syncPush } from './push';
 import { navigate, useRoute } from './router';
 import Dokumente from './views/Dokumente';
@@ -15,6 +16,7 @@ import News from './views/News';
 import Spiess from './views/Spiess';
 import Termine from './views/Termine';
 import TermineVerwalten from './views/TermineVerwalten';
+import { MaintenanceBanner, MaintenancePage } from './views/Wartung';
 
 type Tab = 'termine' | 'news' | 'galerie' | 'meins' | 'dokumente' | 'spiess';
 type View = Tab | 'konto' | 'installieren';
@@ -162,6 +164,9 @@ export default function App() {
   const requested = (path[0] as View) || 'termine';
   const tab: View = requested in TITLES && allowed[requested] ? requested : 'termine';
 
+  const maintenance = useMaintenance();
+  // Admins (manage_options) nutzen die App auch während der Wartung.
+  const isAdmin = !!user?.canManageOptions;
   const [toast, setToast] = useState<string | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
   const showToast = useCallback((msg: string) => setToast(msg), []);
@@ -195,6 +200,10 @@ export default function App() {
     );
   }
 
+  if (maintenance.on && !isAdmin) {
+    return <MaintenancePage />;
+  }
+
   const tabs = (['termine', 'news', 'galerie', 'dokumente', 'spiess', 'meins'] as Tab[]).filter((t) => allowed[t]);
   const albumId = tab === 'galerie' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
   const newsId = tab === 'news' && /^\d+$/.test(path[1] ?? '') ? Number(path[1]) : undefined;
@@ -222,6 +231,7 @@ export default function App() {
         )}
       </header>
 
+      {isAdmin && <MaintenanceBanner onToast={showToast} />}
       {!online && <div className="offline">Offline – angezeigt werden die zuletzt geladenen Daten.</div>}
       {tab !== 'installieren' && <InstallBanner />}
 

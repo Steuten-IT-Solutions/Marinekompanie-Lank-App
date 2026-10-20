@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { noteMaintenanceFetch } from '../maintenance';
 import { whenControlled } from '../offline';
 import { Loading } from '../ui';
 
@@ -50,6 +51,7 @@ export default function PdfViewer({ url, title }: { url: string; title: string }
       } catch {
         throw new Error('Keine Verbindung und noch nicht offline gespeichert.');
       }
+      if (await noteMaintenanceFetch(res)) throw new Error('Die App wird gerade gewartet.');
       if (!res.ok) {
         throw new Error(res.status === 404 ? 'Das Dokument wurde nicht gefunden.' : `Fehler ${res.status}`);
       }

@@ -65,6 +65,10 @@ class MKL_Gallery {
 	}
 
 	public static function cron() {
+		// Im Wartungsmodus pausiert der Abgleich.
+		if ( MKL_Maintenance::is_active() ) {
+			return;
+		}
 		self::sync();
 		self::process_pending( 25 );
 	}

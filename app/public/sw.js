@@ -5,7 +5,7 @@
  * - Dokumente (/app/dokument/<id>?v=<version>) → cache-first: Die Adresse ändert sich
  *   mit jeder neuen Fassung. Was einmal geöffnet wurde, ist so offline verfügbar und
  *   wird nicht bei jedem Öffnen neu geladen. Gespeichert wird nur die aktuelle Fassung.
- * Beim Abmelden löscht die App alle Caches.
+ * Beim Abmelden löscht die App alle Caches. Im Wartungsmodus wird nichts überschrieben (siehe cacheable).
  *
  * Push: Der Server schickt verschlüsselt { title, body, url, tag, icon }. Ein Tipp auf
  * die Benachrichtigung öffnet die App an der passenden Stelle (z. B. #/meins/strafen).
@@ -36,8 +36,13 @@ function isDocument(url) {
   return url.pathname.startsWith(new URL(self.registration.scope).pathname + 'dokument/');
 }
 
+/**
+ * Nur erfolgreiche Antworten speichern. Im Wartungsmodus (503, Code mkl_maintenance) bleibt so
+ * alles Gespeicherte erhalten; auch die App-Seite mit X-MKL-Maintenance wird nicht gespeichert,
+ * damit offline die letzte normale Fassung mit den gespeicherten Daten erscheint.
+ */
 function cacheable(res) {
-  return res && res.ok && !res.redirected && res.type === 'basic';
+  return res && res.ok && !res.redirected && res.type === 'basic' && !res.headers.get('X-MKL-Maintenance');
 }
 
 async function cacheFirst(request) {

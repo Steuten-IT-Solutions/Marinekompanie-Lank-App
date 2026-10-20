@@ -1,4 +1,5 @@
 // Zugriff auf die REST-API des WordPress-Plugins (Cookie-Login + REST-Nonce).
+import { noteMaintenanceResponse, setMaintenance, type MaintenanceState } from './maintenance';
 
 /** Rolle eines angemeldeten Kontos. Gäste (ohne Anmeldung) haben keine Rolle und kein Konto. */
 export type Level = 'admin' | 'spiess' | 'mitglied' | 'anwaerter' | 'ohne';
@@ -31,6 +32,8 @@ export interface AppUser {
   canPromoteUsers: boolean;
   /** Konten bearbeiten (Name, Benutzername, E-Mail, Passwort) – Admins. */
   canEditUsers: boolean;
+  /** WordPress-Admin (manage_options): darf den Wartungsmodus schalten und nutzt die App auch währenddessen. */
+  canManageOptions: boolean;
 }
 
 export interface AppConfig {
@@ -43,6 +46,8 @@ export interface AppConfig {
   appUrl: string;
   siteUrl: string;
   swUrl: string;
+  /** Wartungsmodus (auch für Gäste). */
+  maintenance?: MaintenanceState;
   /** null = Gast ohne Anmeldung. */
   user: AppUser | null;
 }
@@ -70,6 +75,23 @@ export interface Me {
   points_to_next: number | null;
   /** Ehrentitel und Ämter, z. B. Kapitän (vergeben die Spieße, zusätzlich zum Dienstgrad). */
   titles: TitleRef[];
+  maintenance?: MaintenanceState;
+}
+
+export interface MaintenanceLogEntry {
+  time: string;
+  by_name: string | null;
+  on: boolean;
+  /** on = eingeschaltet, off = beendet, reason = Begründung geändert. */
+  action: 'on' | 'off' | 'reason';
+  reason: string;
+}
+
+/** Wartungsmodus mit Verlauf (nur Admins). */
+export interface MaintenanceInfo extends MaintenanceState {
+  since: string | null;
+  by_name: string | null;
+  log: MaintenanceLogEntry[];
 }
 
 export interface TitleRef {
@@ -468,6 +490,9 @@ async function requestFull<T>(
     await refreshNonce();
     return requestFull<T>(method, path, body, query, false);
   }
+  if (noteMaintenanceResponse(res.status, data)) {
+    throw new ApiError(data?.message ?? 'Die App wird gerade gewartet.', 503);
+  }
   if (res.status === 401 && config.user) {
     toLogin();
   }
@@ -511,7 +536,11 @@ function pushBase(): string {
 }
 
 export const api = {
-  me: () => request<Me>('GET', '/me'),
+  me: async () => {
+    const me = await request<Me>('GET', '/me');
+    if (me.maintenance) setMaintenance(me.maintenance);
+    return me;
+  },
   myPoints: () => request<PointEntry[]>('GET', '/me/points'),
   myPenalties: () => request<Penalty[]>('GET', '/me/penalties'),
   myRankHistory: () => request<RankHistoryEntry[]>('GET', '/me/rank-history'),
@@ -643,4 +672,13 @@ export const api = {
     request<PushSubscriptionPrefs>('PUT', pushBase(), { ...ref, ...prefs }),
   pushUnsubscribe: (ref: PushRef) => request<{ deleted: boolean }>('DELETE', pushBase(), ref),
   pushTest: (ref: PushRef) => request<{ sent: boolean }>('POST', `${pushBase()}/test`, ref),
+
+  /** Wartungsmodus (nur Admins). */
+  maintenance: () => request<MaintenanceInfo>('GET', '/admin/maintenance'),
+  /** Ein-/ausschalten oder Begründung ändern; der neue Zustand gilt sofort auch für diese App. */
+  setMaintenance: async (on: boolean, reason?: string) => {
+    const info = await request<MaintenanceInfo>('POST', '/admin/maintenance', reason === undefined ? { on } : { on, reason });
+    setMaintenance(info);
+    return info;
+  },
 };

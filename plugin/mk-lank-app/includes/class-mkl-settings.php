@@ -120,6 +120,7 @@ class MKL_Settings {
 
 			<?php self::render_gallery(); ?>
 			<?php self::render_push(); ?>
+			<?php MKL_Maintenance::render_settings(); ?>
 		</div>
 		<?php
 	}

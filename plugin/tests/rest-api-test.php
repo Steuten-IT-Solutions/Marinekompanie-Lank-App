@@ -1182,6 +1182,201 @@ if ( $migrated ) {
 wp_delete_user( $doc_admin );
 wp_delete_user( $doc_ohne );
 
+echo "Wartungsmodus\n";
+$wm_admin = mkl_test_user( 'mkltest_wm_admin', 'admin' );
+$wm_anw   = mkl_test_user( 'mkltest_wm_anwaerter', 'anwaerter' );
+delete_option( MKL_Maintenance::OPTION );
+delete_option( MKL_Maintenance::LOG_OPTION );
+/** Einzelner Abruf mit Antwort-Kopfzeilen. */
+$wm_headers = function ( $method, $route ) {
+	return rest_do_request( new WP_REST_Request( $method, '/mk-lank/v1' . $route ) )->get_headers();
+};
+/** Ausgabe eines Abrufs unter /app/ (header() warnt auf der Kommandozeile nur). */
+$wm_output = function ( $uid, $callback ) {
+	wp_set_current_user( $uid );
+	ob_start();
+	set_error_handler( '__return_true', E_WARNING );
+	$callback();
+	restore_error_handler();
+	return ob_get_clean();
+};
+// Shortcodes einmal vorab ausgeben (Styles erscheinen nur beim ersten Mal).
+wp_set_current_user( 0 );
+do_shortcode( '[mkl_termine]' );
+do_shortcode( '[mkl_galerie]' );
+$wm_sc_termine = do_shortcode( '[mkl_termine]' );
+$wm_sc_galerie = do_shortcode( '[mkl_galerie]' );
+wp_set_current_user( $m1 );
+$wm_sc_galerie_m1 = do_shortcode( '[mkl_galerie]' );
+
+// Dokument für den Abruf über /app/dokument/<id>.
+wp_set_current_user( $wm_admin );
+list( $s, $wm_doc ) = mkl_upload( '/documents', $pdf1, $doc_meta( 'Mkltest Wartung', 'wartung.pdf' ) );
+mkl_assert( 201 === $s, 'Wartung: Testdokument angelegt' );
+
+mkl_assert( false === MKL_Maintenance::is_active(), 'Wartung: anfangs aus' );
+list( $s, $d ) = mkl_req( 'GET', '/admin/maintenance' );
+mkl_assert( 200 === $s && false === $d['on'] && array() === $d['log'], 'GET /admin/maintenance als Admin → aus, leerer Verlauf' );
+wp_set_current_user( $m1 );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 200 === $s && array( 'on' => false, 'reason' => '' ) === $d['maintenance'], 'GET /me enthält maintenance (aus)' );
+foreach ( array( 'Gast' => 0, 'Mitglied' => $m1, 'Spieß' => $spiess, 'Anwärter' => $wm_anw ) as $label => $uid ) {
+	wp_set_current_user( $uid );
+	list( $s ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true ) );
+	list( $s2 ) = mkl_req( 'GET', '/admin/maintenance' );
+	mkl_assert( ( $uid ? 403 : 401 ) === $s && ( $uid ? 403 : 401 ) === $s2, "Wartung schalten/lesen als $label → " . ( $uid ? 403 : 401 ) );
+}
+mkl_assert( false === MKL_Maintenance::is_active(), 'Wartung: bleibt aus' );
+
+wp_set_current_user( $wm_admin );
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true, 'reason' => str_repeat( 'ä', 501 ) ) );
+mkl_assert( 400 === $s && false === MKL_Maintenance::is_active(), 'Begründung mit 501 Zeichen → 400, bleibt aus' );
+list( $s ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => 'vielleicht' ) );
+mkl_assert( 400 === $s, 'Ungültiger Schalter → 400' );
+list( $s ) = mkl_req( 'POST', '/admin/maintenance', array( 'reason' => 'x' ) );
+mkl_assert( 400 === $s, 'Ohne Schalter → 400' );
+$wm_raw = "Server-Umzug & Update <b>bald</b><script>alert(1)</script>\r\nZeile 2: \"a < b\"";
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true, 'reason' => $wm_raw ) );
+$wm_reason = "Server-Umzug & Update bald\nZeile 2: \"a < b\"";
+mkl_assert( 200 === $s && true === $d['on'] && MKL_Maintenance::is_active(), 'Admin schaltet die Wartung ein' );
+mkl_assert( $wm_reason === $d['reason'], 'Begründung als reiner Text: Tags entfernt, & und < nicht kodiert, Zeilenumbruch bleibt' );
+mkl_assert( 'Mkltest_wm_admin' === $d['by_name'] && null !== $d['since'] && 1 === count( $d['log'] ) && 'on' === $d['log'][0]['action'], 'Wer/seit wann und Verlauf gespeichert' );
+$wm_opt = get_option( MKL_Maintenance::OPTION );
+mkl_assert( true === $wm_opt['on'] && $wm_admin === $wm_opt['by'] && $wm_opt['since'] > 0 && $wm_reason === $wm_opt['reason'], 'Option mkl_maintenance: on, reason, since, by' );
+$wm_autoload = $wpdb->get_var( $wpdb->prepare( "SELECT autoload FROM $wpdb->options WHERE option_name = %s", MKL_Maintenance::OPTION ) );
+mkl_assert( in_array( $wm_autoload, array( 'no', 'off' ), true ), 'Option mkl_maintenance wird nicht automatisch geladen' );
+
+echo "Wartungsmodus: Sperre\n";
+wp_set_current_user( $wm_admin );
+list( $s ) = mkl_req( 'GET', '/members' );
+mkl_assert( 200 === $s, 'Admin: GET /members → 200' );
+list( $s, $d ) = mkl_req( 'GET', '/events' );
+mkl_assert( 200 === $s, 'Admin: GET /events → 200' );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( 200 === $s && array( 'on' => true, 'reason' => $wm_reason ) === $d['maintenance'], 'Admin: GET /me → maintenance an mit Begründung' );
+$wm_cases = array(
+	array( 'Spieß', $spiess, 'GET', '/members', null ),
+	array( 'Spieß', $spiess, 'POST', '/points', array( 'user_ids' => array( $m1 ), 'points' => 1, 'reason' => 'x' ) ),
+	array( 'Mitglied', $m1, 'GET', '/me/points', null ),
+	array( 'Mitglied', $m1, 'GET', '/documents', null ),
+	array( 'Mitglied', $m1, 'POST', '/me/push/status', array() ),
+	array( 'Anwärter', $wm_anw, 'GET', '/calendar', null ),
+	array( 'Gast', 0, 'GET', '/events', null ),
+	array( 'Gast', 0, 'GET', '/gallery', null ),
+	array( 'Gast', 0, 'GET', '/me', null ),
+	array( 'Spieß', $spiess, 'POST', '/admin/maintenance', array( 'on' => false ) ),
+);
+foreach ( $wm_cases as $c ) {
+	wp_set_current_user( $c[1] );
+	list( $s, $d ) = mkl_req( $c[2], $c[3], $c[4] ? $c[4] : array() );
+	mkl_assert( 503 === $s && 'mkl_maintenance' === $d['code'] && $wm_reason === $d['data']['reason'] && false !== strpos( $d['message'], 'gewartet' ), "{$c[0]}: {$c[2]} {$c[3]} → 503 mit Begründung" );
+}
+mkl_assert( MKL_Maintenance::is_active(), 'Spieß kann die Wartung nicht beenden' );
+wp_set_current_user( $m1 );
+$h = $wm_headers( 'GET', '/me/points' );
+mkl_assert( isset( $h['Cache-Control'] ) && 'no-store' === $h['Cache-Control'] && isset( $h['Retry-After'] ), '503 mit Cache-Control: no-store und Retry-After' );
+foreach ( array( 'Mitglied' => $m1, 'Spieß' => $spiess, 'Anwärter' => $wm_anw ) as $label => $uid ) {
+	wp_set_current_user( $uid );
+	list( $s, $d ) = mkl_req( 'GET', '/me' );
+	mkl_assert( 200 === $s && array( 'on' => true, 'reason' => $wm_reason ) === $d['maintenance'], "$label: GET /me → 200 mit maintenance an und Begründung" );
+}
+wp_set_current_user( 0 );
+$s = rest_do_request( new WP_REST_Request( 'GET', '/wp/v2/types' ) )->get_status();
+mkl_assert( 200 === $s, 'Andere REST-Routen der Website (wp/v2) bleiben erreichbar' );
+
+// Fotos und Dokumente unter /app/.
+$wm_photo_id = (int) $wpdb->get_var( 'SELECT id FROM ' . MKL_Gallery::photos_table() . ' ORDER BY id LIMIT 1' );
+$_SERVER['HTTP_REFERER'] = MKL_App_Page::app_url() . '#/galerie';
+$out = $wm_output( $m1, function () use ( $wm_doc ) { MKL_App_Page::serve_document( $wm_doc['id'] ); } );
+$json = json_decode( $out, true );
+mkl_assert( is_array( $json ) && 'mkl_maintenance' === $json['code'] && 503 === $json['data']['status'] && $wm_reason === $json['data']['reason'], 'Mitglied: /app/dokument/<id> → 503 mit Begründung statt Datei' );
+mkl_assert( $pdf1 === $wm_output( $wm_admin, function () use ( $wm_doc ) { MKL_App_Page::serve_document( $wm_doc['id'] ); } ), 'Admin: /app/dokument/<id> liefert die Datei' );
+$out = $wm_output( $m1, function () use ( $wm_photo_id ) { MKL_App_Page::serve_photo( $wm_photo_id ? $wm_photo_id : 999999, 'thumb' ); } );
+mkl_assert( false !== strpos( $out, '"mkl_maintenance"' ), 'Mitglied: /app/foto/… aus der App → 503' );
+wp_set_current_user( 0 );
+mkl_assert( MKL_Maintenance::blocks_photo(), 'Gast: /app/foto/… aus der App → gesperrt' );
+unset( $_SERVER['HTTP_REFERER'] );
+mkl_assert( MKL_Maintenance::blocks_photo(), 'Gast: /app/foto/… ohne Herkunft → gesperrt' );
+$_SERVER['HTTP_REFERER'] = home_url( '/galerie/?album=1' );
+mkl_assert( ! MKL_Maintenance::blocks_photo(), 'Gast: /app/foto/… aus der Website-Galerie → nicht gesperrt' );
+$_SERVER['HTTP_REFERER'] = MKL_App_Page::app_url();
+wp_set_current_user( $wm_admin );
+mkl_assert( ! MKL_Maintenance::blocks_photo(), 'Admin: /app/foto/… aus der App → nicht gesperrt' );
+unset( $_SERVER['HTTP_REFERER'] );
+
+// Shortcodes der Website arbeiten normal.
+wp_set_current_user( 0 );
+mkl_assert( $wm_sc_termine === do_shortcode( '[mkl_termine]' ) && '' !== $wm_sc_termine && false === strpos( $wm_sc_termine, 'gewartet' ), '[mkl_termine] unverändert in der Wartung' );
+mkl_assert( $wm_sc_galerie === do_shortcode( '[mkl_galerie]' ) && '' !== $wm_sc_galerie && false === strpos( $wm_sc_galerie, 'gewartet' ), '[mkl_galerie] unverändert in der Wartung (Gast)' );
+wp_set_current_user( $m1 );
+mkl_assert( $wm_sc_galerie_m1 === do_shortcode( '[mkl_galerie]' ), '[mkl_galerie] unverändert in der Wartung (Mitglied)' );
+
+echo "Wartungsmodus: Begründung ändern\n";
+wp_set_current_user( $wm_admin );
+$wm_since = get_option( MKL_Maintenance::OPTION )['since'];
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true, 'reason' => str_repeat( 'ä', 500 ) ) );
+mkl_assert( 200 === $s && 500 === mb_strlen( $d['reason'] ), 'Begründung mit genau 500 Zeichen (Umlaute) erlaubt' );
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true, 'reason' => 'Neue Version wird eingespielt.' ) );
+mkl_assert( 200 === $s && 'Neue Version wird eingespielt.' === $d['reason'] && 'reason' === $d['log'][0]['action'] && 3 === count( $d['log'] ), 'Begründung während der Wartung ändern, im Verlauf vermerkt' );
+mkl_assert( $wm_since === get_option( MKL_Maintenance::OPTION )['since'], 'Beginn bleibt beim Ändern der Begründung' );
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true ) );
+mkl_assert( 200 === $s && 'Neue Version wird eingespielt.' === $d['reason'] && 3 === count( $d['log'] ), 'Ohne Begründung bleibt die bisherige, kein neuer Verlaufseintrag' );
+wp_set_current_user( 0 );
+list( $s, $d ) = mkl_req( 'GET', '/events' );
+mkl_assert( 503 === $s && 'Neue Version wird eingespielt.' === $d['data']['reason'], 'Gast sieht die geänderte Begründung' );
+
+echo "Wartungsmodus: Hintergrundaufgaben\n";
+$q = MKL_Push::queue_table();
+$wpdb->insert( $q, array( 'subscription_id' => 999999, 'payload' => '{}', 'urgency' => 'normal', 'attempts' => 0, 'next_try' => gmdate( 'Y-m-d H:i:s', time() - 60 ), 'created_at' => gmdate( 'Y-m-d H:i:s' ) ) );
+$wm_qid = (int) $wpdb->insert_id;
+wp_clear_scheduled_hook( MKL_Push::CRON_HOOK );
+MKL_Push::cron();
+mkl_assert( null !== $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $q WHERE id = %d", $wm_qid ) ), 'Push-Versand pausiert: Warteschlange bleibt' );
+$wm_snap = array( 'mkltest' => 'unverändert' );
+update_option( MKL_Push::SNAPSHOT_OPTION, $wm_snap, false );
+MKL_Push::watch();
+mkl_assert( $wm_snap === get_option( MKL_Push::SNAPSHOT_OPTION ), 'Kalender-Abgleich für Benachrichtigungen pausiert' );
+$wm_gal_status = get_option( MKL_Gallery::STATUS_OPTION, array() );
+update_option( MKL_Gallery::STATUS_OPTION, array( 'mkltest' => 1 ), false );
+MKL_Gallery::cron();
+mkl_assert( array( 'mkltest' => 1 ) === get_option( MKL_Gallery::STATUS_OPTION ), 'Galerie-Abgleich pausiert' );
+update_option( MKL_Gallery::STATUS_OPTION, $wm_gal_status, false );
+
+echo "Wartungsmodus: beenden\n";
+wp_set_current_user( $wm_admin );
+list( $s, $d ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => false ) );
+mkl_assert( 200 === $s && false === $d['on'] && '' === $d['reason'] && false === MKL_Maintenance::is_active(), 'Admin beendet die Wartung' );
+mkl_assert( 'off' === $d['log'][0]['action'] && 'Neue Version wird eingespielt.' === $d['log'][0]['reason'] && 4 === count( $d['log'] ), 'Ende im Verlauf mit der letzten Begründung' );
+mkl_assert( false !== wp_next_scheduled( MKL_Push::CRON_HOOK ), 'Nach dem Ende ist der Push-Versand sofort eingeplant' );
+MKL_Push::cron();
+mkl_assert( null === $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $q WHERE id = %d", $wm_qid ) ), 'Nach dem Ende wird die Warteschlange abgearbeitet' );
+foreach ( array( 'Spieß' => array( $spiess, '/members' ), 'Mitglied' => array( $m1, '/me/points' ), 'Gast' => array( 0, '/events' ) ) as $label => $c ) {
+	wp_set_current_user( $c[0] );
+	list( $s ) = mkl_req( 'GET', $c[1] );
+	mkl_assert( 200 === $s, "$label: nach dem Ende wieder GET {$c[1]} → 200" );
+}
+wp_set_current_user( $m1 );
+list( $s, $d ) = mkl_req( 'GET', '/me' );
+mkl_assert( array( 'on' => false, 'reason' => '' ) === $d['maintenance'], 'GET /me → maintenance aus' );
+mkl_assert( $pdf1 === $wm_output( $m1, function () use ( $wm_doc ) { MKL_App_Page::serve_document( $wm_doc['id'] ); } ), 'Mitglied bekommt das Dokument wieder' );
+list( $s ) = mkl_req( 'POST', '/admin/maintenance', array( 'on' => true ) );
+mkl_assert( 403 === $s, 'Mitglied darf die Wartung nicht einschalten → 403' );
+
+// Verlauf auf 20 Einträge begrenzt.
+for ( $i = 0; $i < 12; $i++ ) {
+	MKL_Maintenance::set( true, 'Runde ' . $i, $wm_admin );
+	MKL_Maintenance::set( false, null, $wm_admin );
+}
+mkl_assert( MKL_Maintenance::LOG_SIZE === count( get_option( MKL_Maintenance::LOG_OPTION ) ), 'Verlauf hält die letzten 20 Änderungen' );
+
+$wpdb->query( $wpdb->prepare( "DELETE FROM $q WHERE subscription_id = %d", 999999 ) );
+wp_set_current_user( $wm_admin );
+mkl_req( 'DELETE', '/documents/' . $wm_doc['id'] );
+delete_option( MKL_Maintenance::OPTION );
+delete_option( MKL_Maintenance::LOG_OPTION );
+wp_delete_user( $wm_admin );
+wp_delete_user( $wm_anw );
+
 echo "Anwesenheit\n";
 $att_anw = mkl_test_user( 'mkltest_att_anwaerter', 'anwaerter' );
 $att_ohne = mkl_test_user( 'mkltest_att_ohne', 'ohne' );
