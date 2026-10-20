@@ -20,13 +20,13 @@ Kleines WordPress-Plugin **„Marinekompanie – Übernahme in die Kompanie-App�
 | Push-Abos (Arten `strafen`/`punkte`/`dienstgrad`/`termine`/`erinnerung`/`news` → `penalties`/`points`/`ranks`/`events`/`reminder`/`news`), **VAPID-Schlüssel** | `push_subscriptions`, Einstellung `push_vapid`: kein Gerät muss neu zustimmen |
 | Kalender (`mkl_ics_url`, `mkl_google_api_key`, `mkl_calendar_ids`, Zwischenspeicher), Galerie-Ordner, Google-Verbindung (OAuth bzw. Dienstkonto) | Einstellungen der Kompanie-App |
 | Rollen | |
-| – Spieß | eigene Rolle **„Spieß“** (Punkte, Strafen, Anwesenheit, Dienstgrade, Titel) |
+| – Spieß | eigene Rolle **„Spieß“** (Punkte, Strafen, Anwesenheit, Dienstgrade, Titel, Dokumente verwalten) |
 | – Mitglied mit Jungmariner-Haken | eigene Rolle **„Jungmariner“** (Punktefaktor 0,5) |
 | – Mitglied | Mitglied |
 | – Anwärter | Anwärter |
 | – Administratoren | bleiben Admins |
 
-Alle Bereiche werden eingeschaltet.
+Alle Bereiche, die Lank hat, werden eingeschaltet. Neue Bereiche des Kerns (z. B. Geburtstage, Umfragen, Schwarzes Brett, Inventar) bleiben aus, bis ein Admin sie einschaltet.
 
 **Übersprungen und im Bericht genannt:**
 - Einträge von Konten, die es nicht mehr gibt
@@ -41,7 +41,7 @@ Alle Bereiche werden eingeschaltet.
 
 ## Ablauf der Umstellung
 
-1. **Probe auf einer Kopie:** Datenbank-Dump und `wp-content/uploads/` in eine Testumgebung, dort die Schritte 3–6 durchspielen. Prüfen:
+1. **Probe auf einer Kopie** (ausführliche Checkliste: [PROBELAUF.md](PROBELAUF.md)): Datenbank-Dump und `wp-content/uploads/` in eine Testumgebung, dort die Schritte 3–6 durchspielen. Prüfen:
    - Summen je Mitglied
    - Dokumente öffnen, Galerie
    - Push an ein Testgerät
@@ -86,7 +86,9 @@ Nach einer weiteren Sicherung:
 ## Grenzen
 
 - **Google-Verbindung (OAuth):** wird weiter genutzt, bis sie abläuft oder getrennt wird. Neu verbinden lässt sich in der Kompanie-App erst nach dem Galerie-Test (Template #40); bis dahin hilft ein Dienstkonto.
-- **Spieß:** bekommt in der Kompanie-App nur die Rechte, die er in Lank hatte. Mitglieder anlegen und Rollen vergeben bleiben Admins vorbehalten, wie bisher.
+- **Spieß:** bekommt in der Kompanie-App die Rechte, die er in Lank hatte, und zusätzlich **„Dokumente verwalten“**.
+  - In Lank sah der Spieß die Dokumente mit Sichtbarkeit „Spieß“, pflegen durften sie nur Admins. Im Kern sieht eingeschränkte Dokumente nur, wer Dokumente verwalten darf. Ohne dieses Recht sähe der Spieß seine Dokumente nicht mehr; mit ihm darf er sie auch hochladen, ändern und löschen.
+  - Mitglieder anlegen und Rollen vergeben bleiben Admins vorbehalten, wie bisher.
   - **Anwärter aufnehmen** durfte der Spieß in Lank. In der Kompanie-App gehört dieser Schritt zum Recht „Mitglieder anlegen“. Soll der Spieß das weiter dürfen, gibt ein Admin der Rolle „Spieß“ dieses Recht; damit darf er dann aber auch Konten anlegen und Passwörter von Mitgliedern zurücksetzen.
 - **Push-Abos:** Lank hatte keine eigene Art für Titel. Wer die Art „Dienstgrad“ hatte, bekommt in der Kompanie-App keine Titel-Benachrichtigungen, bis er sie einschaltet.
 
