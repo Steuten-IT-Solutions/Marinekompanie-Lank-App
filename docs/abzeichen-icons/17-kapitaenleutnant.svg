@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Kapitänleutnant</title>
+  <circle cx="32" cy="21.5" r="17" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5"/><polygon points="32,11.3 34.77,18.71 42.67,19.05 36.48,23.98 38.59,31.6 32,27.23 25.41,31.6 27.52,23.98 21.33,19.05 29.23,18.71" fill="#e8b931"/>
+  <rect x="3" y="43.5" width="58" height="9" rx="1" fill="#e8b931" stroke="#14234a" stroke-width="1.5"/>
+  <path d="M5,46.5 H59 M5,49.5 H59" stroke="#b98d17" stroke-width="0.8" fill="none"/>
+  <rect x="3" y="55" width="58" height="9" rx="1" fill="#e8b931" stroke="#14234a" stroke-width="1.5"/>
+  <path d="M5,58 H59 M5,61 H59" stroke="#b98d17" stroke-width="0.8" fill="none"/>
+  <rect x="3" y="66.5" width="58" height="9" rx="1" fill="#e8b931" stroke="#14234a" stroke-width="1.5"/>
+  <path d="M5,69.5 H59 M5,72.5 H59" stroke="#b98d17" stroke-width="0.8" fill="none"/>
+</svg>
