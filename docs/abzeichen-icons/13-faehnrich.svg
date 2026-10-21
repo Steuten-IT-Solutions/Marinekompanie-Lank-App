@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Fähnrich</title>
+  <g transform="translate(0 0.83)">
+  <defs><clipPath id="schlaufe"><polygon points="32,6.6 8,26.73 8,78.35 32,58.21 56,78.35 56,26.73"/></clipPath></defs>
+  <polygon points="32,6.6 8,26.73 8,78.35 32,58.21 56,78.35 56,26.73" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <g clip-path="url(#schlaufe)" fill="none" stroke-width="4.5" stroke-linejoin="miter" stroke-miterlimit="10"><path d="M2,60.86 L41.6,27.63 L32,15.63 L22.4,27.63 L62,60.86" stroke="#e8b931"/><path d="M27.2,31.66 L62,60.86" stroke="#14234a" stroke-width="6.9"/><path d="M22.4,27.63 L62,60.86" stroke="#e8b931"/></g>
+  <polygon points="8.01,75.73 32,55.6 55.99,75.73 55.99,69.85 32,49.72 8.01,69.85" fill="#e8b931"/>
+  <polygon points="8.01,69.85 32,49.72 55.99,69.85 55.99,67.24 32,47.11 8.01,67.24" fill="#8597c4"/>
+  <polygon points="8.01,67.24 32,47.11 55.99,67.24 55.99,61.37 32,41.24 8.01,61.37" fill="#e8b931"/>
+  <polygon points="32,6.6 8,26.73 8,78.35 32,58.21 56,78.35 56,26.73" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="32,0 8,20.14 8,31.23 32,11.1 56,31.23 56,20.14" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="55.99,22.74 32,2.61 8.01,22.74 8.01,28.62 32,8.49 55.99,28.62" fill="#e8b931"/>
+  <polygon points="32,0 8,20.14 8,31.23 32,11.1 56,31.23 56,20.14" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <circle cx="32" cy="66.21" r="8.5" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5"/><polygon points="32,61.11 33.38,64.81 37.34,64.98 34.24,67.44 35.3,71.26 32,69.07 28.7,71.26 29.76,67.44 26.66,64.98 30.62,64.81" fill="#e8b931"/>
+  </g>
+</svg>
