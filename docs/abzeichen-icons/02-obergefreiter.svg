@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Obergefreiter</title>
+  <polygon points="6,13 32,67 58,13" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="8.22,13.01 32,62.39 55.78,13.01 50.78,13.01 32,52.02 13.22,13.01" fill="#e8b931"/>
+  <polygon points="15.44,13.01 32,47.41 48.56,13.01 43.57,13.01 32,37.03 20.43,13.01" fill="#e8b931"/>
+  <polygon points="6,13 32,67 58,13" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

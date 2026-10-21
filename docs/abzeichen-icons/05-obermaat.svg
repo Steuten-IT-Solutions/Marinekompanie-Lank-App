@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Obermaat</title>
+  <polygon points="32,4 4,30 4,50 32,76 60,50 60,30" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M32,6.73 6,30.87 6,49.13 32,73.27 58,49.13 58,30.87Z M32,12.87 10.5,32.83 10.5,47.17 32,67.13 53.5,47.17 53.5,32.83Z" fill="#e8b931" fill-rule="evenodd"/>
+  <polygon points="53.5,32.83 32,12.87 10.5,32.83 10.5,35.56 32,15.6 53.5,35.56" fill="#8597c4"/>
+  <polygon points="53.5,35.56 32,15.6 10.5,35.56 10.5,41.7 32,21.74 53.5,41.7" fill="#e8b931"/>
+  <polygon points="32,4 4,30 4,50 32,76 60,50 60,30" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

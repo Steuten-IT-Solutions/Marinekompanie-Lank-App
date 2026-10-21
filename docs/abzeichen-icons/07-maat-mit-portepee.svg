@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Maat mit Portepee</title>
+  <g transform="translate(0 17.3)">
+  <polygon points="32,0 6,21.82 6,45.4 32,23.58 58,45.4 58,21.82" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="57.99,24.42 32,2.61 6.01,24.42 6.01,30.29 32,8.49 57.99,30.29" fill="#e8b931"/>
+  <polygon points="57.99,30.29 32,8.49 6.01,30.29 6.01,32.9 32,11.1 57.99,32.9" fill="#8597c4"/>
+  <polygon points="57.99,32.9 32,11.1 6.01,32.9 6.01,38.78 32,16.97 57.99,38.78" fill="#e8b931"/>
+  <polygon points="32,0 6,21.82 6,45.4 32,23.58 58,45.4 58,21.82" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  </g>
+</svg>

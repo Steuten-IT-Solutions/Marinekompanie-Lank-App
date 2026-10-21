@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">
+  <title>Hauptmaat mit Portepee</title>
+  <g transform="translate(0 12.08)">
+  <defs><clipPath id="schlaufe"><polygon points="32,0 6,21.82 6,55.84 32,34.02 58,55.84 58,21.82"/></clipPath></defs>
+  <polygon points="32,0 6,21.82 6,55.84 32,34.02 58,55.84 58,21.82" fill="#14234a" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  <g clip-path="url(#schlaufe)" fill="none" stroke-width="4.5" stroke-linejoin="miter" stroke-miterlimit="10"><path d="M2,53.65 L42.4,19.75 L32,6.75 L21.6,19.75 L62,53.65" stroke="#e8b931"/><path d="M26.8,24.11 L62,53.65" stroke="#14234a" stroke-width="6.9"/><path d="M21.6,19.75 L62,53.65" stroke="#e8b931"/></g>
+  <polygon points="32,0 6,21.82 6,55.84 32,34.02 58,55.84 58,21.82" fill="none" stroke="#dfe6f2" stroke-width="1.5" stroke-linejoin="round"/>
+  </g>
+</svg>
