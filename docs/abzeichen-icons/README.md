@@ -24,7 +24,9 @@ Stilisierte Abzeichen für die Lanker App (Issue #64, Folge von #48). Vorlage si
 | 13 | Fähnrich | 340 | <img src="13-faehnrich.svg" height="48" alt="Fähnrich"> | wie Hauptbootsmann, oben ein Winkel |
 | 14 | Oberfähnrich | 450 | <img src="14-oberfaehnrich.svg" height="48" alt="Oberfähnrich"> | wie Hauptbootsmann, oben ein Winkel mit doppeltem Band |
 | 15 | Leutnant | 600 | <img src="15-leutnant.svg" height="48" alt="Leutnant"> | Stern und goldener Streifen |
-| 16 | Oberleutnant | 750 | – | **noch kein Icon:** Das Foto wird nachgereicht. Bis dahin bleibt der Dienstgrad ohne Abzeichen. |
+| 16 | Oberleutnant | 750 | <img src="16-oberleutnant.svg" height="48" alt="Oberleutnant"> | wie Leutnant, zwei Streifen |
+| 17 | Kapitänleutnant | – | <img src="17-kapitaenleutnant.svg" height="48" alt="Kapitänleutnant"> | wie Leutnant, drei Streifen |
+| 18 | Kapitän | – | <img src="18-kapitaen.svg" height="48" alt="Kapitän"> | wie Leutnant, vier Streifen |
 
 ## Gestaltung
 
@@ -63,4 +65,4 @@ Die SVGs werden mit [`erzeugen.py`](erzeugen.py) erzeugt (Python 3, ohne weitere
 python3 docs/abzeichen-icons/erzeugen.py docs/abzeichen-icons
 ```
 
-Für den Oberleutnant wird dort ein weiterer Eintrag ergänzt, sobald das Foto vorliegt.
+Oberleutnant, Kapitänleutnant und Kapitän entstehen dort aus dem Leutnant (`star_bars(n)`): derselbe Stern-Aufnäher, darunter 2, 3 bzw. 4 Streifen; damit vier Streifen in die Zeichenfläche passen, wird der Stern beim Kapitän etwas kleiner. Die Punkteschwellen für Kapitänleutnant und Kapitän stehen nicht in der Vorlage (`Marine_Abzeichen.pdf`); sie werden in der App bei den Dienstgraden festgelegt.

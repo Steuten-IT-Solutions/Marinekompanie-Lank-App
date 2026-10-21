@@ -281,6 +281,23 @@ def badge_15():
             f'<path d="M5,59.5 H59 M5,63.5 H59" stroke="#b98d17" stroke-width="0.8" fill="none"/>']
 
 
+def star_bars(n):
+    """Wie der Leutnant (Stern-Aufnäher über goldenem Streifen), mit n Streifen (Oberleutnant 2, Kapitänleutnant 3,
+    Kapitän 4). Streifen 58 breit und je 9 hoch mit zwei eingeprägten Linien, 2,5 Abstand; der Stern wird nur kleiner,
+    wenn sonst der Platz nicht reicht, und das Ganze steht mittig in der Zeichenfläche."""
+    h, gap, sgap = 9, 2.5, 5
+    bars = n * h + (n - 1) * gap
+    r = min(17, (80 - 4 - bars - sgap) / 2)
+    top = (80 - (2 * r + sgap + bars)) / 2
+    parts = [star_patch(32, top + r, r)]
+    y = top + 2 * r + sgap
+    for _ in range(n):
+        parts.append(f'<rect x="3" y="{f(y)}" width="58" height="{h}" rx="1" fill="{GOLD}" stroke="{NAVY}" stroke-width="{EW}"/>')
+        parts.append(f'<path d="M5,{f(y + 3)} H59 M5,{f(y + 6)} H59" stroke="#b98d17" stroke-width="0.8" fill="none"/>')
+        y += h + gap
+    return parts
+
+
 RANKS = [
     ('01-gefreiter', 'Gefreiter', lambda: triangle_badge(1)),
     ('02-obergefreiter', 'Obergefreiter', lambda: triangle_badge(2)),
@@ -297,6 +314,9 @@ RANKS = [
     ('13-faehnrich', 'Fähnrich', lambda: schlaufe_rank(2, True, 1)),
     ('14-oberfaehnrich', 'Oberfähnrich', lambda: schlaufe_rank(2, True, 2)),
     ('15-leutnant', 'Leutnant', badge_15),
+    ('16-oberleutnant', 'Oberleutnant', lambda: star_bars(2)),
+    ('17-kapitaenleutnant', 'Kapitänleutnant', lambda: star_bars(3)),
+    ('18-kapitaen', 'Kapitän', lambda: star_bars(4)),
 ]
 
 os.makedirs(OUT, exist_ok=True)
