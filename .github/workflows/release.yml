@@ -4,9 +4,6 @@ name: Release
 on:
   push:
     branches: [main]
-    # Das Übernahme-Plugin gehört nicht zu mk-lank-app; Änderungen daran veröffentlichen keine neue Version.
-    paths-ignore:
-      - 'uebernahme/**'
 
 concurrency:
   group: release
