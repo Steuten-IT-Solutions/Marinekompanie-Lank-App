@@ -64,6 +64,8 @@ Alles steckt in einem **WordPress-Plugin** (`plugin/mk-lank-app`). Es läuft auf
 ```
 app/                       React + TypeScript (Vite) – Quellcode der PWA
   src/views/               Termine, News, Galerie, Meins (Punkte/Strafen/Anwesenheit), Spieß-Bereich, Konto
+  src/assets/logo.svg|png  Logo (SVG hat Vorrang; Icons daraus: npm run icons)
+  public/icons/            App-Icons (PNG)
   public/sw.js             Service Worker (Offline-Anzeige der zuletzt geladenen Daten, Push-Benachrichtigungen)
   e2e/                     Playwright-Tests
 plugin/mk-lank-app/        WordPress-Plugin
@@ -247,6 +249,16 @@ PHP_CLI_SERVER_WORKERS=4 php -S localhost:8888 -t .wp-test/wp .wp-test/router.ph
 - WP-Admin: http://localhost:8888/wp-admin/ mit `admin` / `admin`.
 
 Nach Änderungen am Frontend `npm run build` erneut ausführen und die Seite neu laden.
+
+### Logo und App-Icons
+
+Das Logo liegt in `app/src/assets/` als `logo.svg` oder `logo.png`. Liegen beide Dateien dort, gewinnt das SVG. Die alte Datei löscht man dann am besten, weil der Build sie sonst ungenutzt mitpackt. Die App-Icons in `app/public/icons/` (Startbildschirm, Manifest, Push) müssen PNG sein und werden aus dem Logo erzeugt:
+
+```bash
+cd app && npm run icons && npm run build
+```
+
+Ein SVG braucht eine `viewBox` (oder `width`/`height`), sonst ist das Seitenverhältnis unbekannt.
 
 ### Tests
 
