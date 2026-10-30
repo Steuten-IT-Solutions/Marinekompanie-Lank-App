@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { config } from '../api';
-import logoUrl from '../assets/logo.png';
+import logoUrl from '../logo';
 import {
   chromeUrl,
   detectPlatform,

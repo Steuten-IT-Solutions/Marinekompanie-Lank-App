@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, config } from '../api';
-import logoUrl from '../assets/logo.png';
+import logoUrl from '../logo';
 import { checkMaintenance, MAX_MAINTENANCE_REASON, useMaintenance } from '../maintenance';
 import { BackToSetup, ErrorBox, Loading, useAsync } from '../ui';
 

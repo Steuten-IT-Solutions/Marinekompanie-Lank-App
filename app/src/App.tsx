@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { config } from './api';
-import logoUrl from './assets/logo.png';
+import logoUrl from './logo';
 import { caps } from './format';
 import { detectPlatform, installDoneText, isStandalone, promptInstall, useCanPrompt, useInstallState } from './install';
 import { useMaintenance } from './maintenance';
